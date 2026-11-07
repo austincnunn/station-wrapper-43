@@ -8,7 +8,7 @@ video (the ones the TubeArchivist conversion writes, and the ones most media too
     a YouTube video       the channel's name, and the video's title apart     (the same, with a youtube <uniqueid>)
     a movie               the movie's title                                   (<movie><title>)
 
-Nothing is ever written. A video with no .nfo keeps its file name. Answers are remembered for a while, a missing .nfo
+Nothing is ever written. A video with no .nfo is named from its folders and file name instead (from_path). Answers are remembered for a while, a missing .nfo
 too, so a guide that lists thousands of videos reads each file once.
 """
 import html
@@ -96,8 +96,84 @@ def title_from_nfo(text):
     return f"{title}: {episode}"[:200] if title and episode and EPISODE_NAMES else title
 
 
+# ---- no .nfo: the name from the folders and the file's own name ---------------------------------------------------------
+# Libraries managed by Emby/Jellyfin/Plex keep their metadata in a database, not in .nfo files, so most videos have none.
+# Their folders and file names still say what they are: `tv/The Simpsons (1989)/Season 4/The.Simpsons-S04E01-Kamp.Krusty-
+# WEBDL-1080p.mp4` is The Simpsons, "Kamp Krusty", S4E1; `movies/Twister (1996)/Twister.1996.1080p.mkv` is Twister (1996).
+MEDIA_ROOT = os.path.realpath(os.environ.get("FS42_MEDIA", "/mnt/media"))
+_EPISODE = re.compile(r"(?i)(?<![a-z0-9])(?:s(\d{1,3})[ ._-]?e(\d{1,3})(?:[-e]+\d{1,3})*|(\d{1,2})x(\d{2,3}))(?![a-z0-9])")
+_YEAR = re.compile(r"(?<=[ ._(\[-])((?:19|20)\d{2})(?=$|[ ._)\]-])")
+_JUNK = re.compile(                    # where the release details start: quality, source, codec, audio, release group
+    r"(?i)(?<![a-z0-9])(?:2160p|1080[pi]|720p|576p|480p|4k|uhd|hdr\d*|web[ ._-]?dl|webrip|web|bluray|blu-ray|bdrip|brrip|"
+    r"dvdrip|dvd|hdtv|hdrip|remux|x26[45]|h[ ._]?26[45]|hevc|avc|xvid|divx|amzn|nf|hulu|dsnp|atvp|hmax|proper|repack|"
+    r"internal|extended|unrated|ddp?[0-9.]*|e?ac3|aac[0-9.]*|dts(?:-hd)?|truehd|atmos)(?![a-z0-9])")
+_SEASON_DIR = re.compile(r"(?i)^(?:season|series|staffel|saison)?[ ._-]*\d{1,4}$|^specials?$")
+_NAMED_YEAR_DIR = re.compile(r"^(.+?)\s*\(((?:19|20)\d{2})\)$")
+
+
+def _clean(text):
+    """`The.Simpsons` -> `The Simpsons`; drops [bracketed ids] and (Official Video) notes. Dots only become spaces in a name
+    with no spaces, so `Mr. Bean` keeps its dot."""
+    text = re.sub(r"\[[^\]]*\]", " ", text)
+    text = re.sub(r"(?i)\((?:official|lyrics?|audio|visuali[sz]er|hd|hq|4k|remaster)[^)]*\)", " ", text)
+    text = text.replace("_", " ")
+    if " " not in text.strip():
+        text = text.replace(".", " ")
+    return re.sub(r"\s+", " ", text).strip(" -.,")
+
+
+def _show_dir(real):
+    """(the show's folder, its name) for an episode: the folder above any `Season 4` folders, but never a library's own
+    folder (`/mnt/media/tv`) or the media root. A tvshow.nfo there names the show; else the folder does, `(1989)` and
+    `[tvdbid=...]` taken off. (None, None) when there is no such folder."""
+    folder = os.path.dirname(real)
+    for _ in range(3):
+        if not _SEASON_DIR.match(os.path.basename(folder)):
+            break
+        folder = os.path.dirname(folder)
+    if folder in (MEDIA_ROOT, os.path.dirname(MEDIA_ROOT)) or os.path.dirname(folder) == MEDIA_ROOT:
+        return None, None
+    try:
+        with open(os.path.join(folder, "tvshow.nfo"), "r", encoding="utf-8", errors="replace") as f:
+            name = _tag(f.read(READ_BYTES), "title")
+        if name:
+            return folder, name
+    except OSError:
+        pass
+    name = _clean(os.path.basename(folder))
+    m = _NAMED_YEAR_DIR.match(name)
+    return folder, (m.group(1) if m else name) or None
+
+
+def from_path(video_path):
+    """(title, episode name, details) from a video's folders and file name, for one with no .nfo. details as details_for:
+    {"kind", "season", "episode", "year"} with what could be read. A link is followed to the real file first."""
+    real = os.path.realpath(video_path)
+    stem = os.path.splitext(os.path.basename(real))[0]
+    m = _EPISODE.search(stem)
+    if m:
+        season, episode = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        details = {"kind": "episode", "season": int(season), "episode": int(episode)}
+        rest = stem[m.end():]
+        junk = _JUNK.search(rest)
+        name = _clean(rest[:junk.start()] if junk else rest) or None
+        _folder, show = _show_dir(real)
+        show = show or _clean(stem[:m.start()]) or None
+        return show, (name if name != show else None), details
+    folder = _clean(os.path.basename(os.path.dirname(real)))
+    m = _NAMED_YEAR_DIR.match(folder)                   # movies/Twister (1996)/anything.mkv
+    if m and os.path.dirname(real) != MEDIA_ROOT:
+        return m.group(1), None, {"kind": "movie", "year": int(m.group(2))}
+    cuts = [x.start() for x in (_JUNK.search(stem), _YEAR.search(stem)) if x]
+    title = _clean(stem[:min(cuts)] if cuts else stem) or _clean(stem) or None
+    if title == stem:                                   # nothing recognised: the file's name is already the name
+        return None, None, {}
+    year = _YEAR.search(stem)
+    return title, None, ({"year": int(year.group(1))} if year and cuts else {})
+
+
 def parts_for(video_path):
-    """(title, episode name) for this video from its .nfo, or (None, None) to keep its file name."""
+    """(title, episode name) for this video from its .nfo, else from its folders and file name (from_path)."""
     if os.path.splitext(video_path)[1].lower() not in VIDEO_EXT:
         return None, None
     nfo = os.path.splitext(video_path)[0] + ".nfo"
@@ -112,6 +188,11 @@ def parts_for(video_path):
             parts = parts_from_nfo(f.read(READ_BYTES))
     except OSError:
         pass
+    if not parts[0]:
+        try:
+            parts = from_path(video_path)[:2]
+        except (OSError, ValueError):
+            pass
     with _lock:
         if len(_seen) > MAX_REMEMBERED:
             _seen.clear()
@@ -150,6 +231,11 @@ def details_for(video_path):
             got = details_from_nfo(f.read(READ_BYTES * 4))
     except OSError:
         pass
+    if not got:
+        try:
+            got = from_path(video_path)[2]
+        except (OSError, ValueError):
+            pass
     with _lock:
         if len(_seen_details) > MAX_REMEMBERED:
             _seen_details.clear()
