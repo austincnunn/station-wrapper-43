@@ -1,13 +1,14 @@
 name: dev-image
 
-# Builds the ONE image on every dev push, smoke-tests it, and publishes :dev and an
-# immutable :dev-<short-sha>, so a fix can be tested on the server with `compose pull`
-# before it is merged to main. Nothing is pushed if the smoke test fails.
+# Builds the ONE image on every push to dev or main, smoke-tests it, and publishes
+#   dev:  :dev    and an immutable :dev-<short-sha>  (try a fix with `compose pull` first)
+#   main: :latest and an immutable :main-<short-sha>
+# Nothing is pushed if the smoke test fails.
 #
 # Pushes to GitHub's container registry with the workflow's own token (no secret to set up).
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
 
 env:
   REGISTRY: ghcr.io
@@ -30,10 +31,12 @@ jobs:
           set -euo pipefail
           image="$REGISTRY/$(echo "${{ github.repository_owner }}" | tr A-Z a-z)/$IMAGE"
           sha="$(echo "${{ github.sha }}" | cut -c1-7)"
-          docker build -t "$image:dev" -t "$image:dev-$sha" \
-            --build-arg BUILD_REF="dev-$sha" --build-arg BUILD_SHA="$sha" \
+          branch="${{ github.ref_name }}"
+          moving="$([ "$branch" = main ] && echo latest || echo dev)"
+          docker build -t "$image:$moving" -t "$image:$branch-$sha" \
+            --build-arg BUILD_REF="$branch-$sha" --build-arg BUILD_SHA="$sha" \
             --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
-          scripts/smoke-image.sh "$image:dev"
-          docker run --rm aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 0 "$image:dev" || true
-          docker push "$image:dev"
-          docker push "$image:dev-$sha"
+          scripts/smoke-image.sh "$image:$moving"
+          docker run --rm aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 0 "$image:$moving" || true
+          docker push "$image:$moving"
+          docker push "$image:$branch-$sha"
