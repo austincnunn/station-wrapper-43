@@ -247,5 +247,65 @@ class DetailsTest(unittest.TestCase):
         os.symlink(os.path.join(season, "e1.mp4"), os.path.join(lst, "e1.mp4"))
         self.assertEqual(titles.art_for(os.path.join(lst, "e1.mp4")), os.path.join(show, "poster.jpg"))
 
+class FromPath(unittest.TestCase):
+    """No .nfo (an Emby/Jellyfin/Plex library keeps its metadata in a database): the name comes from the folders and file."""
+    def setUp(self):
+        titles.forget()
+        self.root = os.path.realpath(tempfile.mkdtemp())
+        self.old_root, titles.MEDIA_ROOT = titles.MEDIA_ROOT, self.root
+
+    def tearDown(self):
+        titles.MEDIA_ROOT = self.old_root
+        shutil.rmtree(self.root)
+        titles.forget()
+
+    def video(self, rel):
+        p = os.path.join(self.root, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, "w").close()
+        return p
+
+    def test_an_episode_is_named_by_its_show_folder_and_the_title_in_its_file_name(self):
+        p = self.video("tv/The Simpsons (1989)/Season 4/The.Simpsons-S04E01-Kamp.Krusty-WEBDL-1080p-h264-EAC3-5.1-Asmo.mp4")
+        self.assertEqual(titles.names_for(p), ("The Simpsons", "Kamp Krusty"))
+        self.assertEqual(titles.details_for(p), {"kind": "episode", "season": 4, "episode": 1})
+        scene = self.video("tv/The Simpsons (1989)/Season 15/the.simpsons.s15e19.1080p.bluray.x264-d3g.mkv")
+        self.assertEqual(titles.names_for(scene), ("The Simpsons", None))                    # no episode title in the name
+        two = self.video("tv/Rocket Power/Season 2/Rocket.Power.S02E05E06.480p.DVDRip.DD2.0.x264.mkv")
+        self.assertEqual((titles.names_for(two), titles.details_for(two)["episode"]), (("Rocket Power", None), 5))
+        trek = self.video("tv/Star Trek - Enterprise (2001) [tvdbid=73893]/Season 1/Star Trek Enterprise - S01E03 - Fight or Flight.mkv")
+        self.assertEqual(titles.names_for(trek), ("Star Trek - Enterprise", "Fight or Flight"))
+
+    def test_a_tvshow_nfo_names_the_show_and_a_library_folder_never_does(self):
+        p = self.video("tv/rockos/Rockos.Modern.Life.S01E23-24.DVDRip.480p.x264-MaG.mkv")
+        with open(os.path.join(self.root, "tv/rockos/tvshow.nfo"), "w") as f:
+            f.write("<tvshow><title>Rocko's Modern Life</title></tvshow>")
+        self.assertEqual(titles.names_for(p), ("Rocko's Modern Life", None))
+        loose = self.video("tv/Some.Show.S01E02.Pilot.720p.mkv")                               # straight in the library folder
+        self.assertEqual(titles.names_for(loose), ("Some Show", "Pilot"))
+
+    def test_a_movie_is_named_by_its_folder_or_its_file_name_without_the_release_details(self):
+        self.assertEqual(titles.title_for(self.video("movies/Twister (1996)/Twister.1996.1080p.mkv")), "Twister")
+        self.assertEqual(titles.details_for(self.video("movies/Twister (1996)/Twister.1996.1080p.mkv")), {"kind": "movie", "year": 1996})
+        self.assertEqual(titles.title_for(self.video("movies/Inside.the.Mind.of.a.Cat.2022.1080p.WEBRip.x264-RARBG.mp4")), "Inside the Mind of a Cat")
+        self.assertEqual(titles.title_for(self.video("mv/George Strait - Check Yes Or No (Official Music Video) [NHxS8wlDngI].mp4")),
+                         "George Strait - Check Yes Or No")
+
+    def test_an_nfo_still_wins_and_a_plain_name_stays_as_it_is(self):
+        p = self.video("tv/Friends/Season 1/Friends.S01E01.mkv")
+        with open(os.path.splitext(p)[0] + ".nfo", "w") as f:
+            f.write(EPISODE)
+        self.assertEqual(titles.names_for(p), ("Friends", "The One With The Pilot"))
+        self.assertEqual(titles.names_for(self.video("ads/Mr. Bean.mp4")), (None, None))
+        self.assertEqual(titles.details_for(self.video("ads/plain.mp4")), {})
+
+    def test_a_list_link_is_followed_to_the_real_folders(self):
+        real = self.video("tv/The Simpsons (1989)/Season 3/The.Simpsons.S03E05.Homer.Defined.1080p.mkv")
+        os.makedirs(os.path.join(self.root, "catalog/Cartoons"))
+        link = os.path.join(self.root, "catalog/Cartoons/x.mkv")
+        os.symlink(real, link)
+        self.assertEqual(titles.names_for(link), ("The Simpsons", "Homer Defined"))
+
+
 if __name__ == "__main__":
     unittest.main()
