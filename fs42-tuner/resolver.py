@@ -107,9 +107,16 @@ def _names(feature, title):
     return title, None
 
 
+def _one_video(plan):
+    """Does this block play one video (a show, cut around its breaks)? A loop station's block plays hundreds of different
+    ones, and is not named after whichever happens to come first."""
+    return len({e.path for e in plan if e.content_type == "feature" and not e.is_stream}) <= 1
+
+
 def _named(title, plan):
-    """A block's title: the name from the .nfo of the video it plays when there is one (see titles.py), else FieldStation42's."""
-    if TITLE_HOOK is None:
+    """A block's title: the name from the .nfo of the video it plays when there is one (see titles.py), else FieldStation42's.
+    A block of many videos (a loop) keeps FieldStation42's title, the station's name."""
+    if TITLE_HOOK is None or not _one_video(plan):
         return title
     for e in plan:
         if e.content_type == "feature" and not e.is_stream:
@@ -151,7 +158,8 @@ def resolve(db_path: str, station: str, when: datetime = None) -> Cursor:
     title, start_s, end_s, plan_json = row
     start = datetime.fromisoformat(start_s)
     plan = _rows_to_plan(plan_json)
-    title = _named(title, plan)
+    one = _one_video(plan)
+    block_title = _named(title, plan) if one else title
 
     # Walk the plan accumulating durations until we pass `when`.
     mark = start
@@ -160,7 +168,8 @@ def resolve(db_path: str, station: str, when: datetime = None) -> Cursor:
         if nxt > when:
             return Cursor(
                 station=station,
-                block_title=title,
+                # a loop's "now playing" is the video on now (a break between them keeps the station's name)
+                block_title=block_title if one or entry.content_type != "feature" else _named(title, [entry]),
                 block_start=start,
                 block_end=datetime.fromisoformat(end_s),
                 plan=plan,
@@ -172,7 +181,7 @@ def resolve(db_path: str, station: str, when: datetime = None) -> Cursor:
     # Block's plan is shorter than the block's wall-clock span: FS42's own
     # get_play_point returns None here and the player falls through. Treat the
     # tail as dead air rather than crashing the stream.
-    raise ScheduleGap(f"{station}: plan for '{title}' underruns its slot at {when.isoformat()}")
+    raise ScheduleGap(f"{station}: plan for '{block_title}' underruns its slot at {when.isoformat()}")
 
 
 def stations(db_path: str) -> list:
@@ -197,11 +206,13 @@ def listings(db_path: str, station: str, start: datetime, end: datetime) -> list
         with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
             rows = None
             if TITLE_HOOK is not None or NAMES_HOOK is not None:      # the path of the video each block plays, taken out of its plan by SQLite
-                try:
+                try:                                                  # (none for a block of many videos: a loop keeps its own title)
                     rows = conn.execute(
                         """SELECT title, start_time, end_time,
-                                  (SELECT json_extract(j.value, '$.path') FROM json_each(plan_json) j
-                                    WHERE json_extract(j.value, '$.content_type') = 'feature' LIMIT 1)
+                                  (SELECT CASE WHEN COUNT(DISTINCT json_extract(j.value, '$.path')) = 1
+                                               THEN MIN(json_extract(j.value, '$.path')) END
+                                     FROM json_each(plan_json) j
+                                    WHERE json_extract(j.value, '$.content_type') = 'feature')
                              FROM liquid_blocks
                             WHERE station = ?
                               AND julianday(start_time) < julianday(?)

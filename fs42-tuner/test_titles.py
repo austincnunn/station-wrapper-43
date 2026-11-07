@@ -168,6 +168,23 @@ class Where(unittest.TestCase):
         self.assertEqual(resolver.block_plan(self.db, "S", self.now - timedelta(minutes=5))[0], "Parasite")
         self.assertEqual(resolver.titles(self.db, "S", [self.film, "catalog/ad.mp4"]), {self.film: "Parasite"})
 
+    def test_a_loop_block_keeps_the_station_name_and_now_playing_follows_the_video_on_now(self):
+        for name in ("Alan Jackson - Gone Country (Official Music Video) [si-ja75bFvI].mp4",
+                     "George Strait - Check Yes Or No (Official Music Video) [NHxS8wlDngI].mp4"):
+            open(os.path.join(self.root, "catalog", name), "w").close()
+        plan = [{"path": "catalog/Alan Jackson - Gone Country (Official Music Video) [si-ja75bFvI].mp4", "duration": 240, "content_type": "feature"},
+                {"path": "catalog/George Strait - Check Yes Or No (Official Music Video) [NHxS8wlDngI].mp4", "duration": 240, "content_type": "feature"}]
+        c = sqlite3.connect(self.db)
+        c.execute("INSERT INTO liquid_blocks (station,start_time,end_time,title,plan_json) VALUES (?,?,?,?,?)",
+                  ("Loop", (self.now - timedelta(minutes=5)).isoformat(), (self.now + timedelta(hours=1)).isoformat(), "Prime Country", json.dumps(plan)))
+        c.commit()
+        c.close()
+        resolver.TITLE_HOOK, resolver.NAMES_HOOK = titles.hook(self.root), titles.hook(self.root, names=True)
+        self.assertEqual(resolver.resolve(self.db, "Loop", self.now).block_title, "George Strait - Check Yes Or No")   # 5 min in: the 2nd
+        got = resolver.listings(self.db, "Loop", self.now, self.now + timedelta(minutes=30))[0]
+        self.assertEqual((got["title"], got["subtitle"], got["path"]), ("Prime Country", None, None))
+        self.assertEqual(resolver.block_plan(self.db, "Loop", self.now - timedelta(minutes=5))[0], "Prime Country")
+
 
 class Setting(unittest.TestCase):
     def test_the_episode_name_setting_is_saved_checked_and_read_back(self):
