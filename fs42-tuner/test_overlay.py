@@ -87,6 +87,7 @@ class ChannelSurvivesTest(unittest.TestCase):
         ch = tuner.Channel.__new__(tuner.Channel)
         ch.stop, ch.station, ch.number, ch.now_playing = threading.Event(), "X", 3, ""
         ch.lock, ch.subs = threading.Lock(), set()
+        ch.thread = threading.current_thread()                 # _run is what the channel's encoder thread runs
         piped = []
         calls = []
 
@@ -118,6 +119,31 @@ class PrimeTest(unittest.TestCase):
         while not sub.q.empty():
             got += len(sub.q.get_nowait())
         self.assertEqual(got, 5000 * 1316)                    # all of it, nothing lost
+
+    def test_a_stopped_encoders_last_read_does_not_reach_the_next_viewer(self):
+        """The last viewer left: the replay was cleared while the encoder was still reading. What it read must not be
+        replayed to the next viewer, who would get the old stream's timestamps first (Emby: audio "starting" 25s in)."""
+        import threading
+        ch = tuner.Channel(9, "X", tuner.EncoderPool(4))
+        ch.thread = threading.current_thread()
+        ch._broadcast(b"\x47" * 188)
+        self.assertEqual(ch.prime_bytes, 188)                 # the running encoder's output is kept
+        ch.thread = None                                      # _shutdown: no encoder now
+        ch.prime.clear()
+        ch.prime_bytes = 0
+        ch._broadcast(b"\x47" * 188)                          # the stopped one's last read
+        self.assertEqual((len(ch.prime), ch.prime_bytes), (0, 0))
+
+    def test_an_old_encoder_neither_feeds_nor_hangs_up_on_a_newer_one_s_viewers(self):
+        import threading
+        ch = tuner.Channel(9, "X", tuner.EncoderPool(4))
+        ch.thread = object()                                  # a newer encoder has started
+        sub = tuner.Subscriber()
+        ch.subs.add(sub)
+        ch._broadcast(b"\x47" * 188)
+        ch._run()                                             # the old one, finishing: stops at once
+        self.assertTrue(sub.q.empty())                        # nothing of the old stream, and no hang-up (None)
+        self.assertIn(sub, ch.subs)
 
 
 if __name__ == "__main__":

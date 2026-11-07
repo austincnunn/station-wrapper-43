@@ -510,12 +510,22 @@ class Channel:
         self.pool.release(self.number)
         print(f"[ch{self.number}] encoder down (idle {LINGER:.0f}s)")
 
+    def _current(self):
+        """Is the calling thread this channel's encoder now? One that was stopped (the last viewer left) can still be
+        finishing a read, or carry on after a new viewer cleared the stop and started a fresh encoder."""
+        return threading.current_thread() is self.thread
+
     def _broadcast(self, chunk):
-        self.prime.append(chunk)
-        self.prime_bytes += len(chunk)
-        while self.prime_bytes > self.prime_cap and len(self.prime) > 1:
-            self.prime_bytes -= len(self.prime.popleft())
         with self.lock:
+            # A stopped encoder's last read must not reach the replay: the next viewer (Emby/Jellyfin tuning in) would get
+            # its packets first, stamped from the old stream (25s in, say), before the new one starting at 0, and take the
+            # audio to start that late: no sound. Checked under the lock _shutdown clears the replay with.
+            if not self._current():
+                return
+            self.prime.append(chunk)
+            self.prime_bytes += len(chunk)
+            while self.prime_bytes > self.prime_cap and len(self.prime) > 1:
+                self.prime_bytes -= len(self.prime.popleft())
             targets = list(self.subs)
         for sub in targets:
             if sub.dead.is_set():
@@ -558,7 +568,7 @@ class Channel:
         sent = 0
         try:
             fd = proc.stdout.fileno()
-            while not self.stop.is_set() and not self.reload.is_set():
+            while not self.stop.is_set() and not self.reload.is_set() and self._current():
                 ready, _w, _x = select.select([fd], [], [], 1.0)       # looks up every second, so a stalled stream can't hold a stop
                 if not ready:
                     continue
@@ -586,7 +596,7 @@ class Channel:
         schedule is re-read at every segment boundary, so an FS42 rebuild
         mid-stream is picked up and a viewer tuning in at 8:17 joins whatever
         is genuinely airing at 8:17."""
-        while not self.stop.is_set():
+        while not self.stop.is_set() and self._current():
             try:
                 self._step()
             except Exception as e:                    # whatever went wrong, the channel stays up and says what it was
@@ -598,6 +608,8 @@ class Channel:
                 except Exception:
                     self.stop.wait(5)
         with self.lock:
+            if self.thread is not None and not self._current():
+                return                              # a newer encoder has these viewers now: leave them be
             for sub in list(self.subs):
                 sub.put(None)
 
@@ -699,7 +711,7 @@ class Channel:
         writer = threading.Thread(target=guide_channel.feed, args=(proc.stdin, guide, GUIDE_FPS, self.stop), daemon=True)
         writer.start()
         try:
-            while not self.stop.is_set() and not self.reload.is_set() and time.time() < ends:
+            while not self.stop.is_set() and not self.reload.is_set() and self._current() and time.time() < ends:
                 chunk = proc.stdout.read(CHUNK)
                 if not chunk:
                     break
@@ -725,7 +737,7 @@ class Channel:
         first = True
         sent = 0
         try:
-            while not self.stop.is_set():
+            while not self.stop.is_set() and self._current():
                 chunk = proc.stdout.read(CHUNK)
                 if not chunk:
                     break
