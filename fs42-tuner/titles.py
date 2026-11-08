@@ -8,7 +8,8 @@ video (the ones the TubeArchivist conversion writes, and the ones most media too
     a YouTube video       the channel's name, and the video's title apart     (the same, with a youtube <uniqueid>)
     a movie               the movie's title                                   (<movie><title>)
 
-Nothing is ever written. A video with no .nfo is named from its folders and file name instead (from_path). Answers are remembered for a while, a missing .nfo
+Nothing is ever written. A video with no .nfo is named by Emby/Jellyfin when one is set up (mediaserver.py), else from
+its folders and file name (from_path). Answers are remembered for a while, a missing .nfo
 too, so a guide that lists thousands of videos reads each file once.
 """
 import html
@@ -101,6 +102,14 @@ def title_from_nfo(text):
 # Their folders and file names still say what they are: `tv/The Simpsons (1989)/Season 4/The.Simpsons-S04E01-Kamp.Krusty-
 # WEBDL-1080p.mp4` is The Simpsons, "Kamp Krusty", S4E1; `movies/Twister (1996)/Twister.1996.1080p.mkv` is Twister (1996).
 MEDIA_ROOT = os.path.realpath(os.environ.get("FS42_MEDIA", "/mnt/media"))
+SERVER = None                       # optional: fn(video path) -> what Emby/Jellyfin knows about it, or None (mediaserver.py)
+
+
+def _from_server(video_path):
+    try:
+        return SERVER(video_path) if SERVER is not None else None
+    except Exception:
+        return None
 _EPISODE = re.compile(r"(?i)(?<![a-z0-9])(?:s(\d{1,3})[ ._-]?e(\d{1,3})(?:[-e]+\d{1,3})*|(\d{1,2})x(\d{2,3}))(?![a-z0-9])")
 _YEAR = re.compile(r"(?<=[ ._(\[-])((?:19|20)\d{2})(?=$|[ ._)\]-])")
 _JUNK = re.compile(                    # where the release details start: quality, source, codec, audio, release group
@@ -189,6 +198,10 @@ def parts_for(video_path):
     except OSError:
         pass
     if not parts[0]:
+        rec = _from_server(video_path)                  # Emby/Jellyfin's name for it
+        if rec:
+            parts = (rec["title"], rec.get("episode_name"))
+    if not parts[0]:
         try:
             parts = from_path(video_path)[:2]
         except (OSError, ValueError):
@@ -231,6 +244,10 @@ def details_for(video_path):
             got = details_from_nfo(f.read(READ_BYTES * 4))
     except OSError:
         pass
+    if not got:
+        rec = _from_server(video_path)
+        if rec:
+            got = {k: rec[k] for k in ("kind", "plot", "season", "episode", "aired", "year", "genres") if k in rec}
     if not got:
         try:
             got = from_path(video_path)[2]

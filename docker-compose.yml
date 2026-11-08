@@ -121,6 +121,11 @@ services:
       TA_ENABLED: ${TA_ENABLED:-}
       TA_LIBRARY: ${TA_LIBRARY:-/mnt/media/tubearchivist}
       TA_INTERVAL_MINUTES: ${TA_INTERVAL_MINUTES:-1440}
+      # OPTIONAL: names, synopses, air dates and posters for the guide from Emby or Jellyfin (either; detected), for videos
+      # with no .nfo beside them. Off unless both the address and an API key are set. See .env.example.
+      MEDIA_SERVER_URL: ${MEDIA_SERVER_URL:-}
+      MEDIA_SERVER_API_KEY: ${MEDIA_SERVER_API_KEY:-}
+      MEDIA_SERVER_MEDIA_ROOT: ${MEDIA_SERVER_MEDIA_ROOT:-/media}
     labels:
       fs42.requires: "config and catalog on LOCAL disk, not an SMB share (FS42_LOCAL_ROOT)"
     restart: unless-stopped

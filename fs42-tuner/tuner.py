@@ -84,6 +84,7 @@ import stations
 import stationsapi
 import art
 import channel_logo
+import mediaserver
 import titles
 import tubearchivist
 diag.RING.install()                  # the Status page shows what this process last said
@@ -836,6 +837,11 @@ class EncoderPool:
 titles.configure(settings.get_titles()["episode_names"])
 resolver.NAMES_HOOK = titles.hook(CATALOG_ROOT, names=True)
 resolver.TITLE_HOOK = titles.hook(CATALOG_ROOT)     # the guide, banner and schedule say what a video is called (its .nfo), not its file name
+# Emby/Jellyfin's names, synopses and posters for videos with no .nfo (MEDIA_SERVER_URL + MEDIA_SERVER_API_KEY; off without them)
+MEDIA_SERVER = mediaserver.Library(cache=os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")),
+                                                      "mediaserver.json"))
+if MEDIA_SERVER.enabled:
+    titles.SERVER = lambda p: MEDIA_SERVER.lookup(p, CONF.get("media_root", "/mnt/media"))
 GUIDE_MUSIC = guide_channel.MusicIndex(os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "guide-music.json"))
 POOL = EncoderPool(MAX_ENCODERS)
 CHANS = {n: Channel(n, s, POOL) for n, s in CHANNELS.items()}
@@ -2140,7 +2146,12 @@ if __name__ == "__main__":
     STATIONS.jobs.on_built = lambda name: threading.Thread(target=lambda: GUIDE.xmltv(force=True), daemon=True, name="guide-after-build").start()
     GUIDE.logo_url = lambda num, station: ((EXTERNAL[station].get("logo") or None) if station in EXTERNAL else f"@@BASE@@/logo/{num}.png")
     GUIDE.details = titles.details_hook(CATALOG_ROOT)
-    GUIDE.art_url = lambda path: f"@@BASE@@/art/{quote(path)}"        # made when a client asks (art.py): its embedded cover, a frame, or the show's poster
+    # Emby/Jellyfin's poster when it has one, else made when a client asks (art.py): its embedded cover, a frame, or the show's poster
+    GUIDE.art_url = lambda path: ((titles._from_server(media_path(path)) or {}).get("image")
+                                  or f"@@BASE@@/art/{quote(path)}")
+    MEDIA_SERVER.on_change = lambda: (titles.forget(), threading.Thread(target=lambda: GUIDE.xmltv(force=True), daemon=True,
+                                                                       name="guide-after-mediaserver").start())
+    MEDIA_SERVER.start()
     GUIDE.extra_sources = external_guide_sources
     sync_external()                                              # the channels of the external IPTV sources, from what was last read
     threading.Thread(target=refresh_sources_loop, daemon=True, name="iptv-sources").start()
