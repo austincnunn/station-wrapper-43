@@ -18,6 +18,21 @@
 # channel needs tkinter and a screen, so the tuner draws its own (fs42-tuner/guide_channel.py, with Pillow). The pip list below is hand-picked from
 # FieldStation42's install/requirements.in rather than installed wholesale, which would pull
 # mpv/GL/Qt bindings that only field_player uses.
+# FieldStation42 itself is fetched from upstream at build time, unmodified: FS42_REF is a branch, a tag or a commit
+# (upstream's main by default, so every build has the newest; pin one with --build-arg FS42_REF=<commit>). This stage
+# only fetches it: git never reaches the final image. The exact commit is kept in /opt/FS42_REF. Upstream's three sample
+# videos (~125 MB) are left out: nothing here plays them.
+FROM python:3.11-slim-trixie AS fs42
+ARG FS42_REF=main
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git init -q /src \
+    && git -C /src remote add origin https://github.com/shane-mason/FieldStation42.git \
+    && git -C /src fetch -q --depth 1 origin "$FS42_REF" \
+    && git -C /src checkout -q FETCH_HEAD \
+    && git -C /src rev-parse HEAD > /FS42_REF \
+    && rm -rf /src/.git /src/docs/signoff.mp4 /src/docs/static.mp4 /src/docs/off_air_pattern.mp4 \
+    && echo "FieldStation42 $FS42_REF -> $(cat /FS42_REF)"
+
 FROM python:3.11-slim-trixie
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -42,8 +57,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# FieldStation42: vendored, unmodified. Updated with scripts/sync-fs42.sh, not by hand.
-COPY fieldstation42/src/ /app/
+# FieldStation42, as fetched above.
+COPY --from=fs42 /src/ /app/
 # FieldStation42 reads runtime/ and confs/ relative to /app. They live in ONE config volume
 # (/config), and the entrypoint links /app/runtime and /app/confs into it. The sample confs
 # the source ships are dropped so that link can take their place (a volume used to hide them).
@@ -90,11 +105,11 @@ ENV FS42_TUNER_CONF=/config/tuner/config.json \
 
 # Build information, printed first in the log and kept as image labels. CI passes the real values
 # (dev-image.yml, release-image.yml); a plain `docker build` leaves "dev" and "unknown". Last, so a
-# new commit rebuilds only this cheap layer. The FieldStation42 commit comes from the pin file.
+# new commit rebuilds only this cheap layer. The FieldStation42 commit is the one fetched above.
 ARG BUILD_REF=dev
 ARG BUILD_SHA=unknown
 ARG BUILD_DATE=unknown
-COPY fieldstation42/FS42_REF /opt/FS42_REF
+COPY --from=fs42 /FS42_REF /opt/FS42_REF
 # Our licence travels with the image (FieldStation42's own, MPL-2.0, is /app/LICENSE).
 COPY LICENSE /usr/share/doc/station-wrapper-43/LICENSE
 ENV FS42_WRAPPER_REF=${BUILD_REF} \

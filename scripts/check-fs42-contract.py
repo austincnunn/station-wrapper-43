@@ -7,7 +7,7 @@ Two consumers, both checked against FS42's source text:
   - scripts/build_channels.py drives the web console (station and catalog
     routes, the shape of their answers) and the station_42.py CLI.
 Whether the station configs it writes still match FS42's own schema is checked
-by scripts/test_build_channels.py, which sync-fs42.sh also runs.
+by scripts/test_build_channels.py. Both run before an image is pushed (dev-image.yml) and in ci.yml.
 
 This asserts only what we depend on. No third-party imports: it reads source
 text, so it runs anywhere.

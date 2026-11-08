@@ -427,16 +427,18 @@ Not handled yet: episode order within a show. Episodes are scheduled from the ge
 
 ## Updating FieldStation42
 
-`fieldstation42/src/` is an unmodified copy of upstream at the commit recorded in `fieldstation42/FS42_REF`. Don't edit it; it's overwritten on sync.
+FieldStation42 is not kept in this repository. The image build fetches it, unmodified, from https://github.com/shane-mason/FieldStation42: upstream's newest commit by default, or the branch, tag or commit in the `FS42_REF` build argument. The commit an image has is in `/opt/FS42_REF`, printed at the top of the container's log, and on the Status page.
 
-```
-scripts/sync-fs42.sh              # re-sync the commit in FS42_REF
-scripts/sync-fs42.sh <ref>        # move to a new commit or tag (updates FS42_REF)
-docker compose up -d --build
-```
+The `dev-image` workflow builds from `main` on every push, every Sunday, and on demand (**Run workflow**, with an optional `fs42_ref`), so new FieldStation42 commits reach `:latest` within a week with nobody doing anything. A server picks them up on its next `docker compose pull && docker compose up -d`.
 
-Each sync prints what changed against the old copy, then runs `scripts/check-fs42-contract.py`. The check asserts the `liquid_blocks` columns and plan JSON keys that `fs42-tuner/resolver.py` reads. If it fails, the upstream schema has moved: update `resolver.py` to match, then rebuild. Don't deploy past a failed check.
+Before an image is pushed it must pass, against the FieldStation42 inside it:
 
-`scripts/sync-fs42.sh` checks after you update. The weekly `upstream-compat` workflow checks before: it runs the same checks against upstream's newest commit, so a break shows up while you are still on the pinned version. It runs from the default branch (`main`) and needs a runner that can reach github.com.
+- `scripts/check-fs42-contract.py`: the `liquid_blocks` columns and plan JSON keys that `fs42-tuner/resolver.py` reads, and the console routes, answers and CLI output the channel generator uses (it reads source text);
+- `scripts/test_build_channels.py FieldStationSchemaTest`: the station configs the generator writes against FieldStation42's own `station_config_schema.json`;
+- `scripts/smoke-image.sh`: the image starts, FieldStation42's console comes up, a schedule is built and played.
 
-The contract check reads source text, and covers both things this wrapper depends on: the schedule database the tuner reads, and the console routes, answers and CLI output the channel generator uses. A sync also runs the generator tests, which check the station configs it writes against FieldStation42's own `station_config_schema.json` (this needs `pip install defusedxml jsonschema`). So a FieldStation42 update that renames a route, a status value or a config key fails at sync time, not on the next generator run. None of this proves the schedule actually runs, so after a sync also rebuild a schedule in the web console and confirm the portal plays it.
+If one fails, nothing is pushed and `:latest` stays the last good image; the failed run says what moved. Fix the wrapper to match (usually `resolver.py` or the generator), or hold FieldStation42 back by running the workflow with `fs42_ref` set to the last good commit. `ci.yml` runs the same contract and schema checks against upstream's newest commit on every push, and `scripts/preflight.sh` does locally.
+
+The checks catch the wrapper breaking, not FieldStation42 behaving differently (how it picks shows or fills breaks). To go back to an earlier image, set `image:` to its `:main-<short-sha>` tag and `docker compose up -d`.
+
+A local build (`docker compose build`, `docker build`) fetches the newest commit too; Docker reuses an earlier fetch from its build cache, so use `--no-cache` or `--build-arg FS42_REF=<commit>` for a newer one.

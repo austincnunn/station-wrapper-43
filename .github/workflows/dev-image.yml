@@ -1,14 +1,27 @@
 name: dev-image
 
-# Builds the ONE image on every push to dev or main, smoke-tests it, and publishes
-#   dev:  :dev    and an immutable :dev-<short-sha>  (try a fix with `compose pull` first)
+# Builds the ONE image, smoke-tests it, and publishes
 #   main: :latest and an immutable :main-<short-sha>
-# Nothing is pushed if the smoke test fails.
+#   dev:  :dev    and an immutable :dev-<short-sha>  (try a fix with `compose pull` first)
+# on every push to either, every Sunday (from main, so FieldStation42's newest commits arrive on their own), and on
+# demand ("Run workflow", optionally with a FieldStation42 branch, tag or commit to build with).
+#
+# FieldStation42 is fetched from upstream during the build (see the Dockerfile). Before anything is pushed, the image
+# must pass the contract check and the station-schema test against the FieldStation42 it actually contains, and the
+# smoke test, which starts it and builds a schedule. Nothing is pushed if any fails: :latest stays the last good image.
 #
 # Pushes to GitHub's container registry with the workflow's own token (no secret to set up).
 on:
   push:
     branches: [dev, main]
+  schedule:
+    - cron: "0 9 * * 0"
+  workflow_dispatch:
+    inputs:
+      fs42_ref:
+        description: "FieldStation42 branch, tag or commit to build with"
+        default: main
+        required: false
 
 env:
   REGISTRY: ghcr.io
@@ -26,7 +39,9 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Build, smoke-test, push
+      - name: Build, check, smoke-test, push
+        env:
+          FS42_REF: ${{ github.event.inputs.fs42_ref || 'main' }}
         run: |
           set -euo pipefail
           image="$REGISTRY/$(echo "${{ github.repository_owner }}" | tr A-Z a-z)/$IMAGE"
@@ -34,9 +49,19 @@ jobs:
           branch="${{ github.ref_name }}"
           moving="$([ "$branch" = main ] && echo latest || echo dev)"
           docker build -t "$image:$moving" -t "$image:$branch-$sha" \
+            --build-arg FS42_REF="$FS42_REF" \
             --build-arg BUILD_REF="$branch-$sha" --build-arg BUILD_SHA="$sha" \
             --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+          fs42="$(docker run --rm --entrypoint cat "$image:$moving" /opt/FS42_REF | cut -c1-7)"
+          echo "FieldStation42 in this image: $fs42 (asked for $FS42_REF)"
+          # what the wrapper relies on in FieldStation42, checked against the copy inside the image (scripts fed on
+          # stdin: a bind mount would not resolve with a remote Docker daemon)
+          tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$image:$moving" -c \
+            'mkdir /tmp/w && tar -xf - -C /tmp/w && cd /tmp/w &&
+             python3 scripts/check-fs42-contract.py /app &&
+             python3 scripts/test_build_channels.py FieldStationSchemaTest'
           scripts/smoke-image.sh "$image:$moving"
           docker run --rm aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 0 "$image:$moving" || true
           docker push "$image:$moving"
           docker push "$image:$branch-$sha"
+          echo "published $image:$moving and :$branch-$sha with FieldStation42 $fs42" >> "$GITHUB_STEP_SUMMARY"

@@ -591,7 +591,7 @@ class FieldStationSchemaTest(unittest.TestCase):
     instead of when the generator next saves a station."""
 
     # FS42_SRC points the test at another FieldStation42 checkout, which is how the
-    # scheduled upstream-compat workflow tries the generator against upstream's HEAD.
+    # image build (dev-image.yml, against the copy in the image) and ci.yml (upstream's HEAD) run it.
     SCHEMA = os.path.join(
         os.environ.get("FS42_SRC") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                                                    "fieldstation42", "src"),
@@ -610,7 +610,7 @@ class FieldStationSchemaTest(unittest.TestCase):
         if not os.path.exists(self.SCHEMA):
             if strict:
                 self.fail(f"no station_config_schema.json at {self.SCHEMA}")
-            self.skipTest("fieldstation42/src is not present (run scripts/sync-fs42.sh)")
+            self.skipTest("no FieldStation42 checkout here: set FS42_SRC to one")
         with open(self.SCHEMA) as f:
             self.validator = jsonschema.Draft7Validator(json.load(f))
 

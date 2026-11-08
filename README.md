@@ -85,7 +85,7 @@ Add the container as an HDHomeRun tuner and its `/xmltv.xml` as the guide; your 
                   └───────────────────────────────────────────────────────────────────────┘
 ```
 
-A small supervisor runs these and keeps them up (it restarts one that stops, tags each log line, and stops them cleanly). **console** is FieldStation42's web console, where catalogs and schedules are built. **tuner** reads the schedule, encodes each channel once with ffmpeg, and serves the dashboard, the player, the guide and the IPTV endpoints. `docker logs <container>` shows all of them. FieldStation42 itself is vendored unmodified under `fieldstation42/src`; its behaviour is adjusted at run time by `fieldstation42/console_launch.py`.
+A small supervisor runs these and keeps them up (it restarts one that stops, tags each log line, and stops them cleanly). **console** is FieldStation42's web console, where catalogs and schedules are built. **tuner** reads the schedule, encodes each channel once with ffmpeg, and serves the dashboard, the player, the guide and the IPTV endpoints. `docker logs <container>` shows all of them. FieldStation42 itself is fetched unmodified from upstream when the image is built (its newest commit, or `FS42_REF`); its behaviour is adjusted at run time by `fieldstation42/console_launch.py`.
 
 ## Documentation
 
@@ -96,7 +96,7 @@ A small supervisor runs these and keeps them up (it restarts one that stops, tag
 ## License
 
 - **This project's own code** (the wrapper, dashboard, tools and scripts) is under the [PolyForm Noncommercial License 1.0.0](LICENSE): **free for personal use** (research, hobby projects, private entertainment, study) and for other noncommercial uses the license lists. **Commercial use needs a separate agreement with the author**: contact JamesM92 through this repository.
-- **FieldStation42** (the scheduling engine, in `fieldstation42/src/`) is by shane-mason and is under the **Mozilla Public License 2.0**. It is included unmodified, with its own `LICENSE`. This project's license does not apply to it.
+- **FieldStation42** (the scheduling engine, fetched from upstream when the image is built) is by shane-mason and is under the **Mozilla Public License 2.0**. It is included unmodified, with its own `LICENSE`. This project's license does not apply to it.
 - Everything else in the image (ffmpeg, Python and its packages, mpegts.js, TA_NFOWriter) keeps its own license.
 - This is a plain-language summary, not legal advice. The `LICENSE` file is what counts.
 
@@ -106,11 +106,10 @@ Workflows live in `.github/workflows/` and need a runner labeled `ubuntu-latest`
 
 | workflow | trigger | what it does |
 |---|---|---|
-| `ci.yml` | push to `dev`/`main`, PR to `main` | syntax checks, every test, the FieldStation42 schema contract |
+| `ci.yml` | push to `dev`/`main`, PR to `main` | syntax checks, every test, the FieldStation42 contract against upstream's newest commit |
 | `security.yml` | push to `dev`/`main`, PR to `main`, weekly | bandit on our code, a pip-audit of the pinned `requirements.txt`, a secret scan (detect-secrets), a Trivy scan of the repository (dependencies, secrets, the Dockerfile); a finding fails the run |
-| `dev-image.yml` | push to `dev` | builds the one image, smoke-tests it (`scripts/smoke-image.sh`), then pushes `:dev` and `:dev-<short-sha>`; nothing is pushed if the smoke test fails |
+| `dev-image.yml` | push to `dev`/`main`, every Sunday, and on demand | builds the one image with upstream's newest FieldStation42 (or the `fs42_ref` asked for), runs the FieldStation42 contract and schema checks against it and the smoke test (`scripts/smoke-image.sh`), then pushes `:latest` and `:main-<short-sha>` from `main`, `:dev` and `:dev-<short-sha>` from `dev`; nothing is pushed if a check fails |
 | `release-image.yml` | `v*` tag | builds, smoke-tests, then pushes `:<version>` and `:latest` |
-| `upstream-compat.yml` | weekly, and on demand | fetches upstream FieldStation42's latest commit into a scratch folder and runs the contract check against it; it never changes the vendored copy |
 | `codeql.yml` | GitHub only | GitHub code scanning |
 
 Developer checks that need Docker: `scripts/e2e-breaks.py` (the break settings against the real engine), `scripts/e2e-seasons.py`, and `scripts/make-screenshots.py` (the pictures in `docs/images`). `scripts/preflight.sh` runs the CI checks and a throwaway image build before a push.
@@ -121,4 +120,4 @@ The image: `ghcr.io/jamesm92/station-wrapper-43` (one image, whatever you switch
 
 **This project was written with AI.** The code, tests and documentation were produced by an AI coding assistant ([Claude Code](https://claude.com/claude-code), from Anthropic), working to the direction of its owner, who decided what it should do, ran it against real media and a real HDHomeRun tuner, and reviewed and corrected the results. It has a large automated test suite and security scans (see above), and it has been run end to end in a container, but it has not had the long soak of a mature project, and a person did not read every line. Expect rough edges, back up your configuration before upgrading, and please [report what you find](https://github.com/JamesM92/station-wrapper-43/issues).
 
-FieldStation42, which does the scheduling, is a separate project by its own authors and is vendored here unmodified.
+FieldStation42, which does the scheduling, is a separate project by its own authors and is fetched unmodified when the image is built.

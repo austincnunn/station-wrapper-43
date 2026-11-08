@@ -3,8 +3,8 @@
 Thanks for looking. This is a wrapper around [FieldStation42](https://github.com/shane-mason/FieldStation42): it runs it unmodified in
 one container and adds a dashboard, a tuner (HDHomeRun emulation, guide, player) and the pages for building stations.
 
-- **Layout:** `fs42-tuner/` is the dashboard and tuner; `fieldstation42/` holds the vendored upstream (never edited by hand: update
-  with `scripts/sync-fs42.sh`) and `console_launch.py`, the few run-time adjustments; `scripts/` the generators and checks;
+- **Layout:** `fs42-tuner/` is the dashboard and tuner; `fieldstation42/` holds `console_launch.py`, the few run-time adjustments
+  (FieldStation42 itself is fetched from upstream when the image is built, never copied in here); `scripts/` the generators and checks;
   `supervisor/`, `fs42-sync/`, `ta-nfo/`, `farm/` the container's other services.
 - **Tests:** every module has a `test_*.py` beside it; CI runs them all (`ci.yml`). `scripts/e2e-*.py` run against a real image.
 - **Style:** match the code around you. Comments say why. A change that a person sees gets a line in `CHANGELOG.md` under *Unreleased*.

@@ -31,8 +31,12 @@ python3 scripts/test_setup_dirs.py 2>&1 | tail -3
 (cd supervisor && python3 test_supervisor.py 2>&1 | tail -3)
 (cd ta-nfo && python3 test_service.py 2>&1 | tail -3)
 
-echo "== FieldStation42 contract"
-python3 scripts/check-fs42-contract.py fieldstation42/src
+echo "== FieldStation42 contract (upstream's newest, which the image build fetches)"
+fs42="$(mktemp -d)"
+git clone -q --depth 1 https://github.com/shane-mason/FieldStation42.git "$fs42"
+python3 scripts/check-fs42-contract.py "$fs42"
+FS42_SRC="$fs42" python3 scripts/test_build_channels.py FieldStationSchemaTest 2>&1 | tail -3
+rm -rf "$fs42"
 
 if [ "${1:-}" = "--no-images" ]; then
   echo "preflight ok (images skipped)"; exit 0

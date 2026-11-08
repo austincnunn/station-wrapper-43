@@ -88,8 +88,8 @@ Does TVHeadend want `tvg-chno` or the channel's name as the key? Both need tryin
   (the plan format `resolver.py` reads is the seam), opt-in per station, FieldStation42 kept as the fallback. Comskip
   (black frames, silence, logos) could fill the store for files with no marks at all.
 - **Short videos share a slot** (`fieldstation42/console_launch.py`) wraps one FieldStation42 method at run time. Tried on the
-  real engine. If FieldStation42's code moves, the console starts unchanged and the log says so; the weekly
-  `upstream-compat` workflow checks the method's signature. Watch for it after every `scripts/sync-fs42.sh`.
+  real engine. If FieldStation42's code moves, the console starts unchanged and the log says so; every image build
+  checks the method's signature against the FieldStation42 it fetched. Watch for it after a weekly rebuild.
 - Episodes in a sequence are ordered by plain file path (FieldStation42). `Episode 10` sorts before `Episode 2`, and so does
   a `Season 10` folder. Zero-padded names are fine. Fix idea: pad the numbers in the link names that show lists make
   (changes some displayed names). Waiting for a decision.

@@ -5,9 +5,9 @@ This project includes, runs or downloads the following third-party software. Eac
 here (FieldStation42 is run as it is, and everything else is fetched or installed at build time).
 
 FieldStation42                       https://github.com/shane-mason/FieldStation42
-    Mozilla Public License 2.0. A copy of upstream is vendored, unmodified, under fieldstation42/src (its LICENSE is kept there).
-    The wrapper changes nothing in it: behaviour is adjusted by fieldstation42/console_launch.py, which wraps a few methods at run
-    time. The source of the vendored copy is the upstream repository at the commit named in fieldstation42/FS42_REF.
+    Mozilla Public License 2.0. Fetched from upstream, unmodified, when the image is built, into /app (its LICENSE is kept
+    there); the commit is recorded in the image at /opt/FS42_REF. The wrapper changes nothing in it: behaviour is adjusted by
+    fieldstation42/console_launch.py, which wraps a few methods at run time.
 
 TA_NFOWriter                         https://github.com/JamesM92/TA_NFOWriter
     MIT License. Downloaded at build time (version and SHA-256 are pinned in the Dockerfile).
