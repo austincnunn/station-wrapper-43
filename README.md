@@ -89,6 +89,7 @@ A small supervisor runs these and keeps them up (it restarts one that stops, tag
 ## Documentation
 
 - [QUICKSTART](QUICKSTART.md): the first ten minutes.
+- [Wiki](https://github.com/austincnunn/station-wrapper-43/wiki): step-by-step guides. Setting up a server, making channels, a second PC that plays the same broadcast on its own TV, weather and block channels, backups. Its scripts are in [extras/](extras/README.md).
 - [Reference](docs/REFERENCE.md): the volumes and settings, the login, every page, sources and antenna tuners, breaks and mid cards, the YouTube conversion, the generator, updating FieldStation42.
 - [Changelog](CHANGELOG.md), [Roadmap](ROADMAP.md), [Security](SECURITY.md), [Contributing](CONTRIBUTING.md), [Notices](NOTICE), [Releasing](docs/RELEASING.md).
 

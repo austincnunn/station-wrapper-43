@@ -1,0 +1,52 @@
+#!/bin/sh
+# fs42-sync: runs on the PLAYER PC, from cron, once an hour.
+#
+# Copies the server's FieldStation42 schedule, station configs and catalog links, so this PC plays the same
+# broadcast as the server's tuner. The server builds the schedule. This PC only plays it.
+#
+# Each run:
+#   1. asks the server for a fresh snapshot, then copies catalog/, the station configs, the schedule database
+#      and the Sources list (over SSH, through the server's read-only fs42-feed.sh)
+#   2. runs fs42-streams (Sources channels and the guide, see that script)
+#   3. switches FieldStation42 to the exact commit the server runs, if that changed
+#   4. restarts the player if the stations or FieldStation42 changed
+#
+# Setup guide: https://github.com/austincnunn/station-wrapper-43/wiki/Syncing-a-Remote-Player
+
+# ---- settings ----------------------------------------------------------------------------------------------
+FS42_DIR=/home/tv/FieldStation42                     # your FieldStation42 clone (with its venv in env/)
+FEED=fs42-feed                                       # the SSH host alias for the server (in ~/.ssh/config)
+STREAMS="$(dirname "$0")/fs42-streams"               # fs42-streams, next to this script
+SKIP_PACKAGES="PySide6|evdev"                        # requirements left out on this PC (web channels, remote control)
+# ------------------------------------------------------------------------------------------------------------
+
+set -e
+cd "$FS42_DIR"
+exec 9>/tmp/fs42-sync.lock
+flock -n 9 || exit 0                                 # a run is still going: skip this one
+before=$(cat confs/*.json 2>/dev/null | md5sum)
+ssh -T "$FEED" snapshot
+rsync -a --delete --exclude .prefetch --exclude .tmdb_cache "$FEED":catalog/ catalog/
+rsync -a --delete --exclude "*.bak" --filter "P main_config.json" --filter "P examples/" --filter "P stream-*.json" \
+  "$FEED":config/confs/ confs/
+rsync -a "$FEED":crt/fs42_fluid.db runtime/fs42_fluid.db
+rsync -a "$FEED":crt/sources.json runtime/server_sources.json
+"$STREAMS" "$FS42_DIR"
+restart=""
+[ "$before" = "$(cat confs/*.json | md5sum)" ] || restart="the stations changed"
+
+rsync -a "$FEED":crt/FS42_REF runtime/server_fs42_ref
+want=$(cat runtime/server_fs42_ref)
+have=$(cat runtime/fs42_ref 2>/dev/null || git rev-parse HEAD)
+if [ -n "$want" ] && [ "$want" != "$have" ]; then
+  git fetch -q --depth 1 origin "$want"
+  git checkout -q "$want"
+  grep -vE "^[[:space:]]*(#|$)|$SKIP_PACKAGES" install/requirements.in > /tmp/fs42-req.txt
+  env/bin/pip install -q --progress-bar off -r /tmp/fs42-req.txt
+  echo "$want" > runtime/fs42_ref
+  restart="FieldStation42 updated to $want (the server's version)"
+fi
+if [ -n "$restart" ]; then
+  logger -t fs42-sync "$restart; restarting the player"
+  pkill -f field_player.py || true      # .xinitrc ends, autologin starts it again on the new setup
+fi

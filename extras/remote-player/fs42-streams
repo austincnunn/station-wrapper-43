@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""fs42-streams: runs on the PLAYER PC, called by fs42-sync after each sync.
+
+1. Every live channel on the server's Sources page (a weather channel, a camera, an IPTV playlist) becomes a
+   FieldStation42 streaming station here (confs/stream-*.json), with the same number and name it has in
+   Emby/Jellyfin. When a source is removed on the server, its station is removed here too.
+2. Guide stations play the server's wrapper guide (the one Emby/Jellyfin shows, with show names and posters)
+   from the server's tuner, instead of FieldStation42's own guide. A guide set to 4:3 (its Picture shape on the
+   Stations page) is cropped to fill a 4:3 screen; a 16:9 one is shown whole.
+3. Every other station gets PANSCAN below, unless its own config already sets panscan.
+
+Settings: TUNER (or the FS42_TUNER_URL environment variable) and PANSCAN, just below.
+Run: fs42-streams [FieldStation42 dir]    Self-check: fs42-streams --test
+Setup guide: https://github.com/austincnunn/station-wrapper-43/wiki/Syncing-a-Remote-Player"""
+import glob
+import json
+import os
+import re
+import sys
+import tempfile
+
+# ---- settings ----------------------------------------------------------------------------------------------
+# The server's tuner address. /auto/v<number> on it is that channel, exactly as Emby/Jellyfin get it.
+TUNER = os.environ.get("FS42_TUNER_URL", "http://192.168.1.20:5004")
+# How widescreen video fills the screen: 0 = the whole picture with black bars (right for a 16:9 TV),
+# 1.0 = fill a 4:3 TV by cropping the sides. FieldStation42 resets mpv's panscan for every file, so this has
+# to be in each station config; mpv.conf can't do it.
+PANSCAN = 0.0
+# ------------------------------------------------------------------------------------------------------------
+
+
+def guide_stream(sc):
+    """A guide station as a stream of the server's wrapper guide on the same channel number."""
+    num, name = sc["channel_number"], sc["network_name"]
+    four_three = (sc.get("wrapper_guide") or {}).get("aspect") == "4:3"     # drawn 4:3 in the middle: crop the side bars
+    return {"network_name": name, "network_type": "streaming", "channel_number": num, "panscan": 1.0 if four_three else 0.0,
+            "streams": [{"url": f"{TUNER}/auto/v{num}", "duration": 3600, "title": name}]}
+
+
+def plan(sources, taken_numbers, taken_names):
+    """{file name: station conf} for the sources' live channels, as the wrapper numbers them (iptv.Sources.plan)."""
+    out = {}
+    for s in sources:
+        if not s.get("enabled", True) or s.get("mode") == "guide":
+            continue
+        for c in s.get("channels", []):
+            ov = s.get("overrides", {}).get(c["key"], {})
+            if ov.get("enabled") is False:
+                continue
+            num = ov.get("number") or (c.get("number") if s.get("type") == "hdhomerun" else None) or s.get("numbers", {}).get(c["key"])
+            name = ov.get("name") or c["name"]
+            if not num or not re.fullmatch(r"\d+", str(num)) or int(num) in taken_numbers or name in taken_names:
+                print(f"fs42-streams: skipped {name!r}: channel {num!r} is not a whole number free on this player", flush=True)
+                continue
+            taken_numbers.add(int(num))
+            taken_names.add(name)
+            fname = "stream-" + re.sub(r"[^A-Za-z0-9_-]+", "_", f"{s['id']}-{c['key']}") + ".json"
+            out[fname] = {"station_conf": {"network_name": name, "network_type": "streaming", "channel_number": int(num),
+                                           "panscan": PANSCAN, "streams": [{"url": c["url"], "duration": 3600, "title": name}]}}
+    return out
+
+
+def write(root):
+    confs = os.path.join(root, "confs")
+    numbers, names = set(), set()
+    for f in glob.glob(os.path.join(confs, "*.json")):
+        if os.path.basename(f).startswith("stream-"):
+            continue
+        try:
+            conf = json.load(open(f))
+            sc = conf["station_conf"]
+            numbers.add(int(sc["channel_number"]))
+            names.add(sc["network_name"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        changed = False
+        if sc.get("network_type") == "guide":
+            conf["station_conf"] = sc = guide_stream(sc)
+            changed = True
+        if "panscan" not in sc:
+            sc["panscan"], changed = PANSCAN, True
+        if changed:
+            with open(f, "w") as out:
+                json.dump(conf, out, indent=2)
+    with open(os.path.join(root, "runtime", "server_sources.json")) as f:
+        want = plan(json.load(f), numbers, names)
+    for f in glob.glob(os.path.join(confs, "stream-*.json")):
+        if os.path.basename(f) not in want:
+            os.remove(f)
+    for fname, conf in want.items():
+        path, text = os.path.join(confs, fname), json.dumps(conf, indent=1) + "\n"
+        if not os.path.exists(path) or open(path).read() != text:
+            with open(path, "w") as f:
+                f.write(text)
+
+
+def test():
+    src = [{"id": "a1", "type": "m3u", "enabled": True, "mode": "convert", "numbers": {"ws": "47", "ws2": "48", "x": "2", "off": "49"},
+            "overrides": {"ws2": {"name": "Weather Boston"}, "off": {"enabled": False}},
+            "channels": [{"key": k, "name": k.upper(), "url": f"http://h/{k}.m3u8"} for k in ("ws", "ws2", "x", "off")]},
+           {"id": "g", "mode": "guide", "channels": [{"key": "y", "name": "Y", "url": "u"}], "numbers": {"y": "60"}}]
+    got = plan(src, {2}, set())
+    assert sorted(c["station_conf"]["channel_number"] for c in got.values()) == [47, 48], got   # 2 taken, off, guide-only out
+    assert got["stream-a1-ws2.json"]["station_conf"]["network_name"] == "Weather Boston"
+    assert got["stream-a1-ws.json"]["station_conf"]["streams"][0]["url"] == "http://h/ws.m3u8"
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "confs"))
+    os.makedirs(os.path.join(d, "runtime"))
+    open(os.path.join(d, "confs", "stream-gone.json"), "w").write("{}")
+    json.dump({"station_conf": {"network_name": "Guide", "channel_number": 4, "network_type": "guide"}},
+              open(os.path.join(d, "confs", "guide.json"), "w"))
+    json.dump(src, open(os.path.join(d, "runtime", "server_sources.json"), "w"))
+    write(d)
+    assert sorted(os.listdir(os.path.join(d, "confs"))) == ["guide.json", "stream-a1-ws.json", "stream-a1-ws2.json", "stream-a1-x.json"]
+    guide = json.load(open(os.path.join(d, "confs", "guide.json")))["station_conf"]
+    assert (guide["network_type"], guide["streams"][0]["url"], guide["panscan"]) == ("streaming", f"{TUNER}/auto/v4", 0.0)
+    assert guide_stream({"network_name": "G", "channel_number": 4, "wrapper_guide": {"aspect": "4:3"}})["panscan"] == 1.0
+    json.dump({"station_conf": {"network_name": "Mine", "channel_number": 9, "network_type": "standard", "panscan": 0.5}},
+              open(os.path.join(d, "confs", "mine.json"), "w"))
+    write(d)
+    assert json.load(open(os.path.join(d, "confs", "mine.json")))["station_conf"]["panscan"] == 0.5     # a set one is kept
+    print("ok")
+
+
+if __name__ == "__main__":
+    test() if sys.argv[1:] == ["--test"] else write(sys.argv[1] if len(sys.argv) > 1 else ".")
