@@ -168,7 +168,7 @@ class Where(unittest.TestCase):
         self.assertEqual(resolver.block_plan(self.db, "S", self.now - timedelta(minutes=5))[0], "Parasite")
         self.assertEqual(resolver.titles(self.db, "S", [self.film, "catalog/ad.mp4"]), {self.film: "Parasite"})
 
-    def test_a_loop_block_keeps_the_station_name_and_now_playing_follows_the_video_on_now(self):
+    def test_a_loop_block_is_listed_video_by_video_and_now_playing_follows_the_video_on_now(self):
         for name in ("Alan Jackson - Gone Country (Official Music Video) [si-ja75bFvI].mp4",
                      "George Strait - Check Yes Or No (Official Music Video) [NHxS8wlDngI].mp4"):
             open(os.path.join(self.root, "catalog", name), "w").close()
@@ -181,9 +181,30 @@ class Where(unittest.TestCase):
         c.close()
         resolver.TITLE_HOOK, resolver.NAMES_HOOK = titles.hook(self.root), titles.hook(self.root, names=True)
         self.assertEqual(resolver.resolve(self.db, "Loop", self.now).block_title, "George Strait - Check Yes Or No")   # 5 min in: the 2nd
-        got = resolver.listings(self.db, "Loop", self.now, self.now + timedelta(minutes=30))[0]
-        self.assertEqual((got["title"], got["subtitle"], got["path"]), ("Prime Country", None, None))
-        self.assertEqual(resolver.block_plan(self.db, "Loop", self.now - timedelta(minutes=5))[0], "Prime Country")
+        got = resolver.listings(self.db, "Loop", self.now - timedelta(minutes=5), self.now + timedelta(hours=1))
+        self.assertEqual([(g["title"], g["start"], g["end"]) for g in got],
+                         [("Alan Jackson - Gone Country", self.now - timedelta(minutes=5), self.now - timedelta(minutes=1)),
+                          ("George Strait - Check Yes Or No", self.now - timedelta(minutes=1), self.now + timedelta(hours=1))])  # the last runs to the block's end
+        self.assertTrue(got[1]["path"].startswith("catalog/George Strait"))                                         # its own details and picture
+        self.assertEqual([g["title"] for g in resolver.listings(self.db, "Loop", self.now, self.now + timedelta(minutes=30))],
+                         ["George Strait - Check Yes Or No"])                                                  # only what overlaps the window
+        self.assertEqual(resolver.block_plan(self.db, "Loop", self.now - timedelta(minutes=5))[0], "Prime Country")   # the schedule page keeps the block's name
+
+    def test_a_video_cut_around_breaks_in_a_block_of_many_is_one_listing_and_the_breaks_belong_to_it(self):
+        plan = [{"path": "catalog/a.mp4", "duration": 300, "content_type": "feature"},
+                {"path": "catalog/ad.mp4", "duration": 60, "content_type": "commercial"},
+                {"path": "catalog/a.mp4", "skip": 300, "duration": 300, "content_type": "feature"},
+                {"path": "catalog/card.mp4", "duration": 10, "content_type": "bump"},
+                {"path": "catalog/b.mp4", "duration": 590, "content_type": "feature"}]
+        start = self.now.replace(microsecond=0)
+        c = sqlite3.connect(self.db)
+        c.execute("INSERT INTO liquid_blocks (station,start_time,end_time,title,plan_json) VALUES (?,?,?,?,?)",
+                  ("Packed", start.isoformat(sep=" "), (start + timedelta(minutes=21)).isoformat(sep=" "), "Shorts", json.dumps(plan)))
+        c.commit()
+        c.close()
+        got = resolver.listings(self.db, "Packed", start, start + timedelta(hours=1))
+        self.assertEqual([(os.path.basename(g["path"]), (g["start"] - start).seconds, (g["end"] - start).seconds) for g in got],
+                         [("a.mp4", 0, 670), ("b.mp4", 670, 1260)])
 
 
 class Setting(unittest.TestCase):

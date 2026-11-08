@@ -230,9 +230,38 @@ def listings(db_path: str, station: str, start: datetime, end: datetime) -> list
                         ORDER BY start_time""",
                     (station, end.isoformat(), lo.isoformat()))]
             for t, s, e, feature in rows:
+                parts = _videos(conn, station, s, e) if feature is None else []
+                if parts:                            # a block of many videos (a loop, short videos packed into a slot): each its own
+                    for path, a, b in parts:
+                        if a < end and b > lo:
+                            name, sub = _names(path, t)
+                            out.append({"title": name, "subtitle": sub, "start": max(a, lo), "end": b, "path": path})
+                    continue
                 t, sub = _names(feature, t)
                 out.append({"title": t, "subtitle": sub, "start": max(datetime.fromisoformat(s), lo), "end": datetime.fromisoformat(e), "path": feature})
     return out
+
+
+def _videos(conn, station, start_time, end_time):
+    """The videos a block of many plays, one after another: [(path, start, end)], from its plan, so a guide can list what is
+    on at any moment the way the player will play it. A video cut around breaks is one entry; a break or a mid card belongs
+    to the video before it (the first video starts with the block). [] for a block of one video, or a plan that can't be read."""
+    try:
+        row = conn.execute("SELECT plan_json FROM liquid_blocks WHERE station = ? AND start_time = ? LIMIT 1",
+                           (station, start_time)).fetchone()
+        plan = _rows_to_plan(row[0]) if row else []
+    except (sqlite3.Error, ValueError, KeyError, TypeError, AttributeError):
+        return []
+    if _one_video(plan):
+        return []
+    t = block_start = datetime.fromisoformat(start_time)
+    spans = []                                   # [path, start]
+    for e in plan:
+        if e.content_type == "feature" and not e.is_stream and not (spans and spans[-1][0] == e.path):
+            spans.append([e.path, t if spans else block_start])
+        t += timedelta(seconds=e.duration)
+    ends = [s for _, s in spans[1:]] + [datetime.fromisoformat(end_time)]
+    return [(p, s, b) for (p, s), b in zip(spans, ends) if b > s]
 
 
 def block_plan(db_path: str, station: str, start: datetime):
