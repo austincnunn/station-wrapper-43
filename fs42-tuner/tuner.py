@@ -693,14 +693,15 @@ class Channel:
         self.now_playing = opts["title"]
         playlist = None
         try:
-            guide = guide_channel.Guide(opts, (W, H), rows_fn=lambda a, b: guide_channel.rows_from_xmltv(
+            size = guide_channel.frame_size(opts, (W, H))      # a 4:3 guide: the encoder adds the bars at the sides
+            guide = guide_channel.Guide(opts, size, rows_fn=lambda a, b: guide_channel.rows_from_xmltv(
                 GUIDE.xmltv(), a, b, skip_names=tuple(GUIDE_STATIONS())))
             if files:
                 fd, playlist = tempfile.mkstemp(prefix="guide-", suffix=".ffconcat")
                 with os.fdopen(fd, "w") as f:
                     f.write(guide_channel.playlist_text(files))
             print(f"[ch{self.number}] guide channel: {len(files)} music file(s)" if opts["music"] else f"[ch{self.number}] guide channel: no music", flush=True)
-            cmd = guide_channel.ffmpeg_command((W, H), GUIDE_FPS, playlist, NORMALIZE, MUX)
+            cmd = guide_channel.ffmpeg_command(size, GUIDE_FPS, playlist, NORMALIZE, MUX)
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         except Exception as e:                        # no Pillow, no ffmpeg...: say so, and don't spin
             print(f"[ch{self.number}] the guide channel could not start: {e}", flush=True)
@@ -1205,10 +1206,11 @@ def _grab_frame(station):
             from io import BytesIO
             from PIL import Image
             opts = guide_channel.options(gconf)
-            g = guide_channel.Guide(opts, (640, 360), rows_fn=lambda a, b: guide_channel.rows_from_xmltv(
+            size = guide_channel.frame_size(opts, (640, 360))
+            g = guide_channel.Guide(opts, size, rows_fn=lambda a, b: guide_channel.rows_from_xmltv(
                 GUIDE.xmltv(), a, b, skip_names=tuple(GUIDE_STATIONS())))
             out = BytesIO()
-            Image.frombytes("RGB", (640, 360), g.frame(0)).save(out, "JPEG", quality=70)
+            Image.frombytes("RGB", size, g.frame(0)).save(out, "JPEG", quality=70)
             return out.getvalue()
         except Exception:
             return None

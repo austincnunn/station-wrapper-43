@@ -295,6 +295,32 @@ class DrawTest(unittest.TestCase):
         offered = re.search(r'<select id="g-theme">(.*?)</select>', html, re.S).group(1)
         self.assertEqual(re.findall(r'value="([^"]+)"', offered), list(gc.THEMES))
 
+    def test_a_4_3_guide_is_drawn_in_the_middle_and_bigger_text_makes_taller_rows(self):
+        o = gc.options({"wrapper_guide": {"aspect": "4:3"}})
+        self.assertEqual(gc.frame_size(o, (1280, 720)), (960, 720))
+        self.assertEqual(gc.frame_size(gc.options({}), (1280, 720)), (1280, 720))
+        self.assertEqual(gc.frame_size(o, (640, 360)), (480, 360))
+        self.assertEqual(gc.options({"wrapper_guide": {"aspect": "1:1", "text_size": "huge"}})["aspect"], "16:9")    # unknown: defaults
+        self.assertEqual(gc.options({"wrapper_guide": {"text_size": "huge"}})["text_size"], "normal")
+        g = gc.Guide(o, (960, 720), rows_fn=lambda a, b: self.rows(4, a, b), now=lambda: NOW)
+        self.assertEqual(len(g.frame(0)), 960 * 720 * 3)
+        rows = {}
+        for size in gc.TEXT_SIZES:
+            g = gc.Guide(gc.options({"wrapper_guide": {"aspect": "4:3", "text_size": size, "title": "A rather long guide title here"}}),
+                         (960, 720), rows_fn=lambda a, b: self.rows(4, a, b), now=lambda: NOW)
+            self.assertEqual(len(g.frame(0)), 960 * 720 * 3)                 # the biggest type still draws (title shortened, times thinned)
+            rows[size] = g.row_h
+        self.assertLess(rows["small"], rows["normal"])
+        self.assertLess(rows["normal"], rows["large"])
+        self.assertLess(rows["large"], rows["x-large"])
+
+    def test_the_form_offers_exactly_the_shapes_and_text_sizes(self):
+        import re
+        html = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "station.html")).read()
+        for sel, want in (("g-aspect", list(gc.ASPECTS)), ("g-textsize", list(gc.TEXT_SIZES))):
+            offered = re.search(rf'<select id="{sel}">(.*?)</select>', html, re.S).group(1)
+            self.assertEqual(re.findall(r'value="([^"]+)"', offered), want)
+
     def test_a_title_too_long_for_its_slot_scrolls_along_it_and_one_that_fits_stays_put(self):
         from PIL import Image
         for n in (3, 12):                                                   # the grid still, and the grid scrolling up

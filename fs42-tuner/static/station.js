@@ -765,6 +765,7 @@
     } else if (form.kind === "guide") {
       form.guide = {
         title: $("g-title").value, hours: Number($("g-hours").value), theme: $("g-theme").value, scroll_speed: Number($("g-speed").value),
+        aspect: $("g-aspect").value, text_size: $("g-textsize").value,
         messages: $("g-messages").value.split("\n").map((m) => m.trim()).filter(Boolean), music: $("g-music").value.trim(),
       };
     } else {
@@ -802,6 +803,8 @@
       const g = form.guide;
       $("g-title").value = g.title;
       $("g-theme").value = g.theme || "modern-blue";
+      $("g-aspect").value = g.aspect || "16:9";
+      $("g-textsize").value = g.text_size || "normal";
       $("g-hours").value = String(g.hours);
       const speeds = [0.6, 1, 1.8];
       const near = speeds.reduce((a, b) => (Math.abs(b - g.scroll_speed) < Math.abs(a - g.scroll_speed) ? b : a));

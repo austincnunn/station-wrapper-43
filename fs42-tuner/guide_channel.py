@@ -77,6 +77,11 @@ THEMES["sunset"] = {
 }
 DEFAULT_THEME = "modern-blue"
 THEME_NAMES = {"modern-blue": "Modern blue", "midnight": "Midnight", "classic-prevue": "Classic cable", "emerald": "Emerald", "sunset": "Sunset"}
+# the picture's shape: a 4:3 guide is drawn in the middle of the channel's widescreen picture, which the tuner fills out with
+# black bars at the sides (the bars are what a 4:3 TV crops off, or what a widescreen TV shows around a 4:3 programme)
+ASPECTS = ("16:9", "4:3")
+# how big everything is drawn: bigger text, taller rows and fewer of them on screen at once
+TEXT_SIZES = {"small": 0.85, "normal": 1.0, "large": 1.2, "x-large": 1.45}
 LAPS = 2                            # a long name goes right through its cell this many times while the guide scrolls up once
 TITLE_HOLD = 2.5                    # seconds it rests at the start of each lap (never more than a seventh of the lap)
 MIN_MOVING = 36                     # pixels: a cell narrower than this shows the start of a long name and does not move it
@@ -104,7 +109,18 @@ def options(conf):
     title = extra.get("title") if isinstance(extra.get("title"), str) and extra.get("title").strip() else "Channel Guide"
     return {"messages": msgs or list(DEFAULT_MESSAGES), "scroll_speed": min(5.0, max(0.1, speed)),
             "music": music if isinstance(music, str) else "", "hours": min(6, max(1, hours)),
-            "title": title.strip()[:40], "theme": extra.get("theme") if extra.get("theme") in THEMES else "modern-blue"}
+            "title": title.strip()[:40], "theme": extra.get("theme") if extra.get("theme") in THEMES else "modern-blue",
+            "aspect": extra.get("aspect") if extra.get("aspect") in ASPECTS else "16:9",
+            "text_size": extra.get("text_size") if extra.get("text_size") in TEXT_SIZES else "normal"}
+
+
+def frame_size(opts, size):
+    """The size the guide is drawn at inside a channel of `size`: all of it, or for a 4:3 guide the middle (the tuner pads
+    the sides). Even numbers, as the encoder wants."""
+    w, h = size
+    if opts.get("aspect") == "4:3":
+        w = min(w, h * 4 // 3)
+    return w // 2 * 2, h // 2 * 2
 
 
 def audio_files(path):
@@ -272,12 +288,13 @@ class Guide:
         self.rows_fn, self.now = rows_fn or (lambda start, end: []), now
         self.theme = THEMES[opts["theme"]]
         W, H = self.W, self.H
-        self.header_h, self.ruler_h, self.ticker_h = int(H * 0.11), int(H * 0.055), int(H * 0.07)
-        self.row_h = max(24, int(H * 0.09))
-        self.label_w = int(W * 0.17)
+        s = TEXT_SIZES.get(opts.get("text_size"), 1.0)
+        self.header_h, self.ruler_h, self.ticker_h = int(H * 0.11 * s), int(H * 0.055 * s), int(H * 0.07 * s)
+        self.row_h = max(24, int(H * 0.09 * s))
+        self.label_w = min(int(H * 0.30 * s), W // 3)       # by the height, as the type is: a 4:3 guide has the same room for names
         self.view_h = H - self.header_h - self.ruler_h - self.ticker_h
-        self.f_title = _font(FONT_BOLD, int(H * 0.055))
-        self.f_clock = _font(FONT_REGULAR, int(H * 0.04))
+        self.f_title = _font(FONT_BOLD, int(H * 0.055 * s))
+        self.f_clock = _font(FONT_REGULAR, int(H * 0.04 * s))
         self.f_num = _font(FONT_BOLD, int(self.row_h * 0.36))
         self.f_name = _font(FONT_REGULAR, int(self.row_h * 0.24))
         self.f_cell = _font(FONT_BOLD, int(self.row_h * 0.30))
@@ -362,11 +379,14 @@ class Guide:
                         self._line(d, marquees, it["sub"], self.f_time, th["dim"], ex, sy, x1 - pad - ex)
         ruler = Image.new("RGBA", (W, self.ruler_h), th["ruler"] + (255,))
         rd = ImageDraw.Draw(ruler)
-        t = t0
+        t, label_end = t0, 0
         while t < t1:
             x = grid_x + int((t - t0).total_seconds() * pps)
             rd.line([x, int(self.ruler_h * 0.3), x, self.ruler_h], fill=th["dim"], width=1)
-            rd.text((x + 6, int(self.ruler_h * 0.18)), f"{t:%-I:%M %p}", font=self.f_ruler, fill=th["text"])
+            label = f"{t:%-I:%M %p}"
+            if x + 6 >= label_end:             # big type on a narrow guide: a time that would run into the one before is left out
+                rd.text((x + 6, int(self.ruler_h * 0.18)), label, font=self.f_ruler, fill=th["text"])
+                label_end = x + 6 + int(rd.textlength(label, font=self.f_ruler)) + int(self.ruler_h * 0.3)
             t += timedelta(minutes=30)
         self._board, self._ruler, self._t0, self._pps = board, ruler, t0, pps
         self._marquees = marquees
@@ -457,10 +477,15 @@ class Guide:
         # the header: title on the left, the time on the right (drawn once a second)
         hdr = Image.new("RGBA", (W, self.header_h), self.theme["header"] + (255,))
         hd = ImageDraw.Draw(hdr)
-        hd.text((int(W * 0.02), int(self.header_h * 0.18)), self.opts["title"], font=self.f_title, fill=self.theme["text"])
-        clock = f"{now:%a %b %-d  %-I:%M:%S %p}"
-        cw = int(hd.textlength(clock, font=self.f_clock))
-        hd.text((W - cw - int(W * 0.02), int(self.header_h * 0.3)), clock, font=self.f_clock, fill=self.theme["dim"])
+        margin = int(W * 0.02)
+        room = W - 3 * margin - int(hd.textlength(self.opts["title"], font=self.f_title))
+        for clock in (f"{now:%a %b %-d  %-I:%M:%S %p}", f"{now:%-I:%M:%S %p}"):      # no room for the date (big type): the time
+            cw = int(hd.textlength(clock, font=self.f_clock))
+            if cw <= room:
+                break
+        hd.text((W - cw - margin, int(self.header_h * 0.3)), clock, font=self.f_clock, fill=self.theme["dim"])
+        hd.text((margin, int(self.header_h * 0.18)), _clip(hd, self.opts["title"], self.f_title, W - cw - 3 * margin),
+                font=self.f_title, fill=self.theme["text"])
         img.alpha_composite(hdr, (0, 0))
         # the messages along the bottom
         strip, w = self.ticker
@@ -471,8 +496,9 @@ class Guide:
 
 # ---- the stream -----------------------------------------------------------------------------------------------
 def ffmpeg_command(size, fps, playlist, normalize, mux):
-    """ffmpeg that reads raw RGB frames on stdin plus the music (or silence) and writes the tuner's usual transport
-    stream on stdout. `normalize` and `mux` are the tuner's own encode and mux options."""
+    """ffmpeg that reads raw RGB frames of `size` on stdin plus the music (or silence) and writes the tuner's usual transport
+    stream on stdout. `normalize` and `mux` are the tuner's own encode and mux options (which pad a 4:3 guide to the
+    channel's size)."""
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{size[0]}x{size[1]}", "-framerate", str(fps), "-i", "pipe:0"]
     if playlist:

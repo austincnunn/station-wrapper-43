@@ -59,7 +59,8 @@ jobs:
           tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$image:$moving" -c \
             'mkdir /tmp/w && tar -xf - -C /tmp/w && cd /tmp/w &&
              python3 scripts/check-fs42-contract.py /app &&
-             python3 scripts/test_build_channels.py FieldStationSchemaTest'
+             python3 scripts/test_build_channels.py FieldStationSchemaTest &&
+             cd fs42-tuner && python3 test_stationform.py'
           scripts/smoke-image.sh "$image:$moving"
           docker run --rm aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 0 "$image:$moving" || true
           docker push "$image:$moving"

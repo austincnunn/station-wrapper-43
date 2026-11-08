@@ -62,3 +62,4 @@ jobs:
           echo "FieldStation42 main: $(git -C "$FS42_SRC" rev-parse --short HEAD)"
           python3 scripts/check-fs42-contract.py "$FS42_SRC"
           python3 scripts/test_build_channels.py FieldStationSchemaTest
+          (cd fs42-tuner && python3 test_stationform.py)

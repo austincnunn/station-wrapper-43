@@ -6,8 +6,22 @@ import unittest
 import stationform as sf
 from stationform import FormError
 
-SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fieldstation42", "src", "fs42",
-                      "station_config_schema.json")
+# FieldStation42's schema: FS42_SRC (ci.yml's upstream clone, or the image's copy in dev-image.yml), else the image's /app
+SCHEMA = os.path.join(os.environ.get("FS42_SRC") or "/app", "fs42", "station_config_schema.json")
+
+
+def fs42_schema(test):
+    """(jsonschema, FieldStation42's station schema), or the test is skipped: it fails instead when FS42_SRC was given."""
+    try:
+        import jsonschema
+    except ImportError:
+        test.skipTest("pip install jsonschema")
+    if not os.path.exists(SCHEMA):
+        if os.environ.get("FS42_SRC"):
+            test.fail(f"no station_config_schema.json at {SCHEMA}")
+        test.skipTest("no FieldStation42 here: set FS42_SRC to a checkout")
+    with open(SCHEMA) as f:
+        return jsonschema, json.load(f)
 
 
 def standard(**kw):
@@ -212,11 +226,7 @@ class ConfTest(unittest.TestCase):
         self.assertEqual(c["commercial_dir"], sf.COM_OFF)                  # commercials were switched off
 
     def test_what_we_write_passes_fieldstation42s_own_schema(self):
-        try:
-            import jsonschema
-        except ImportError:
-            self.skipTest("pip install jsonschema")
-        schema = json.load(open(SCHEMA))
+        jsonschema, schema = fs42_schema(self)
         for form in (standard(), standard(commercials="commercials", blocks=[{"from": 0, "to": 12, "lists": ["A"]},
                                                                              {"from": 12, "to": 24, "lists": ["B", "C"]}]),
                      {"name": "Loop", "number": 1, "kind": "loop", "loop": {"list": "Test Pattern", "shuffle": False}}):
@@ -293,11 +303,7 @@ class WeekTest(unittest.TestCase):
         self.assertEqual(sf.lists_used(sf.validate(standard())), ["Cartoons"])
 
     def test_what_is_written_passes_fieldstation42s_schema(self):
-        try:
-            import jsonschema
-        except ImportError:
-            self.skipTest("pip install jsonschema")
-        schema = json.load(open(SCHEMA))
+        jsonschema, schema = fs42_schema(self)
         jsonschema.validate({"station_conf": sf.to_conf(sf.validate(self.weekend_form()))}, schema)
 
     def test_a_config_with_odd_templates_is_refused_not_flattened(self):
@@ -432,7 +438,8 @@ class GuideKindTest(unittest.TestCase):
         self.assertEqual((conf["network_type"], conf["play_sound"], conf["scroll_speed"], conf["messages"]),
                          ("guide", False, 1.0, ["Hello", "World"]))
         self.assertNotIn("sound_to_play", conf)                       # FieldStation42 would refuse to start if the music were away
-        self.assertEqual(conf["wrapper_guide"], {"title": "Penguin Guide", "hours": 3, "theme": "modern-blue", "music": "/mnt/media/music"})
+        self.assertEqual(conf["wrapper_guide"], {"title": "Penguin Guide", "hours": 3, "theme": "modern-blue", "music": "/mnt/media/music",
+                                                 "aspect": "16:9", "text_size": "normal"})
         for key in ("content_dir", "day_templates", "monday", "bump_dir"):
             self.assertNotIn(key, conf)
 
@@ -443,6 +450,19 @@ class GuideKindTest(unittest.TestCase):
         with self.assertRaises(FormError):
             sf.validate(self.guide(theme="neon"))
         self.assertEqual(sf.validate(self.guide())["guide"]["theme"], "modern-blue")                # none chosen: the default
+
+    def test_the_guide_shape_and_text_size_are_chosen_checked_and_read_back(self):
+        conf = sf.to_conf(sf.validate(self.guide(aspect="4:3", text_size="large")))
+        self.assertEqual((conf["wrapper_guide"]["aspect"], conf["wrapper_guide"]["text_size"]), ("4:3", "large"))
+        back = sf.parse(conf)[0]["guide"]
+        self.assertEqual((back["aspect"], back["text_size"]), ("4:3", "large"))
+        for bad in ({"aspect": "21:9"}, {"text_size": "huge"}):
+            with self.assertRaises(FormError):
+                sf.validate(self.guide(**bad))
+        old = sf.to_conf(sf.validate(self.guide()))                                  # a guide saved before these existed
+        del old["wrapper_guide"]["aspect"], old["wrapper_guide"]["text_size"]
+        back = sf.parse(old)[0]["guide"]
+        self.assertEqual((back["aspect"], back["text_size"]), ("16:9", "normal"))
 
     def test_it_reads_back_the_same_and_no_music_means_no_sound(self):
         form = sf.validate(self.guide(music=""))

@@ -196,8 +196,14 @@ def _guide(g):
     theme = g.get("theme", guide_channel.DEFAULT_THEME)
     if theme not in guide_channel.THEMES:
         raise FormError("the guide style must be one of: " + ", ".join(guide_channel.THEMES))
+    aspect = g.get("aspect", "16:9")
+    if aspect not in guide_channel.ASPECTS:
+        raise FormError("the guide's picture shape must be one of: " + ", ".join(guide_channel.ASPECTS))
+    text_size = g.get("text_size", "normal")
+    if text_size not in guide_channel.TEXT_SIZES:
+        raise FormError("the guide's text size must be one of: " + ", ".join(guide_channel.TEXT_SIZES))
     return {"title": title.strip(), "hours": hours, "scroll_speed": float(speed), "messages": msgs, "music": music.strip(),
-            "theme": theme}
+            "theme": theme, "aspect": aspect, "text_size": text_size}
 
 
 def validate(form, existing_names=(), existing_numbers=None, original=None):
@@ -324,7 +330,8 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
         conf["messages"] = list(g["messages"])
         conf["play_sound"] = False        # FieldStation42 checks that a sound_to_play file exists when its console starts, and
         conf["scroll_speed"] = g["scroll_speed"]       # would not start at all if a media share were away: the music is ours
-        conf["wrapper_guide"] = {"title": g["title"], "hours": g["hours"], "theme": g["theme"], "music": g["music"]}
+        conf["wrapper_guide"] = {"title": g["title"], "hours": g["hours"], "theme": g["theme"], "music": g["music"],
+                                 "aspect": g["aspect"], "text_size": g["text_size"]}
         return conf
     if form["kind"] == "loop":
         conf["network_type"] = "loop"
@@ -437,7 +444,9 @@ def _parse(conf):
             "hours": extra.get("hours") if isinstance(extra.get("hours"), int) and not isinstance(extra.get("hours"), bool) and 1 <= extra.get("hours") <= 6 else 3,
             "scroll_speed": float(speed) if isinstance(speed, (int, float)) and not isinstance(speed, bool) and 0.1 <= speed <= 5 else 1.0,
             "messages": [m for m in msgs if isinstance(m, str)][:20], "music": music,
-            "theme": extra.get("theme") if extra.get("theme") in guide_channel.THEMES else guide_channel.DEFAULT_THEME}}, None
+            "theme": extra.get("theme") if extra.get("theme") in guide_channel.THEMES else guide_channel.DEFAULT_THEME,
+            "aspect": extra.get("aspect") if extra.get("aspect") in guide_channel.ASPECTS else "16:9",
+            "text_size": extra.get("text_size") if extra.get("text_size") in guide_channel.TEXT_SIZES else "normal"}}, None
     if kind != "standard":
         return None, f"a '{kind}' station is edited in the FieldStation42 console"
     if conf.get("content_dir") != CONTENT_DIR:
