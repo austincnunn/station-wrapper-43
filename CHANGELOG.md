@@ -9,6 +9,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 - **The guide channel's picture shape and text size.** Standard (4:3) draws the guide in the middle of the picture with black
   bars at the sides, so a 4:3 TV that crops the sides shows it edge to edge; text size runs from Small to Extra large.
 
+- **The guide lists every video of a loop.** A block that plays many videos (a loop station's day, or short videos packed
+  into one slot) used to be one long entry named after the station; the guide, the guide channel and Jellyfin/Emby now show each
+  video with its own name, times and picture, in the order the block plays them (a shuffled loop stays shuffled).
+
 ### Removed
 - **The TubeArchivist conversion.** The `ta-nfo` service, its panel on the Files page (*YouTube (TubeArchivist)*), the
   `/api/ta/*` calls, the `TA_ENABLED` / `TA_LIBRARY` / `TA_INTERVAL_MINUTES` variables, the `catalog/tanfo` view and its
