@@ -4,7 +4,6 @@
   console   FieldStation42's web console and scheduler    always
   tuner     the dashboard, player and video streams       always (needs its config)
   sync      keeps the symlink pool current                SYNC_ENABLED=1
-  ta-nfo    the TubeArchivist conversion                  always; the dashboard switches it on
 
 It starts what is enabled, prefixes each line of output with the service name,
 restarts a service that stops (waiting a little longer after each quick failure),
@@ -68,9 +67,6 @@ def services_from_env(env=None, exists=os.path.exists):
         out.append(Service("farm", ["/opt/farm/run.sh"]))
     if flag("SYNC_ENABLED"):
         out.append(Service("sync", ["python3", "-u", "/opt/sync/sync.py"]))
-    # Always started: it idles until the dashboard switches the TubeArchivist conversion on (TA_ENABLED=1
-    # is only the starting value), so turning it on needs no restart.
-    out.append(Service("ta-nfo", ["python3", "-u", "/opt/ta-nfo/service.py"]))
     return out
 
 
@@ -85,7 +81,6 @@ def notes_from_env(env=None, exists=os.path.exists):
         notes.append("farm is off (FARM_ENABLED=0): catalog/by-genre will not be filled for you")
     if env.get("SYNC_ENABLED", "").lower() not in TRUE:
         notes.append("sync is off (SYNC_ENABLED=1 turns on the symlink pool scanner)")
-    # (the TubeArchivist conversion is switched on from the dashboard's Files page; no note needed)
     return notes
 
 

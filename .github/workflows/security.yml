@@ -26,7 +26,7 @@ jobs:
 
       - name: Static scan of our code (bandit, medium and above fail)
         # fieldstation42/src is vendored upstream code, not ours to fix. A finding that is on purpose carries a `# nosec` with why.
-        run: bandit -r fs42-tuner scripts supervisor fs42-sync ta-nfo --severity-level medium -x '*/test_*.py,*/e2e-*.py' -q
+        run: bandit -r fs42-tuner scripts supervisor fs42-sync --severity-level medium -x '*/test_*.py,*/e2e-*.py' -q
 
       - name: Audit what the image installs (pip-audit, a known vulnerability fails)
         run: pip-audit -r requirements.txt

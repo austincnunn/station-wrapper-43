@@ -92,5 +92,3 @@ ul.files .fname { color: var(--dim); font-size: 0.85em; }
 /* an element with the hidden attribute is hidden, whatever display a class gave it (a .field is a flex column) */
 [hidden] { display: none !important; }
 
-/* the TubeArchivist playlists on the Lists & files page can be a long list: it scrolls inside its card */
-#pl-list { max-height: 18em; overflow-y: auto; padding-right: 0.4em; }

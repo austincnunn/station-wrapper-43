@@ -86,7 +86,6 @@ import art
 import channel_logo
 import mediaserver
 import titles
-import tubearchivist
 diag.RING.install()                  # the Status page shows what this process last said
 from resolver import ScheduleGap
 from guide import GuideBuilder
@@ -109,7 +108,6 @@ CHANNELS     = {str(k): v for k, v in CONF["channels"].items()}   # number -> st
 # `"edit": false` in this config, or DASHBOARD_EDIT=0, turns the changing actions off (browsing stays).
 EDIT_FILES   = bool(CONF.get("edit", True)) and os.environ.get("DASHBOARD_EDIT", "1").lower() not in ("0", "false", "no", "off")
 FILES        = filemgr.Files(CONF.get("media_root", "/mnt/media"), os.path.join(CATALOG_ROOT, "catalog"),
-                             ta=lambda: settings.get_ta(),
                              follows_path=os.environ.get("FS42_FOLLOWS") or os.path.join(os.path.dirname(settings.PATH), "follows.json"))
 
 
@@ -1134,7 +1132,7 @@ def status_report(recent=60):
     sysinfo = system_status()
     report = {
         "version": {"wrapper": os.environ.get("FS42_WRAPPER_REF"), "commit": os.environ.get("FS42_WRAPPER_SHA"),
-                    "built": os.environ.get("FS42_WRAPPER_BUILT"), "ta_nfowriter": os.environ.get("TA_NFOWRITER_VERSION"),
+                    "built": os.environ.get("FS42_WRAPPER_BUILT"),
                     "fieldstation42": _fs42_ref()},
         "uptime_seconds": sysinfo["uptime_seconds"], "console": console, "stations": stations_rows,
         "guide": sysinfo["guide"], "sources": [{"name": s["name"], "type": s["type"], "enabled": s["enabled"], "channels": len(s["channels"]),
@@ -1462,27 +1460,6 @@ class Handler(BaseHTTPRequestHandler):
             print(f"! files {action}: {e}")
             return self._json({"error": f"that did not work: {e.strerror or e}"}, 500)
 
-    def _ta_api(self, path, body=None):
-        """/api/ta/*: the TubeArchivist conversion's settings and status, shown on the Files page."""
-        action = path[len("/api/ta/"):]
-        media = CONF.get("media_root", "/mnt/media")
-        try:
-            if body is None:
-                if action == "status":
-                    return self._json(tubearchivist.status(media, os.path.join(CATALOG_ROOT, "catalog")))
-                if action == "detect":
-                    return self._json({"libraries": tubearchivist.detect(media)})
-                raise filemgr.FileError("no such call", 404)
-            if not EDIT_FILES:
-                raise filemgr.FileError("changing settings is switched off (DASHBOARD_EDIT=0)", 403)
-            if action == "settings":
-                return self._json(tubearchivist.save(media, body, os.path.join(CATALOG_ROOT, "catalog")))
-            if action == "run":
-                return self._json(tubearchivist.run_now())
-            raise filemgr.FileError("no such call", 404)
-        except filemgr.FileError as e:
-            return self._json({"error": str(e)}, e.code)
-
     def _base(self):
         """The address clients are told to use for this tuner's streams and lineup. It is `advertise_url`, unless that was
         never set (it is still localhost, which no other machine can reach): then it is the address the client itself used
@@ -1689,9 +1666,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 400)
             except OSError as e:
                 return self._json({"error": f"could not save the settings: {e.strerror}"}, 500)
-        if p.startswith("/api/ta/"):
-            body = self._json_body()
-            return None if body is None else self._ta_api(p, body)
         if p.startswith("/api/files/"):
             body = self._json_body()
             return None if body is None else self._files_api(p, {}, body)
@@ -1894,9 +1868,6 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/files/"):
             from urllib.parse import parse_qs
             return self._files_api(p, parse_qs(urlparse(self.path).query))
-
-        if p.startswith("/api/ta/"):
-            return self._ta_api(p)
 
         if p == "/api/keeper":
             return self._json({"settings": settings.get_keeper(), "status": KEEPER.snapshot()})
@@ -2169,11 +2140,6 @@ if __name__ == "__main__":
         target=KEEPER.loop, daemon=True, name="schedule-keeper",
         kwargs={"interval_minutes": int(os.environ.get("KEEPER_INTERVAL_MINUTES", "30")),
                 "first_delay": float(os.environ.get("KEEPER_FIRST_DELAY_SECONDS", "45"))}).start()
-    # looking for TubeArchivist library folders walks the media (12 seconds over a network share): done once at start-up,
-    # so opening the Files page finds the answer already waiting
-    threading.Thread(target=lambda: (time.sleep(20), tubearchivist.detect(CONF.get("media_root", "/mnt/media"))),
-                     daemon=True, name="ta-detect").start()
-    threading.Thread(target=tubearchivist.warm, daemon=True, name="ta-warm").start()
 
     def warm_media():          # the Shows choice lists each media folder: looking inside them once now makes the first use quick
         time.sleep(25)

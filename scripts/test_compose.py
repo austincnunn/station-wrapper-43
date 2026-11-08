@@ -13,7 +13,6 @@ import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 COMPOSE = os.path.join(ROOT, "docker-compose.yml")
-VIEW = os.path.join(ROOT, "examples", "docker-compose.view.example.yml")
 
 
 def read(path):
@@ -67,7 +66,7 @@ class ComposeTextTest(unittest.TestCase):
     def test_the_header_describes_each_volume_and_what_is_in_it(self):
         head = read(COMPOSE).split("name: station-wrapper-43")[0]
         for needle in ("CONFIG", "CATALOG", "MEDIA", "runtime/", "confs/", "tuner/", "groups.toml", "by-genre/",
-                       "tanfo/", "media-links/", "FS42_LOCAL_ROOT", "rbind", "ONLY SOME FOLDERS"):
+                       "media-links/", "FS42_LOCAL_ROOT", "rbind", "ONLY SOME FOLDERS"):
             self.assertIn(needle, head + read(COMPOSE))
 
     def test_the_catalog_volume_repeats_it(self):
@@ -140,15 +139,15 @@ class ComposeRenderTest(unittest.TestCase):
 
     def test_the_optional_parts_are_off_unless_switched_on(self):
         env = self.cfg()["services"]["station-wrapper-43"]["environment"]
-        self.assertEqual((env["SYNC_ENABLED"], env["TA_ENABLED"]), ("", ""))
-        on = self.cfg(SYNC_ENABLED="1", TA_ENABLED="1", TA_LIBRARY="/mnt/media/yt")["services"]["station-wrapper-43"]["environment"]
-        self.assertEqual((on["SYNC_ENABLED"], on["TA_ENABLED"], on["TA_LIBRARY"]), ("1", "1", "/mnt/media/yt"))
+        self.assertEqual(env["SYNC_ENABLED"], "")
+        on = self.cfg(SYNC_ENABLED="1")["services"]["station-wrapper-43"]["environment"]
+        self.assertEqual(on["SYNC_ENABLED"], "1")
 
     def test_the_nightly_catalog_update_is_left_to_the_sync_default_which_is_on(self):
         env = self.cfg()["services"]["station-wrapper-43"]["environment"]
         self.assertEqual(env["SYNC_REBUILD"], "")
-        self.assertEqual((env["SYNC_INTERVAL_MINUTES"], env["SYNC_REBUILD_HOUR"], env["SYNC_PRUNE"],
-                          env["TA_INTERVAL_MINUTES"]), ("60", "4", "", "1440"))
+        self.assertEqual((env["SYNC_INTERVAL_MINUTES"], env["SYNC_REBUILD_HOUR"], env["SYNC_PRUNE"]),
+                         ("60", "4", ""))
         on = self.cfg(SYNC_REBUILD="1", SYNC_REBUILD_HOUR="3", SYNC_INCLUDE="movies,tvseries")["services"]["station-wrapper-43"]["environment"]
         self.assertEqual((on["SYNC_REBUILD"], on["SYNC_REBUILD_HOUR"], on["SYNC_INCLUDE"]), ("1", "3", "movies,tvseries"))
 
@@ -158,15 +157,6 @@ class ComposeRenderTest(unittest.TestCase):
         self.assertIn("LOCAL disk", svc["labels"]["fs42.requires"])
         self.assertEqual(self.cfg(FS42_ALLOW_NETWORK_CATALOG="1")["services"]["station-wrapper-43"]["environment"]
                          ["FS42_ALLOW_NETWORK_CATALOG"], "1")
-
-    def test_the_host_view_override_adds_one_read_only_mount(self):
-        config, err = render(extra_files=(VIEW,), FS42_VIEW_ROOT="/view", **self.BASE)
-        self.assertIsNotNone(config, err)
-        self.assertEqual(mounts(config)["/view"], ("/view", True))
-        self.assertEqual(list(config["services"]), ["station-wrapper-43"])
-        config, err = render(extra_files=(VIEW,), **self.BASE)                            # without the variable
-        self.assertIsNone(config)
-        self.assertIn("FS42_VIEW_ROOT", err)
 
 
 if __name__ == "__main__":

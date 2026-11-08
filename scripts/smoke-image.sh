@@ -20,7 +20,6 @@ python3 -c "import fastapi, uvicorn, ffmpeg, jsonschema, mutagen; print('console
 cd /opt/tuner && FS42_TUNER_CONF=/opt/tuner-config.default.json python3 -c "import tuner, resolver, guide, library; print('tuner imports ok')"
 cd /opt/sync && python3 -c "import pool, sync; print('sync imports ok')"
 python3 -c "import sys; sys.path.insert(0, '/opt/supervisor'); import supervisor; print('supervisor imports ok')"
-python3 /opt/ta-nfo/ta_nfo.py --version
 ffmpeg -version | head -1
 ffprobe -version | head -1
 test -s /opt/tuner/static/mpegts.min.js && echo "player script present"
@@ -33,7 +32,7 @@ test ! -e /config && test ! -e /app/catalog && echo "the volume mount points are
 echo "tuner-config-path=$FS42_TUNER_CONF"
 EOS
 )"
-for want in "console deps ok" "tuner imports ok" "sync imports ok" "supervisor imports ok" "ta_nfo.py 0." \
+for want in "console deps ok" "tuner imports ok" "sync imports ok" "supervisor imports ok" \
             "ffmpeg version" "ffprobe version" "player script present" "tini present" "default tuner config is valid" \
             "confs and runtime are left for" "volume mount points are not in the image" "tuner-config-path=/config/tuner/config.json"; do
   grep -q "$want" <<<"$out" || fail "the image is missing something ('$want'):" "$out"
@@ -64,21 +63,20 @@ echo "refuses an SMB catalog: ok"
 #    Docker daemon is remote too. Checks: the entrypoint links runtime/ and confs/ into the config
 #    volume and creates the tuner's config there; both ports answer; the sync service builds the
 #    pool inside the catalog from every media volume; the catalog's top level has no
-#    whole-folder links (an old one is removed, the user's own stays); the TubeArchivist job reports a
-#    library that is not mounted instead of dying, and the dashboard's API switches it off; SIGTERM stops it all.
+#    whole-folder links (an old one is removed, the user's own stays); SIGTERM stops it all.
 tag="station-wrapper-43-smoke-$$"
-vols="$tag-config $tag-catalog $tag-movies $tag-anime $tag-tanfo"
+vols="$tag-config $tag-catalog $tag-movies $tag-anime $tag-youtube"
 cleanup() { docker volume rm -f $vols >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 for v in $vols; do docker volume create "$v" >/dev/null; done
-docker run --rm --entrypoint sh -v "$tag-movies:/m" -v "$tag-anime:/a" -v "$tag-tanfo:/t" "$image" -c '
-  mkdir -p /m/Film /a/Show /t/Chan
-  touch /m/Film/Film.mkv /m/Film/Film.nfo /m/Film/poster.jpg /a/Show/e1.mp4 /t/Chan/x.mp4' >/dev/null
+docker run --rm --entrypoint sh -v "$tag-movies:/m" -v "$tag-anime:/a" -v "$tag-youtube:/y" "$image" -c '
+  mkdir -p /m/Film /a/Show /y/Chan
+  touch /m/Film/Film.mkv /m/Film/Film.nfo /m/Film/poster.jpg /a/Show/e1.mp4 /y/Chan/x.mp4' >/dev/null
 out="$(docker run --rm -i --entrypoint sh \
         -v "$tag-config:/config" -v "$tag-catalog:/app/catalog" \
-        -v "$tag-movies:/mnt/media/movies:ro" -v "$tag-anime:/mnt/media/anime:ro" -v "$tag-tanfo:/mnt/media/tanfo:ro" \
+        -v "$tag-movies:/mnt/media/movies:ro" -v "$tag-anime:/mnt/media/anime:ro" -v "$tag-youtube:/mnt/media/youtube:ro" \
         "$image" 2>&1 <<'EOS' || true
-export DASHBOARD_LOGIN=0 KEEPER_FIRST_DELAY_SECONDS=5 SYNC_ENABLED=1 TA_ENABLED=1 TA_LIBRARY=/mnt/media/not-there TZ=America/Toronto
+export DASHBOARD_LOGIN=0 KEEPER_FIRST_DELAY_SECONDS=5 SYNC_ENABLED=1 TZ=America/Toronto
 # what an earlier version left behind (must be removed) and a link of the user's own (must stay)
 ln -s /mnt/media/anime/ /app/catalog/anime
 ln -s /somewhere/mine /app/catalog/mine
@@ -136,33 +134,6 @@ link = "/app/catalog/by-genre/SmokeList/Film/Film.mkv"
 print("files-api=%s,%s,%s,%s" % (info["edit"], info["tags"], added["added"], os.path.islink(link)))
 call("/api/files/delete-tag", {"tag": "SmokeList"})
 print("files-gone=%s media-kept=%s" % (not os.path.exists("/app/catalog/by-genre/SmokeList"), os.path.isfile("/mnt/media/movies/Film/Film.mkv")))
-PY
-# the TubeArchivist panel's API: the job (switched on here by the old TA_* variables, with a library that is not
-# there) reports the problem instead of dying, and switching it off from the dashboard takes effect with no restart
-python3 - <<'PY'
-import json, time, urllib.error, urllib.request
-def call(path, body=None):
-    # the dashboard restarts itself when a station appears (the test station does), so retry through that
-    for attempt in range(40):
-        try:
-            req = urllib.request.Request("http://127.0.0.1:5004" + path, data=None if body is None else json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json"} if body is not None else {})
-            return json.load(urllib.request.urlopen(req, timeout=10))
-        except (urllib.error.URLError, ConnectionError):
-            time.sleep(1)
-    raise RuntimeError("the dashboard did not come back")
-def wait(state, secs=20):
-    end = time.time() + secs
-    while time.time() < end:
-        st = call("/api/ta/status")
-        if st["job"].get("state") == state:
-            return st
-        time.sleep(0.5)
-    return st
-st = wait("error")
-print("ta-error=%s,%s,%s" % (st["settings"]["enabled"], st["settings"]["source"]["enabled"], st["job"].get("state")))
-call("/api/ta/settings", {"enabled": False})
-print("ta-off=%s" % wait("disabled")["job"].get("state"))
 PY
 # a brand new install puts a test station (channel 2) on air by itself
 python3 - <<'PY'
@@ -255,7 +226,7 @@ conf = json.load(open("/config/tuner/config.json"))
 conf["port"], conf["advertise_url"] = 5099, "http://127.0.0.1:5099"
 json.dump(conf, open("/tmp/login-test.json", "w"))
 env = {**os.environ, "FS42_TUNER_CONF": "/tmp/login-test.json", "DASHBOARD_LOGIN": "1", "FS42_SETTINGS": "/tmp/login-test-settings.json",
-       "FS42_TA_STATUS": "/tmp/login-test-ta.json", "KEEPER_FIRST_DELAY_SECONDS": "99999"}
+       "KEEPER_FIRST_DELAY_SECONDS": "99999"}
 proc = subprocess.Popen(["python3", "tuner.py"], cwd="/opt/tuner", env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 def req(method, path, body=None, cookie=None):
     c = http.client.HTTPConnection("127.0.0.1", 5099, timeout=10)
@@ -303,7 +274,7 @@ grep -q 'runtime-link=/config/runtime' <<<"$out" && grep -q 'confs-link=/config/
   || fail "/app/runtime and /app/confs are not linked into the config volume:" "$out"
 grep -q 'link=/mnt/media/movies/Film/Film.mkv' <<<"$out" && grep -q 'link2=/mnt/media/anime/Show/e1.mp4' <<<"$out" \
   || fail "sync did not link the videos from both media volumes:" "$out"
-grep -q 'pool=./anime/Show/e1.mp4 ./movies/Film/Film.mkv ./movies/Film/Film.nfo ./tanfo/Chan/x.mp4 $' <<<"$out" \
+grep -q 'pool=./anime/Show/e1.mp4 ./movies/Film/Film.mkv ./movies/Film/Film.nfo ./youtube/Chan/x.mp4 $' <<<"$out" \
   || fail "the pool is not exactly the videos and the nfo (no poster):" "$out"
 grep -q 'catalog-top=by-genre media-links mine->link $' <<<"$out" \
   || fail "the catalog's top level is wrong (by-genre created, old whole-folder links removed, the user's own link kept, pool a real folder):" "$out"
@@ -311,7 +282,7 @@ grep -q '^bump=sw43-splash.mp4 $' <<<"$out" && grep -q '^bump-real=1$' <<<"$out"
   || fail "by-genre/bump was not created with one real generic clip:" "$out"
 grep -qE '^bump-owner=([0-9]+:[0-9]+) catalog-owner=\1$' <<<"$out" \
   || fail "the new bump folder does not take the catalog folder's owner:" "$out"
-grep -qE 'entrypoint: Station Wrapper 43 [^ ]+ \(commit [^ ,]+, built' <<<"$out" && grep -q 'entrypoint: contains FieldStation42 [0-9a-f]\{7\} and TA_NFOWriter v[0-9]' <<<"$out" \
+grep -qE 'entrypoint: Station Wrapper 43 [^ ]+ \(commit [^ ,]+, built' <<<"$out" && grep -q 'entrypoint: contains FieldStation42 [0-9a-f]\{7\}$' <<<"$out" \
   || fail "the log does not carry the build and component versions:" "$out"
 # and they come last among the entrypoint's lines, right before the supervisor starts
 awk '/entrypoint: contains FieldStation42/{f=NR} /^entrypoint: /{l=NR} /\[supervisor\]/{if(!s)s=NR} END{exit !(f && f==l && s>f)}' <<<"$out" \
@@ -332,16 +303,11 @@ grep -q '^test-station=Test Pattern,True$' <<<"$out" && grep -q '^test-flag=yes 
   && grep -q '^login=401,302,200,setup200,200,401$' <<<"$out" \
   || fail "a new install did not put the guide channel (channel 1) and the test station (channel 2) on air:" "$out"
 grep -q '^dashboard=\[' <<<"$out" || fail "the dashboard did not answer with a channel list:" "$out"
-grep -q '\[supervisor\] running: console, tuner, firstrun, farm, sync, ta-nfo' <<<"$out" || fail "the supervisor did not start all six:" "$out"
+grep -q '\[supervisor\] running: console, tuner, firstrun, farm, sync$' <<<"$out" || fail "the supervisor did not start all five:" "$out"
 grep -q '\[farm\] farm: .*preparing /app/catalog/by-genre' <<<"$out" && grep -q '\[farm\] farm: added' <<<"$out" \
   || fail "the farm job did not run a pass on its own:" "$out"
-grep -q 'ta-nfo: there is no TubeArchivist library at /mnt/media/not-there' <<<"$out" \
-  || fail "the missing TubeArchivist library was not reported by the job:" "$out"
-grep -q '^ta-error=True,env,error$' <<<"$out" && grep -q '^ta-off=disabled$' <<<"$out" \
-  || fail "the TubeArchivist panel API did not show the error and then switch the job off:" "$out"
-grep -q 'ta-nfo will restart\|ta-nfo exited' <<<"$out" && fail "the TubeArchivist job died instead of reporting:" "$out"
 grep -q 'exit=0 after' <<<"$out" || fail "SIGTERM did not stop the container cleanly:" "$out"
 secs="$(sed -n 's/^exit=0 after \([0-9]*\)s/\1/p' <<<"$out")"
 [ "${secs:-99}" -le 10 ] || fail "stopping took ${secs}s, longer than Docker's 10s grace:" "$out"
-echo "config + catalog + separate media volumes: console, dashboard and sync run together, the TubeArchivist job reports a missing library and is switched off from the dashboard, SIGTERM stops it in ${secs}s: ok"
+echo "config + catalog + separate media volumes: console, dashboard and sync run together, SIGTERM stops it in ${secs}s: ok"
 echo "smoke ok: $image"

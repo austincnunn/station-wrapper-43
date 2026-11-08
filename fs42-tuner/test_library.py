@@ -87,7 +87,7 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(self.tags()["Mine"]["duplicates"], 0)
 
     def test_a_duplicate_through_a_chain_of_links_is_still_found(self):
-        # farm link -> view link -> archive file, the way TA_NFOWriter's view works
+        # farm link -> view link -> archive file, the way a view of links over an archive works
         real = os.path.join(self.archive, "tvseries", "Show B", "Season 01", "e0.mp4")
         view = os.path.join(self.root, "view.mp4")
         os.symlink(real, view)

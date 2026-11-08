@@ -105,8 +105,8 @@
     updateButtons();
   }
 
-  // ---- a YouTube channel keeps its shorts, streams and standard videos in seasons of their own (TA_NFOWriter: Season 2026,
-  // Season 12026, Season 22026): choose a kind in one go instead of every season
+  // ---- a YouTube channel keeps its videos in yearly seasons (Season 2026), and some downloaders put its shorts and streams in
+  // seasons of their own (Season 12026, Season 22026): choose a kind in one go instead of every season
   const KIND_NAMES = { videos: "standard videos", shorts: "shorts", streams: "streams" };
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const seasonKind = (name) => {
@@ -141,7 +141,7 @@
   }
 
   function srcRow(e) {
-    const selectable = e.kind === "dir" || e.video || e.kind === "playlist";      // a show can go in a list (a pool of shows) or be a source of its own
+    const selectable = e.kind === "dir" || e.video;      // a show can go in a list (a pool of shows) or be a source of its own
     const li = el("li", { className: e.kind === "dir" ? "dir" : selectable ? "" : "dim" });
     const box = el("input", { type: "checkbox", disabled: !selectable });
     box.setAttribute("aria-label", `Select ${e.name}`);
@@ -155,10 +155,10 @@
       b.addEventListener("click", () => run(() => openSrc(state.src.root, join(state.src.path, e.name))));
       name.append(b);
     } else {
-      name.textContent = (e.kind === "playlist" ? "♫ " : "") + (e.label || e.name);   // a movie in its own folder shows as just the movie
+      name.textContent = e.label || e.name;   // a movie in its own folder shows as just the movie
       if (e.label) name.title = e.name;
     }
-    const meta = e.kind === "dir" ? "" : e.kind === "playlist" ? `playlist, ${e.videos} video${e.videos === 1 ? "" : "s"}` : fmtSize(e.size);
+    const meta = e.kind === "dir" ? "" : fmtSize(e.size);
     li.append(box, name, el("span", { className: "meta", textContent: meta }));
     if (e.show) {            // a show can be a source of its own: a station picks it from its Shows menu
       li.append(el("span", { className: "meta", textContent: "show" }));
@@ -408,131 +408,10 @@
     say(`Deleted “${out.tag}” (${out.removed} link${out.removed === 1 ? "" : "s"} removed).`, "ok");
   }));
 
-  // ---- the YouTube (TubeArchivist) conversion: settings and what it is doing
-  const OTHER = "__other__";
-  const ta = { cfg: null, lastState: null };
-
   function fmtWhen(sec) {
     if (!sec) return "";
     return new Date(sec * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
-
-  // the library folders being converted: each shows as <its folder name>-nfo in Media
-  function renderLibraries(st, det, first) {
-    ta.libraries = st.libraries;
-    const box = $("ta-libs");
-    box.replaceChildren();
-    for (const l of st.libraries) {
-      const row = el("li", { className: l.exists ? "" : "dim" });
-      row.append(el("span", { className: "lib-path", textContent: l.path }));
-      row.append(el("span", { className: "lib-note", textContent: !l.exists ? "not found: is its volume mounted?"
-        : `${l.channels === null ? "counting channels…" : l.channels + " channel" + (l.channels === 1 ? "" : "s")} → shows as ${l.name}` + (l.converted ? ` (${l.converted} converted)` : "") }));
-      const rm = el("button", { type: "button", className: "btn", textContent: "Remove", disabled: !state.edit || st.libraries.length < 2 });
-      rm.addEventListener("click", () => run(() => saveLibraries(st.libraries.map((x) => x.path).filter((p) => p !== l.path))));
-      row.append(rm);
-      box.append(row);
-    }
-    if (!first) return;               // polls must not reset a choice being made in the add row
-    fillAdd(st, det || { libraries: [] });
-  }
-
-  function fillAdd(st, det) {
-    const sel = $("ta-add");
-    sel.replaceChildren();
-    const have = new Set(st.libraries.map((l) => l.path));
-    for (const l of det.libraries.filter((x) => !have.has(x.path))) {
-      sel.append(el("option", { value: l.path, textContent: `${l.path}  (${l.channels} channel${l.channels === 1 ? "" : "s"} found)` }));
-    }
-    sel.append(el("option", { value: OTHER, textContent: "Another folder…" }));
-    $("ta-add-other").hidden = sel.value !== OTHER;
-  }
-
-  async function saveLibraries(paths) {
-    await call("/api/ta/settings", { libraries: paths });
-    await loadTa(true);
-    say("Saved. Each library shows in Media as its folder name plus -nfo.", "ok");
-  }
-
-  async function loadTa(first) {
-    const st = await call("/api/ta/status");
-    // looking for library folders walks the media, which is slow on a network share: it is asked for once, after the
-    // panel is up, and never by the five-second refresh
-    const det = null;
-    if (first) call("/api/ta/detect").then((d) => fillAdd(st, d)).catch(() => fillAdd(st, { libraries: [] }));
-    ta.cfg = st.settings;
-    renderLibraries(st, det, first);
-    if (first) {
-      $("ta-enabled").checked = st.settings.enabled;
-      $("ta-interval").value = String(st.settings.interval_minutes);
-    }
-    renderTaStatus(st);
-    if (first) restoreOpen(st.settings.enabled);
-    if (ta.lastState === "running" && st.job.state !== "running") await refreshAfterConversion();
-    ta.lastState = st.job.state;
-    $("ta-add-btn").disabled = !state.edit;
-    $("ta-run").disabled = !state.edit || !st.settings.enabled;
-    $("ta-save").disabled = !state.edit;
-    $("ta-enabled").disabled = !state.edit;
-  }
-
-  function renderTaStatus(st) {
-    const job = st.job || {}, el_ = $("ta-status");
-    let text = "", kind = "";
-    if (!st.settings.enabled) {
-      text = "Off. Nothing is converted. Switch it on above when you are ready.";
-    } else if (job.state === "running") {
-      const since = job.last_start ? ` Started ${fmtWhen(job.last_start)}.` : "";
-      const total = st.libraries.reduce((n, l) => n + (l.channels || 0), 0);
-      const progress = total ? ` ${st.channels_in_view} of ${total} channels converted so far.` : "";
-      const now = job.channel
-        ? ` Now on ${job.channel}${job.channel_pos ? ` (channel ${job.channel_pos} of ${job.channel_total}` + (job.channels_done != null ? `, ${job.channels_done} finished` : "") + ")" : ""}` +
-          (job.channel_videos_total ? `, ${job.channel_videos_done.toLocaleString()} of ${job.channel_videos_total.toLocaleString()} of its videos` : "") +
-          `, last seen working ${fmtWhen(job.channel_seen)}.`
-        : job.channel_total ? ` ${job.channels_done || 0} of ${job.channel_total} channels finished${job.videos_total ? `, ${job.videos_total.toLocaleString()} videos to look at` : ""}; finding the one it is on…`
-        : " Looking for the channel it is on…";
-      text = `Converting ${job.current || "your library"}… this can take a while the first time.${since}${now}${progress}` +
-        (st.channels_in_view && st.channels_in_view < total ? " If it was interrupted, it may go back over the channels already done before reaching the rest, so the count can sit still for a while." : "");
-    } else if (job.state === "error") {
-      text = `That did not work: ${job.message || "unknown problem"}`;
-      kind = "err";
-    } else if (job.state === "idle") {
-      text = `Done${job.last_end ? " " + fmtWhen(job.last_end) : ""}. ${st.channels_in_view} channel${st.channels_in_view === 1 ? "" : "s"} converted.` +
-        (job.next_run ? ` Next check ${fmtWhen(job.next_run)}.` : "");
-      kind = "ok";
-    } else {
-      text = "Starting…";
-    }
-    const missing = st.libraries.filter((l) => !l.exists).map((l) => l.path);
-    if (st.settings.enabled && missing.length && job.state !== "error") {
-      text += ` Not found: ${missing.join(", ")}.`;
-      kind = "err";
-    }
-    el_.textContent = text;
-    el_.className = "ta-status" + (kind ? " " + kind : "");
-    // the one-line version, shown when the panel is folded away
-    let short = "Off";
-    if (st.settings.enabled) {
-      if (job.state === "running") short = `● Converting ${job.current || ""}`.trim() + (job.channel ? `: ${job.channel}` : "") + "…";
-      else if (job.state === "error") short = "⚠ Problem: open to see it";
-      else if (missing.length) short = "⚠ A folder was not found";
-      else short = `On, ${st.channels_in_view} channel${st.channels_in_view === 1 ? "" : "s"}` + (job.next_run ? `, next check ${fmtWhen(job.next_run)}` : "");
-    }
-    $("ta-summary").textContent = short;
-  }
-
-  // the panel can be folded away; what you chose is remembered. Until you choose, it is open only while it is off.
-  let restoring = false;
-  function restoreOpen(enabled) {
-    let saved = null;
-    try { saved = localStorage.getItem("ta-open"); } catch (e) { /* private window: no memory */ }
-    restoring = true;
-    $("ta-details").open = saved === null ? !enabled : saved === "1";
-    setTimeout(() => { restoring = false; }, 0);
-  }
-  $("ta-details").addEventListener("toggle", () => {
-    if (restoring) return;
-    try { localStorage.setItem("ta-open", $("ta-details").open ? "1" : "0"); } catch (e) { /* not remembered */ }
-  });
 
   // ---- sources made for stations, and which stations use them
   async function loadSources() {
@@ -583,52 +462,6 @@
   }
   $("sources-card").addEventListener("toggle", () => { if ($("sources-card").open) run(loadSources); });
 
-  async function refreshAfterConversion() {
-    try {
-      const info = await call("/api/files/info");
-      state.roots = info.roots;
-      await openSrc(ROOT, state.src.path);
-    } catch (e) { /* the panel is still right; the lists refresh on the next click */ }
-  }
-
-  $("ta-add").addEventListener("change", () => {
-    $("ta-add-other").hidden = $("ta-add").value !== OTHER;
-    if (!$("ta-add-other").hidden) $("ta-add-other").focus();
-  });
-  $("ta-add-btn").addEventListener("click", () => run(async () => {
-    const v = $("ta-add").value;
-    const path = v === OTHER ? $("ta-add-other").value.trim() : v;
-    if (!path) throw new Error("choose a folder first");
-    await saveLibraries([...ta.libraries.map((l) => l.path), path]);
-    $("ta-add-other").value = "";
-  }));
-
-  async function saveTa(extra) {
-    const body = { enabled: $("ta-enabled").checked, interval_minutes: Number($("ta-interval").value), ...extra };
-    await call("/api/ta/settings", body);
-    await loadTa(true);
-    return body;
-  }
-
-  $("ta-enabled").addEventListener("change", () => run(async () => {
-    try {
-      const body = await saveTa();
-      say(body.enabled ? "Switched on. The conversion starts within a few seconds." : "Switched off.", "ok");
-    } catch (e) {
-      $("ta-enabled").checked = !$("ta-enabled").checked;      // it did not take: show the real state
-      throw e;
-    }
-  }));
-  $("ta-save").addEventListener("click", () => run(async () => {
-    await saveTa();
-    say("Saved.", "ok");
-  }));
-  $("ta-run").addEventListener("click", () => run(async () => {
-    await call("/api/ta/run", {});
-    say("Asked it to convert now.", "ok");
-    setTimeout(() => run(() => loadTa(false)), 1500);
-  }));
-
   // ---- start
   run(async () => {
     const info = await call("/api/files/info");
@@ -640,8 +473,6 @@
     else say("No media is mounted in the container, so there is nothing to browse.", "err");
     if (info.tags) await loadTags(false, false);
     updateButtons();
-    await loadTa(true);
     loadSources().catch(() => {});
-    setInterval(() => loadTa(false).catch(() => {}), 5000);        // quiet: a missed poll is not worth a red message
   });
 })();

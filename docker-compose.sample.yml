@@ -66,9 +66,8 @@ volumes:
   # ---- 3. YOUR MEDIA: one volume per folder, read-only, may be on a NAS or on local disk --------
   # The videos are only read, through links that sit on the local catalog. The folder names
   # inside the container (/mnt/media/<name>) are what the dashboard shows.
-  # youtube: a TubeArchivist library. The TubeArchivist import (Lists & files) reads the metadata
-  #          TubeArchivist embeds in its videos; videos without it are listed by plain folder
-  #          and file name like any other folder.
+  # youtube: YouTube channels from a downloader (Pinchflat, yt-dlp...): with .nfo files beside the videos,
+  #          they are named by channel and title; without, by folder and file name like any other folder.
   youtube:
     driver_opts: { type: none, o: bind, device: /mnt/media/youtube }        # CHANGE
   movies:

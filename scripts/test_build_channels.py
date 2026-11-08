@@ -249,8 +249,8 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(bc.find_duplicate_links(catalog), {})
 
     def test_to_host_uses_the_longest_prefix(self):
-        mapping = [("/mnt/media", "/host/media"), ("/mnt/media/tanfo", "/host/view")]
-        self.assertEqual(bc.to_host("/mnt/media/tanfo/A/x.mp4", mapping), "/host/view/A/x.mp4")
+        mapping = [("/mnt/media", "/host/media"), ("/mnt/media/tvlib", "/host/view")]
+        self.assertEqual(bc.to_host("/mnt/media/tvlib/A/x.mp4", mapping), "/host/view/A/x.mp4")
         self.assertEqual(bc.to_host("/mnt/media/tvseries/x.mp4", mapping), "/host/media/tvseries/x.mp4")
         self.assertIsNone(bc.to_host("/elsewhere/x.mp4", mapping))
         self.assertIsNone(bc.to_host("/mnt/media2/x.mp4", mapping))
@@ -281,12 +281,12 @@ class ArchiveTest(unittest.TestCase):
 
 
 class TvLibraryTest(unittest.TestCase):
-    """A folder that is itself a TV library: the TA_NFOWriter view layout."""
+    """A folder that is itself a TV library: a view of channel folders over an archive."""
 
     def setUp(self):
         self.root = tempfile.mkdtemp()
-        self.src = os.path.join(self.root, "tubearchivist")      # the real videos
-        self.view = os.path.join(self.root, "tanfo")             # channel folders + links
+        self.src = os.path.join(self.root, "ytarchive")      # the real videos
+        self.view = os.path.join(self.root, "tvlib")             # channel folders + links
         real = os.path.join(self.src, "UCabc", "vid1.mp4")
         touch(real)
         chan = os.path.join(self.view, "NBC News")
@@ -299,7 +299,6 @@ class TvLibraryTest(unittest.TestCase):
         touch(base + ".en.vtt")                                  # subtitles: not linked
         touch(base + "-thumb.jpg")
         touch(os.path.join(season, "season.nfo"), "<season/>")
-        touch(os.path.join(self.view, "ta_nfo.py"))              # the script sits in the view
         touch(os.path.join(self.view, "__pycache__", "x.pyc"))
         self.media = os.path.join(self.root, "media")            # no tvseries/anime/movies here
         os.makedirs(self.media)
@@ -314,7 +313,7 @@ class TvLibraryTest(unittest.TestCase):
         items, warnings = bc.discover(self.media, {}, self.lib(), default_libraries=False)
         self.assertEqual(warnings, [])
         self.assertEqual([(i["library"], i["item"], i["genre"]) for i in items],
-                         [("tanfo", "NBC News", "News & Politics")])
+                         [("tvlib", "NBC News", "News & Politics")])
 
     def test_script_and_pycache_are_not_shows(self):
         items, _ = bc.discover(self.media, {}, self.lib(), default_libraries=False)
@@ -333,7 +332,7 @@ class TvLibraryTest(unittest.TestCase):
         items, _ = bc.discover(self.media, {}, self.lib(), default_libraries=False)
         plan, _ = bc.plan_farm(items, include_unclassified=False)
         bc.import_links(catalog, plan, "/ignored/for/absolute/targets")
-        link = os.path.join(catalog, bc.FARM, "News & Politics", "tanfo", "NBC News",
+        link = os.path.join(catalog, bc.FARM, "News & Politics", "tvlib", "NBC News",
                             "Season 2026", "20260911_[vid1]_Special.mp4")
         # farm link -> view link -> real file
         self.assertEqual(os.readlink(link), os.path.join(self.view, "NBC News", "Season 2026",
@@ -341,11 +340,11 @@ class TvLibraryTest(unittest.TestCase):
         self.assertEqual(os.path.realpath(link), os.path.join(self.src, "UCabc", "vid1.mp4"))
 
     def test_container_path_can_differ_from_host_path(self):
-        items, _ = bc.discover(self.media, {}, self.lib(self.view + "=/data/tanfo"),
+        items, _ = bc.discover(self.media, {}, self.lib(self.view + "=/data/tvlib"),
                                default_libraries=False)
         plan, _ = bc.plan_farm(items, include_unclassified=False)
         target = plan["News & Politics"][0][1]
-        self.assertTrue(target.startswith("/data/tanfo/NBC News/"), target)
+        self.assertTrue(target.startswith("/data/tvlib/NBC News/"), target)
 
     def test_default_libraries_still_use_target_root(self):
         touch(os.path.join(self.media, "tvseries", "Show", "tvshow.nfo"), tvshow_nfo("Drama"))
@@ -369,12 +368,12 @@ class TvLibraryTest(unittest.TestCase):
 
 
 class PlaylistTest(unittest.TestCase):
-    """A TA_NFOWriter playlist groups videos without moving them."""
+    """A playlist (.m3u8 in the library's Playlists folder) groups videos without moving them."""
 
     def setUp(self):
         self.root = tempfile.mkdtemp()
-        self.src = os.path.join(self.root, "tubearchivist")
-        self.view = os.path.join(self.root, "tanfo")
+        self.src = os.path.join(self.root, "ytarchive")
+        self.view = os.path.join(self.root, "tvlib")
         for chan, vid, genre in (("80s Ads", "ad1", "Entertainment"), ("80s Ads", "ad2", "Entertainment"),
                                  ("News", "n1", "News"), ("News", "n2", "News")):
             real = os.path.join(self.src, "UC" + chan[:3], vid + ".mp4")
@@ -396,7 +395,7 @@ class PlaylistTest(unittest.TestCase):
         touch(os.path.join(pl, "Mixed.m3u8"),
               "#EXTM3U\n../News/Season 1986/19860101_[n1]_T.mp4\n"
               "../80s Ads/Season 1986/19860101_[ad1]_T.mp4\n")
-        self.libs = [bc.parse_tv_library(self.view + "=/data/tanfo", {"bump", "tvseries", "anime", "movies"})]
+        self.libs = [bc.parse_tv_library(self.view + "=/data/tvlib", {"bump", "tvseries", "anime", "movies"})]
 
     def tearDown(self):
         shutil.rmtree(self.root)
@@ -457,7 +456,7 @@ class PlaylistTest(unittest.TestCase):
         self.assertEqual([l for l, _ in com], [
             "commercials/1980s Commercials/19860101_[ad1]_T.mp4",
             "commercials/1980s Commercials/19860101_[ad2]_T.mp4"])
-        self.assertEqual(com[0][1], "/data/tanfo/80s Ads/Season 1986/19860101_[ad1]_T.mp4")
+        self.assertEqual(com[0][1], "/data/tvlib/80s Ads/Season 1986/19860101_[ad1]_T.mp4")
         self.assertTrue(any("gone.mp4" in w for w in warns))
         self.assertEqual(self.videos(plan, "Entertainment"), ["19860102_[show]_Show.mp4"])
 
@@ -473,7 +472,7 @@ class PlaylistTest(unittest.TestCase):
         self.assertEqual(added, {bc.COMMERCIALS: 2})
         self.assertEqual(bc.import_links(catalog, {}, "/x", com)[0], {})
         link = os.path.join(catalog, bc.FARM, "commercials", "1980s Commercials", "19860101_[ad1]_T.mp4")
-        self.assertEqual(os.readlink(link), "/data/tanfo/80s Ads/Season 1986/19860101_[ad1]_T.mp4")
+        self.assertEqual(os.readlink(link), "/data/tvlib/80s Ads/Season 1986/19860101_[ad1]_T.mp4")
 
     def test_station_uses_commercials_only_when_given(self):
         self.assertTrue(bc.station_conf("News", 801, "bump")["commercial_free"])
@@ -533,7 +532,7 @@ class PlaylistTest(unittest.TestCase):
         self.assertEqual(len(self.videos(plan, "Entertainment")), 5)
         com, plan, _, _ = self.build(("show", "80s Ads=commercials"))
         self.assertEqual(len(com), 3)
-        self.assertEqual(com[0][1].split("/")[:4], ["", "data", "tanfo", "80s Ads"])
+        self.assertEqual(com[0][1].split("/")[:4], ["", "data", "tvlib", "80s Ads"])
         self.assertNotIn("Entertainment", plan)      # all its videos are commercials: no station
         self.assertEqual(self.videos(plan, "News"), ["19860101_[n1]_T.mp4", "19860101_[n2]_T.mp4"])
 
@@ -634,25 +633,25 @@ class FieldStationSchemaTest(unittest.TestCase):
 class ContainerPathsTest(unittest.TestCase):
     """A view built inside the containers links to paths that exist only there.
 
-    On the host, /mnt/media/tubearchivist/... is not a real path, so nothing
+    On the host, /mnt/media/ytarchive/... is not a real path, so nothing
     host-side may follow a view link to its end.
     """
 
     def setUp(self):
         self.root = tempfile.mkdtemp()
-        self.view = os.path.join(self.root, "catalog", "tanfo")
+        self.view = os.path.join(self.root, "catalog", "tvlib")
         chan = os.path.join(self.view, "Chan")
         touch(os.path.join(chan, "tvshow.nfo"), tvshow_nfo("News"))
         self.videos = []
         for vid in ("a", "b"):
             link = os.path.join(chan, "Season 1", f"2026_[{vid}]_T.mp4")
             os.makedirs(os.path.dirname(link), exist_ok=True)
-            os.symlink(f"/mnt/not-on-this-host/tubearchivist/UCx/{vid}.mp4", link)   # a container path
+            os.symlink(f"/mnt/not-on-this-host/ytarchive/UCx/{vid}.mp4", link)   # a container path
             self.videos.append(link)
             touch(link[:-4] + ".nfo", "<episodedetails/>")
         touch(os.path.join(self.view, "Playlists", "Both.m3u8"),
               "#EXTM3U\n../Chan/Season 1/2026_[a]_T.mp4\n../Chan/Season 1/2026_[b]_T.mp4\n")
-        self.libs = [bc.parse_tv_library(self.view + "=/app/catalog/tanfo", {"bump", "tvseries", "anime", "movies"})]
+        self.libs = [bc.parse_tv_library(self.view + "=/app/catalog/tvlib", {"bump", "tvseries", "anime", "movies"})]
 
     def tearDown(self):
         shutil.rmtree(self.root)
@@ -666,7 +665,7 @@ class ContainerPathsTest(unittest.TestCase):
         videos, warnings = bc.read_playlist("Both", self.libs)
         self.assertEqual(len(videos), 2)
         self.assertEqual(warnings, [])
-        self.assertTrue(videos[0][1].startswith("/app/catalog/tanfo/Chan/"))     # the container's path
+        self.assertTrue(videos[0][1].startswith("/app/catalog/tvlib/Chan/"))     # the container's path
 
     def test_a_playlist_still_skips_an_entry_whose_link_is_not_in_the_view(self):
         touch(os.path.join(self.view, "Playlists", "Gone.m3u8"), "#EXTM3U\n../Chan/Season 1/2026_[zzz]_T.mp4\n")
@@ -679,7 +678,7 @@ class ContainerPathsTest(unittest.TestCase):
         items, _ = bc.discover("/none", {}, self.libs, default_libraries=False)
         plan, _ = bc.plan_farm(items, include_unclassified=False)
         bc.import_links(catalog, plan, "/ignored")
-        mapping = [("/app/catalog/tanfo", self.view)]
+        mapping = [("/app/catalog/tvlib", self.view)]
         self.assertEqual(bc.find_dead_links(catalog, mapping), [])       # nothing wrongly flagged
         os.remove(self.videos[0])                                        # the view's cleanup removed one
         dead = [os.path.basename(d) for d in bc.find_dead_links(catalog, mapping)]
@@ -690,7 +689,7 @@ class ContainerPathsTest(unittest.TestCase):
         com, routes, warns = bc.resolve_groups([("playlist", "Both=commercials")], items, self.libs, {})
         self.assertEqual(len(com), 2)
         self.assertEqual(warns, [])
-        self.assertTrue(all(t.startswith("/app/catalog/tanfo/Chan/") for _, t in com))
+        self.assertTrue(all(t.startswith("/app/catalog/tvlib/Chan/") for _, t in com))
 
 MOUNTINFO = """\
 36 35 98:0 / / rw,relatime - ext4 /dev/sda1 rw
@@ -1049,7 +1048,7 @@ media_root = "media"
 target_root = "/mnt/media"
 start_channel = 900
 include_unclassified = true
-tv_libraries = ["tanfo", "/abs/view=/data/view"]
+tv_libraries = ["tvlib", "/abs/view=/data/view"]
 [genre_map]
 "sci-fi" = "Science Fiction"
 [[group]]
@@ -1065,7 +1064,7 @@ to = "Retro Mix"
         self.assertEqual(d["media_root"], os.path.join(self.root, "media"))     # host path: relative to the file
         self.assertEqual(d["target_root"], "/mnt/media")                        # container path: left alone
         self.assertEqual((d["start_channel"], d["include_unclassified"]), (900, True))
-        self.assertEqual(d["tv_library"], [os.path.join(self.root, "tanfo"), "/abs/view=/data/view"])
+        self.assertEqual(d["tv_library"], [os.path.join(self.root, "tvlib"), "/abs/view=/data/view"])
         self.assertEqual(d["groups"], [("playlist", "1980s Ads *=commercials"), ("show", "Old Cartoons"),
                                        ("video", "News/*x*=Retro Mix")])
         self.assertEqual(m["genre_map"], {"sci-fi": "Science Fiction"})
@@ -1073,7 +1072,7 @@ to = "Retro Mix"
     def test_mistakes_are_refused_with_a_message(self):
         for text in ('catalogue = "x"',                               # unknown key: a typo must not do nothing
                      'start_channel = "801"',                         # wrong type
-                     'tv_libraries = "tanfo"',                        # not a list
+                     'tv_libraries = "tvlib"',                        # not a list
                      '[[group]]\nshow = "A"\nplaylist = "B"',         # two kinds
                      '[[group]]\nto = "X"',                           # no kind
                      '[[group]]\nvideo = "A/*"',                      # video needs a destination
@@ -1173,10 +1172,6 @@ class LinksOnlyTest(unittest.TestCase):
         touch(os.path.join(d, "tvshow.nfo"), "<tvshow><title>x</title></tvshow>")
         touch(os.path.join(d, "Season 01", "e1.mp4"))
         self.catalog = os.path.join(self.root, "catalog")
-        self.view = os.path.join(self.catalog, "tanfo", "youtube-nfo")       # a converted TubeArchivist library: channels
-        for chan in ("NBC News", "Some Channel"):
-            touch(os.path.join(self.view, chan, "tvshow.nfo"), "<tvshow><title>%s</title></tvshow>" % chan)
-            touch(os.path.join(self.view, chan, "Season 2026", f"20260101_[abc]_{chan}.mp4"))
         self.farm = os.path.join(self.catalog, "by-genre")
         self._saved = bc.Console
         bc.Console = None                        # any use of the console would raise
@@ -1193,37 +1188,21 @@ class LinksOnlyTest(unittest.TestCase):
             self.assertEqual(bc.main([*self.argv, *extra]), 0)
         return buf.getvalue()
 
-    def test_tag_folders_come_from_genres_and_not_from_youtube_channels(self):
+    def test_tag_folders_come_from_genres(self):
         out = self.run_main()
         tags = sorted(os.listdir(self.farm))
-        self.assertEqual(tags, ["Comedy", "Drama", "Unclassified", "bump"])               # no list per YouTube channel
+        self.assertEqual(tags, ["Comedy", "Drama", "Unclassified", "bump"])
         self.assertIn("farm: added", out)
         for tag in tags:                                                      # real folders, not folder links
             self.assertFalse(os.path.islink(os.path.join(self.farm, tag)), tag)
-        self.assertFalse(os.path.exists(os.path.join(self.farm, "NBC News")))             # a channel is added by hand
-
-    def test_converted_libraries_are_not_listed_by_channel_and_an_old_flat_view_is_ignored(self):
-        other = os.path.join(self.catalog, "tanfo", "YT Archive-nfo")
-        touch(os.path.join(other, "Old Channel", "tvshow.nfo"), "<tvshow><title>Old</title></tvshow>")
-        touch(os.path.join(other, "Old Channel", "Season 2020", "20200101_[zzz]_o.mp4"))
-        touch(os.path.join(self.catalog, "tanfo", "Flat Channel", "tvshow.nfo"), "<tvshow><title>F</title></tvshow>")
-        touch(os.path.join(self.catalog, "tanfo", "Flat Channel", "Season 1", "f.mp4"))
-        self.run_main()
-        tags = sorted(os.listdir(self.farm))
-        for channel in ("Old Channel", "NBC News", "Flat Channel"):
-            self.assertNotIn(channel, tags)
 
     def test_no_tuner_config_and_no_console_are_needed(self):
         self.run_main()                          # bc.Console is None: touching it would have raised
         self.assertFalse(os.path.exists(os.path.join(self.root, "config")))
 
-    def test_a_second_run_adds_nothing_and_a_new_channel_is_not_listed_on_its_own(self):
+    def test_a_second_run_adds_nothing(self):
         self.run_main()
         self.assertIn("added 0 links", self.run_main())
-        touch(os.path.join(self.view, "New Channel", "tvshow.nfo"), "<tvshow><title>New</title></tvshow>")
-        touch(os.path.join(self.view, "New Channel", "Season 2026", "20260102_[def]_n.mp4"))
-        self.run_main()
-        self.assertNotIn("New Channel", os.listdir(self.farm))
 
     def test_what_you_arranged_by_hand_is_left_alone(self):
         self.run_main()
@@ -1238,19 +1217,6 @@ class LinksOnlyTest(unittest.TestCase):
         shutil.rmtree(os.path.join(self.media, "bump"))
         out = self.run_main()                    # the generator proper would stop here; this just says so
         self.assertIn("no channel mid cards", out)
-
-    def test_with_no_playlists_chosen_none_are_made(self):
-        touch(os.path.join(self.view, "Playlists", "Picks.m3u8"), "#EXTM3U\n../NBC News/Season 2026/20260101_[abc]_NBC News.mp4\n")
-        saved = os.environ.get("FS42_SETTINGS")
-        os.environ["FS42_SETTINGS"] = os.path.join(self.root, "nothing.json")
-        try:
-            self.run_main()
-        finally:
-            if saved is None:
-                os.environ.pop("FS42_SETTINGS")
-            else:
-                os.environ["FS42_SETTINGS"] = saved
-        self.assertNotIn("Picks", os.listdir(self.farm))
 
     def test_a_missing_standard_library_is_not_repeated_on_every_pass(self):
         out = self.run_main()                    # there is no anime/ or movies/ here
@@ -1297,11 +1263,11 @@ class InsideTheContainerTest(unittest.TestCase):
         touch(bc.CONTAINER_MANIFEST,
               'media_root = "/mnt/media"\ncatalog = "/srv/station-wrapper-43/catalog"\n'
               'tuner_config = "/srv/station-wrapper-43/config/tuner/config.json"\n'
-              'tv_libraries = ["/srv/station-wrapper-43/catalog/tanfo=/app/catalog/tanfo"]\n')
+              'tv_libraries = ["/srv/station-wrapper-43/catalog/tvlib=/app/catalog/tvlib"]\n')
         args = bc.parse_args([])
         self.assertEqual(args.catalog, self.catalog)
         self.assertEqual(args.tuner_config, bc.CONTAINER_TUNER_CONFIG)
-        self.assertEqual(args.tv_library, ["/app/catalog/tanfo"])        # only the container side exists here
+        self.assertEqual(args.tv_library, ["/app/catalog/tvlib"])        # only the container side exists here
 
     def test_a_flag_still_beats_the_defaults(self):
         self.assertEqual(bc.parse_args(["--catalog", "/other"]).catalog, "/other")

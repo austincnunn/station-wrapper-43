@@ -1,12 +1,11 @@
 #!/bin/sh
 # Keeps catalog/by-genre filled, on its own: tag folders of links from your media (genres from the
-# NFO files, one folder for each TubeArchivist channel, bump). Add-only: it never removes or rewrites
+# NFO files, bump). Add-only: it never removes or rewrites
 # a link, so what you arrange by hand stays. It does NOT create stations, number channels or touch
 # schedules: that is FieldStation42's own console (:4242). You open it, add a station, and pick one
 # of the tag folders this made.
 #
-# Runs at start, then every FARM_INTERVAL_MINUTES, and right after ta-nfo finishes a pass (it leaves
-# /tmp/farm.now), so a new YouTube channel gets its folder without waiting.
+# Runs at start, then every FARM_INTERVAL_MINUTES, and at once whenever /tmp/farm.now appears.
 set -eu
 
 INTERVAL="${FARM_INTERVAL_MINUTES:-30}"

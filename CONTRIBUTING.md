@@ -5,7 +5,7 @@ one container and adds a dashboard, a tuner (HDHomeRun emulation, guide, player)
 
 - **Layout:** `fs42-tuner/` is the dashboard and tuner; `fieldstation42/` holds `console_launch.py`, the few run-time adjustments
   (FieldStation42 itself is fetched from upstream when the image is built, never copied in here); `scripts/` the generators and checks;
-  `supervisor/`, `fs42-sync/`, `ta-nfo/`, `farm/` the container's other services.
+  `supervisor/`, `fs42-sync/`, `farm/` the container's other services.
 - **Tests:** every module has a `test_*.py` beside it; CI runs them all (`ci.yml`). `scripts/e2e-*.py` run against a real image.
 - **Style:** match the code around you. Comments say why. A change that a person sees gets a line in `CHANGELOG.md` under *Unreleased*.
 - **Branches:** work on `dev`; `main` moves only through a pull request that has passed CI and the security checks.

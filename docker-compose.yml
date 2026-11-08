@@ -2,8 +2,8 @@
 #  ONE image, ONE container, THREE volumes.
 #
 #  The container runs FieldStation42's console and scheduler, the dashboard and
-#  player, and (switched on with SYNC_ENABLED) the symlink-pool scanner
-#  and the TubeArchivist view builder. A small supervisor inside keeps them running.
+#  player, and (switched on with SYNC_ENABLED) the symlink-pool scanner.
+#  A small supervisor inside keeps them running.
 #
 #  CONFIG   (volume `config`, FS42_CONFIG_ROOT)   LOCAL DISK, not a network share.
 #      runtime/    FieldStation42's schedule database and sockets (sqlite: it
@@ -14,7 +14,6 @@
 #
 #  CATALOG  (volume `catalog`, FS42_CATALOG_ROOT)  NOT an SMB/CIFS share. LOCAL DISK.
 #      by-genre/     the tag folders FieldStation42 schedules from
-#      tanfo/        the TubeArchivist view (switched on in the dashboard)
 #      media-links/  a symlink for every video on your media (SYNC_ENABLED)
 #    All of it is SYMLINKS into your media. SMB shares refuse to create symlinks, or
 #    follow an absolute link on the server instead of in the container, so on a share
@@ -73,8 +72,8 @@ services:
       #    On by default; SYNC_REBUILD=0 only reports.
       SYNC_ENABLED: ${SYNC_ENABLED:-}
       # ON by default: keeps catalog/by-genre filled with tag folders of links, so FieldStation42's
-      # console has something to build stations from. Genres come from the NFO files, each
-      # TubeArchivist channel gets a folder of its own, shows with no genre go under Unclassified.
+      # console has something to build stations from. Genres come from the NFO files, shows
+      # with no genre go under Unclassified.
       # Add-only. It does not create stations or schedules: do that in the console (:4242).
       # FARM_ENABLED=0 turns it off.
       FARM_ENABLED: ${FARM_ENABLED:-1}
@@ -114,13 +113,6 @@ services:
       PREFETCH_RAM: ${PREFETCH_RAM:-1}
       PREFETCH_DIR: ${PREFETCH_DIR:-/cache}
       PREFETCH_MAX_MB: ${PREFETCH_MAX_MB:-5400}
-      # The TubeArchivist conversion (TA_NFOWriter builds a readable "view" of symlinks in the catalog
-      # volume) is switched on from the dashboard: http://<host>:5004/files.html, "YouTube (TubeArchivist)".
-      # You pick the folder there; nothing here is needed. These three are only STARTING VALUES for the
-      # same settings (a choice saved in the dashboard wins), kept so an older setup keeps working.
-      TA_ENABLED: ${TA_ENABLED:-}
-      TA_LIBRARY: ${TA_LIBRARY:-/mnt/media/tubearchivist}
-      TA_INTERVAL_MINUTES: ${TA_INTERVAL_MINUTES:-1440}
       # OPTIONAL: names, synopses, air dates and posters for the guide from Emby or Jellyfin (either; detected), for videos
       # with no .nfo beside them. Off unless both the address and an API key are set. See .env.example.
       MEDIA_SERVER_URL: ${MEDIA_SERVER_URL:-}

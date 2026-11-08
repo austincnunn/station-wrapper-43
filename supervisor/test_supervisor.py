@@ -172,11 +172,11 @@ class RefusalTest(unittest.TestCase):
         self.assertNotIn("sync will restart", r.text())
 
     def test_an_optional_service_that_finishes_is_left_finished(self):
-        r = Run([svc("console", FOREVER, core=True), svc("ta-nfo", "print('done')")])
-        self.assertTrue(r.wait_for("ta-nfo finished"))
+        r = Run([svc("console", FOREVER, core=True), svc("farm", "print('done')")])
+        self.assertTrue(r.wait_for("farm finished"))
         time.sleep(0.4)
         r.stop()
-        self.assertEqual(r.text().count("started ta-nfo"), 1)
+        self.assertEqual(r.text().count("started farm"), 1)
 
 
 class ShutdownTest(unittest.TestCase):
@@ -349,16 +349,16 @@ class ConfigTest(unittest.TestCase):
     FARM_OFF = {"FARM_ENABLED": "0", "FIRSTRUN_TEST_STATION": "0", "FIRSTRUN_GUIDE_STATION": "0"}       # both default-on jobs off, to test the rest
 
     def test_the_console_always_runs(self):
-        self.assertEqual(self.names(self.FARM_OFF, False), ["console", "ta-nfo"])
+        self.assertEqual(self.names(self.FARM_OFF, False), ["console"])
 
     def test_the_tuner_runs_when_it_has_a_config(self):
-        self.assertEqual(self.names(self.FARM_OFF, True), ["console", "tuner", "ta-nfo"])
+        self.assertEqual(self.names(self.FARM_OFF, True), ["console", "tuner"])
         tuner = sv.services_from_env({"FS42_TUNER_CONF": "/x/c.json"}, exists=lambda p: p == "/x/c.json")[1]
         self.assertEqual(tuner.env, {"FS42_TUNER_CONF": "/x/c.json"})
         self.assertTrue(tuner.core)
 
     def test_the_farm_runs_by_default_and_can_be_switched_off(self):
-        self.assertEqual(self.names({}, True), ["console", "tuner", "firstrun", "farm", "ta-nfo"])
+        self.assertEqual(self.names({}, True), ["console", "tuner", "firstrun", "farm"])
         for off in ("0", "no", "false", "OFF"):
             self.assertNotIn("farm", self.names({"FARM_ENABLED": off}, True), off)
         for on in ("", "1", "yes"):
@@ -374,34 +374,24 @@ class ConfigTest(unittest.TestCase):
         self.assertFalse(job.core)                       # never essential: it finishes, and a failure must not stop the container
         self.assertIn("/opt/wrapper/firstrun.py", job.argv)
 
-    def test_the_tubearchivist_job_always_runs_and_the_dashboard_switches_it_on(self):
-        # TA_ENABLED is only a starting value now: the job idles until the dashboard (or the variable) enables it
-        for env in ({}, {"TA_ENABLED": "1"}, {"TA_ENABLED": "0"}):
-            self.assertIn("ta-nfo", self.names({**self.FARM_OFF, **env}, True), str(env))
-        ta = [s for s in sv.services_from_env({}, exists=lambda p: True) if s.name == "ta-nfo"][0]
-        self.assertFalse(ta.core)
-        self.assertIn("/opt/ta-nfo/service.py", ta.argv)
-
     def test_sync_is_switched_on_by_the_environment(self):
         off = self.FARM_OFF
-        self.assertEqual(self.names({**off, "SYNC_ENABLED": "1"}, True), ["console", "tuner", "sync", "ta-nfo"])
-        self.assertEqual(self.names({**off, "SYNC_ENABLED": "YES"}, True), ["console", "tuner", "sync", "ta-nfo"])
+        self.assertEqual(self.names({**off, "SYNC_ENABLED": "1"}, True), ["console", "tuner", "sync"])
+        self.assertEqual(self.names({**off, "SYNC_ENABLED": "YES"}, True), ["console", "tuner", "sync"])
         for v in ("", "0", "no", "false"):
-            self.assertEqual(self.names({**off, "SYNC_ENABLED": v}, True), ["console", "tuner", "ta-nfo"], v)
+            self.assertEqual(self.names({**off, "SYNC_ENABLED": v}, True), ["console", "tuner"], v)
 
     def test_the_log_says_what_is_off_and_why(self):
         notes = " ".join(sv.notes_from_env({}, exists=lambda p: False))
         self.assertIn("no config.json", notes)
         self.assertIn("SYNC_ENABLED=1", notes)
-        self.assertNotIn("TA_ENABLED", notes)                    # the conversion is switched on in the dashboard
         self.assertNotIn("farm is off", notes)
         self.assertIn("farm is off", " ".join(sv.notes_from_env(self.FARM_OFF, exists=lambda p: True)))
         self.assertEqual(sv.notes_from_env({"SYNC_ENABLED": "1"}, exists=lambda p: True), [])
 
     def test_only_the_console_and_tuner_are_essential(self):
         s = {x.name: x.core for x in sv.services_from_env({"SYNC_ENABLED": "1"}, exists=lambda p: True)}
-        self.assertEqual(s, {"console": True, "tuner": True, "firstrun": False, "farm": False, "sync": False,
-                             "ta-nfo": False})
+        self.assertEqual(s, {"console": True, "tuner": True, "firstrun": False, "farm": False, "sync": False})
 
 
 if __name__ == "__main__":

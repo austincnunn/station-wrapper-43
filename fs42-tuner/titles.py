@@ -2,7 +2,7 @@
 
 FieldStation42 names every scheduled video after its FILE (`20260101_[abc]_Some Video`, `Film.2019.1080p.x264`). The
 guide, the now-playing banner and the schedule should say what the video is called. A Kodi-style .nfo beside the
-video (the ones the TubeArchivist conversion writes, and the ones most media tools write) has that:
+video (the ones most media tools and YouTube downloaders write) has that:
 
     an episode of a show  the show's name, and the episode's title apart      (<showtitle> and <title>)
     a YouTube video       the channel's name, and the video's title apart     (the same, with a youtube <uniqueid>)
@@ -289,7 +289,7 @@ def show_art_for(video_path):
 
 
 def art_for(video_path, poster=True):
-    """The picture of this video (a thumbnail beside it: `<name>-thumb.jpg`, as the TubeArchivist conversion writes), or None.
+    """The picture of this video (a thumbnail beside it: `<name>-thumb.jpg`, as Kodi-style tools write), or None.
     A list holds links to the video, so the link is followed one step to the folder the video really sits in."""
     stems = [os.path.splitext(video_path)[0]]
     try:

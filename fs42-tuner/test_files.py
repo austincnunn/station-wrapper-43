@@ -97,26 +97,13 @@ class BrowseTest(Base):
 
 
 class OneMediaViewTest(Base):
-    """The page shows ONE media view: the pool when there is one (else the real folders), with the readable
-    YouTube view as a folder in it, and only folders and videos."""
+    """The page shows ONE media view: the pool when there is one (else the real folders), and only folders and videos."""
 
     def pool(self):
         os.makedirs(os.path.join(self.catalog, "media-links", "anime", "Show"))
         os.symlink(os.path.join(self.media, "anime", "Show", "Part1", "e1.mp4"),
                    os.path.join(self.catalog, "media-links", "anime", "Show", "e1.mp4"))
         touch(os.path.join(self.catalog, "media-links", "anime", "Show", "e1.nfo"))
-
-    def tanfo(self, lib="youtube", enabled=False):
-        """A converted library: <media>/<lib> turned into catalog/tanfo/<lib>-nfo (and the settings that say so)."""
-        view = os.path.join(self.catalog, "tanfo", lib + "-nfo")
-        for chan in ("NBC News", "Some Channel"):
-            touch(os.path.join(view, chan, "tvshow.nfo"))
-            touch(os.path.join(view, chan, "Season 2026", f"20260101_[abc]_{chan}.mp4"))
-            touch(os.path.join(view, chan, "poster.jpg"))
-        touch(os.path.join(view, "Playlists", "Picks.m3u8"))
-        libs = [*getattr(self, "libs", []), os.path.join(self.media, lib)]
-        self.libs = libs
-        self.f.ta = lambda: {"enabled": enabled, "libraries": libs}
 
     def test_with_no_pool_the_real_media_folders_are_shown(self):
         self.assertEqual(self.f.info()["media_source"], "media")
@@ -126,8 +113,6 @@ class OneMediaViewTest(Base):
         os.makedirs(os.path.join(self.catalog, "media-links"))                     # made at start, not filled yet
         self.assertEqual(self.f.info()["media_source"], "media")
         self.assertEqual(self.names(self.f.list("media", "")), ["anime", "movies"])
-        self.tanfo()
-        self.assertEqual(self.names(self.f.list("media", "")), ["anime", "movies", "youtube-nfo"])
 
     def test_with_a_pool_the_pool_is_what_is_shown_and_it_is_just_called_media(self):
         self.pool()
@@ -136,26 +121,14 @@ class OneMediaViewTest(Base):
         self.assertEqual(self.names(self.f.list("media", "")), ["anime"])               # the pool's layout, not the raw folders
         self.assertEqual(self.names(self.f.list("media", "anime/Show")), ["e1.mp4"])
 
-    def test_a_converted_library_is_a_folder_named_after_it_with_nfo_added(self):
-        self.pool()
-        self.tanfo()
-        top = self.f.list("media", "")
-        self.assertEqual(self.names(top), ["anime", "youtube-nfo"])
-        self.assertEqual([e["kind"] for e in top["entries"]], ["dir", "dir"])
-        inside = self.f.list("media", "youtube-nfo")
-        self.assertEqual(self.names(inside), ["Playlists", "NBC News", "Some Channel"])   # the playlists show as a folder, first
-        self.assertEqual(inside["path"], "youtube-nfo")                                # the path the page used is reported back
-        self.assertEqual(self.names(self.f.list("media", "youtube-nfo/NBC News/Season 2026")), ["20260101_[abc]_NBC News.mp4"])
-
-    def test_a_channels_shorts_are_one_choice_that_keeps_following_new_shorts_and_a_playlist_is_a_source(self):
+    def test_a_youtube_channels_shorts_are_one_choice_that_keeps_following_new_shorts(self):
         self.f = Files(self.media, self.catalog, follows_path=os.path.join(self.root, "follows.json"))
-        self.tanfo()
-        libs = self.libs
-        self.f.ta = lambda: {"enabled": False, "libraries": libs}
-        view = os.path.join(self.catalog, "tanfo", "youtube-nfo", "NBC News")
+        view = os.path.join(self.media, "youtube", "NBC News")
+        touch(os.path.join(view, "tvshow.nfo"))
+        touch(os.path.join(view, "Season 2026", "20260101_[abc]_NBC News.mp4"))
         touch(os.path.join(view, "Season 12026", "short1.mp4"))
         touch(os.path.join(view, "Season 22026", "live1.mp4"))
-        shorts = self.f.add_show("youtube-nfo/NBC News", types=["shorts"])
+        shorts = self.f.add_show("youtube/NBC News", types=["shorts"])
         self.assertEqual(shorts["tag"], "NBC News - Shorts")
         linked = sorted(os.path.relpath(os.path.join(r, n), os.path.join(self.tags, shorts["tag"])) for r, _d, ns in os.walk(os.path.join(self.tags, shorts["tag"])) for n in ns if n.endswith(".mp4"))
         self.assertEqual(linked, [os.path.join("NBC News", "Season 12026", "short1.mp4")])   # no standard video, no stream
@@ -165,52 +138,9 @@ class OneMediaViewTest(Base):
         touch(os.path.join(view, "Season 2027", "v.mp4"))
         self.f.refresh_follows()
         self.assertFalse(os.path.exists(os.path.join(self.tags, shorts["tag"], "NBC News", "Season 2027")))
-        self.assertEqual(self.f.show_members()[shorts["tag"]], [{"root": "media", "path": "youtube-nfo/NBC News", "types": ["shorts"]}])
+        self.assertEqual(self.f.show_members()[shorts["tag"]], [{"root": "media", "path": "youtube/NBC News", "types": ["shorts"]}])
         with self.assertRaises(files.FileError):
             self.f.add_show("movies/Film/Film.mkv", types=["shorts"])                             # only a YouTube channel has kinds
-        play = self.f.add_show("youtube-nfo/Playlists/Picks")
-        self.assertEqual((play["tag"], play["kind"]), ("Picks", "playlist"))
-
-    def test_several_libraries_each_show_up_under_their_own_name(self):
-        self.tanfo("youtube")
-        self.tanfo("YT Archive")
-        self.assertEqual(self.names(self.f.list("media", "")), ["anime", "movies", "youtube-nfo", "YT Archive-nfo"])
-        self.assertEqual(self.names(self.f.list("media", "YT Archive-nfo")), ["Playlists", "NBC News", "Some Channel"])
-
-    def test_a_library_that_has_not_been_converted_yet_shows_no_folder(self):
-        self.f.ta = lambda: {"enabled": True, "libraries": [os.path.join(self.media, "youtube")]}
-        self.assertNotIn("youtube-nfo", self.names(self.f.list("media", "")))
-
-    def test_the_raw_tubearchivist_folders_are_hidden_once_their_readable_versions_are_on(self):
-        touch(os.path.join(self.media, "youtube", "UCaaaaaaaaaaaaaaaaaaaaaa", "v.mp4"))
-        touch(os.path.join(self.media, "My Videos", "UCbbbbbbbbbbbbbbbbbbbbbb", "v.mp4"))
-        self.tanfo("youtube")
-        self.tanfo("My Videos")
-        self.assertIn("youtube", self.names(self.f.list("media", "")))                   # the conversion is off: show it
-        libs = self.libs
-        self.f.ta = lambda: {"enabled": True, "libraries": libs}
-        names = self.names(self.f.list("media", ""))
-        self.assertNotIn("youtube", names)                                             # on: the readable ones replace them
-        self.assertNotIn("My Videos", names)
-        self.assertIn("youtube-nfo", names)
-        self.assertIn("My Videos-nfo", names)
-        self.f.ta = lambda: {"enabled": True, "libraries": [os.path.join(self.media, "anime", "deeper")]}
-        self.assertIn("youtube", self.names(self.f.list("media", "")))                   # only a top-level folder is hidden
-
-    def test_the_original_stays_visible_until_its_converted_version_exists(self):
-        touch(os.path.join(self.media, "youtube", "UCaaaaaaaaaaaaaaaaaaaaaa", "v.mp4"))
-        self.f.ta = lambda: {"enabled": True, "libraries": [os.path.join(self.media, "youtube")]}
-        self.assertIn("youtube", self.names(self.f.list("media", "")))               # nothing converted yet
-        self.tanfo(enabled=True)
-        self.assertNotIn("youtube", self.names(self.f.list("media", "")))            # now the readable one replaces it
-
-    def test_a_folder_that_already_has_the_converted_name_keeps_it(self):
-        os.makedirs(os.path.join(self.media, "youtube-nfo"))
-        self.tanfo()
-        names = self.names(self.f.list("media", ""))
-        self.assertIn("youtube-nfo", names)
-        self.assertIn("youtube-nfo (converted)", names)
-        self.assertEqual(self.names(self.f.list("media", "youtube-nfo (converted)")), ["Playlists", "NBC News", "Some Channel"])
 
     def test_a_folder_that_is_just_one_movie_shows_as_the_movie(self):
         top = self.f.list("media", "movies")                       # movies/Film/Film.mkv + Film.nfo
@@ -245,30 +175,12 @@ class OneMediaViewTest(Base):
         self.assertEqual(self.names(self.f.list("tags", "Mix/Show/Part1")), ["e1.mp4", "e2.mp4"])    # the nfo links are there, hidden
         self.assertTrue(os.path.islink(os.path.join(self.tags, "Mix", "Show", "tvshow.nfo")))
 
-    def test_adding_from_a_converted_folder_works_and_keeps_its_name(self):
-        self.pool()
-        self.tanfo()
-        self.f.create_tag("News")
-        out = self.f.add("News", [{"root": "media", "path": "youtube-nfo/NBC News"}])
-        self.assertEqual(out["added"], 2)                                              # the video and the channel's tvshow.nfo
-        link = os.path.join(self.tags, "News", "NBC News", "Season 2026", "20260101_[abc]_NBC News.mp4")
-        self.assertTrue(os.path.islink(link))
-        self.f.add("News", [{"root": "media", "path": "youtube-nfo"}])                 # the whole folder: named after it
-        self.assertTrue(os.path.isdir(os.path.join(self.tags, "News", "youtube-nfo", "Some Channel")))
-
     def test_adding_from_the_pool_points_at_the_real_file(self):
         self.pool()
         self.f.create_tag("Mix")
         self.f.add("Mix", [{"root": "media", "path": "anime/Show"}])
         self.assertEqual(os.readlink(os.path.join(self.tags, "Mix", "Show", "e1.mp4")),
                          os.path.join(self.media, "anime", "Show", "Part1", "e1.mp4"))        # not at the pool's link
-
-    def test_paths_that_try_to_leave_a_converted_folder_are_refused(self):
-        self.tanfo()
-        for bad in ("youtube-nfo/..", "youtube-nfo/../..", "youtube-nfo/NBC News/../../.."):
-            with self.assertRaises(FileError, msg=bad):
-                self.f.list("media", bad)
-
 
 class FollowTest(Base):
     """A folder added to a list stays followed: videos that appear in it later are linked in too."""
@@ -349,58 +261,24 @@ class FollowTest(Base):
         self.assertEqual(self.f.refresh_follows()["added"], 1)
         self.assertIsNone(self.f.follows()[0]["error"])
 
-    def test_a_converted_youtube_channel_can_be_followed_too(self):
-        view = os.path.join(self.catalog, "tanfo", "youtube-nfo", "NBC News")
+    def test_a_youtube_channel_can_be_followed_too(self):
+        view = os.path.join(self.media, "youtube", "NBC News")
         touch(os.path.join(view, "tvshow.nfo"))
         touch(os.path.join(view, "Season 2026", "20260101_[a]_one.mp4"))
-        libs = [os.path.join(self.media, "youtube")]
-        self.f.ta = lambda: {"enabled": True, "libraries": libs}
         touch(os.path.join(view, "Season 2026", "20260101_[c]_three.mp4"))
-        self.f.add("Anime", [{"root": "media", "path": "youtube-nfo/NBC News"}], follow=True)         # a whole channel can go in a list
+        self.f.add("Anime", [{"root": "media", "path": "youtube/NBC News"}], follow=True)             # a whole channel can go in a list
         touch(os.path.join(view, "Season 2026", "20260102_[b]_two.mp4"))
         self.assertEqual(self.f.refresh_follows()["added"], 1)
         self.assertTrue(os.path.islink(os.path.join(self.tags, "Anime", "NBC News", "Season 2026", "20260102_[b]_two.mp4")))
-        self.assertFalse(any(e.get("show") for e in self.f.list("media", "youtube-nfo")["entries"]))      # a channel is not marked as a TV show
 
 
-class PlaylistAndListTest(Base):
-    """A TubeArchivist playlist can be added to a list like a folder, and a list can hold other lists."""
+class ListInListTest(Base):
+    """A list can hold other lists."""
 
     def setUp(self):
         super().setUp()
         self.f = Files(self.media, self.catalog, follows_path=os.path.join(self.root, "config", "follows.json"))
-        self.view = os.path.join(self.catalog, "tanfo", "youtube-nfo")
-        for chan, vid in (("NBC News", "a"), ("Some Channel", "b")):
-            touch(os.path.join(self.view, chan, "tvshow.nfo"))
-            touch(os.path.join(self.view, chan, "Season 2026", f"20260101_[{vid}]_{chan}.mp4"))
-            touch(os.path.join(self.view, chan, "Season 2026", f"20260101_[{vid}]_{chan}.nfo"))
-        touch(os.path.join(self.view, "Playlists", "Picks.m3u8"),
-              "#EXTM3U\n#EXTINF:-1,x\n../NBC News/Season 2026/20260101_[a]_NBC News.mp4\n"
-              "#EXTINF:-1,y\n../Some Channel/Season 2026/20260101_[b]_Some Channel.mp4\n../Gone/x.mp4\n")
-        libs = [os.path.join(self.media, "youtube")]
-        self.f.ta = lambda: {"enabled": True, "libraries": libs}
         self.f.create_tag("Mix")
-
-    def test_a_playlists_folder_lists_the_playlists(self):
-        self.assertIn("Playlists", self.names(self.f.list("media", "youtube-nfo")))
-        got = self.f.list("media", "youtube-nfo/Playlists")["entries"]
-        self.assertEqual([(e["name"], e["kind"], e["videos"]) for e in got], [("Picks", "playlist", 3)])
-
-    def test_adding_a_playlist_links_its_videos_into_a_folder_named_for_it(self):
-        out = self.f.add("Mix", [{"root": "media", "path": "youtube-nfo/Playlists/Picks"}])
-        self.assertEqual(out["added"], 4)                                   # two videos and their episode nfos; the missing one is skipped
-        picks = os.path.join(self.tags, "Mix", "Picks")
-        self.assertEqual(sorted(f for f in os.listdir(picks) if f.endswith(".mp4")),
-                         ["20260101_[a]_NBC News.mp4", "20260101_[b]_Some Channel.mp4"])
-        self.assertTrue(os.path.islink(os.path.join(picks, "20260101_[a]_NBC News.mp4")))
-
-    def test_a_followed_playlist_picks_up_videos_added_to_it(self):
-        self.f.add("Mix", [{"root": "media", "path": "youtube-nfo/Playlists/Picks"}], follow=True)
-        touch(os.path.join(self.view, "Some Channel", "Season 2026", "20260102_[c]_new.mp4"))
-        with open(os.path.join(self.view, "Playlists", "Picks.m3u8"), "a") as f:
-            f.write("../Some Channel/Season 2026/20260102_[c]_new.mp4\n")
-        self.assertEqual(self.f.refresh_follows()["added"], 1)
-        self.assertTrue(os.path.islink(os.path.join(self.tags, "Mix", "Picks", "20260102_[c]_new.mp4")))
 
     def test_a_list_can_hold_another_list_and_follows_it(self):
         self.f.add("Mix", [{"root": "media", "path": "anime/Show"}])

@@ -23,7 +23,6 @@ import threading
 import time
 import uuid
 
-import settings
 
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"}
 SIDECAR_EXT = {".nfo"}          # travels with its video: FieldStation42 reads titles from it
@@ -31,7 +30,7 @@ MAX_ENTRIES = 3000              # one listing
 MAX_LINKS = int(os.environ.get("FILES_MAX_LINKS", "200000"))      # one "add": it runs in the background, so it can be big
 PEEK_SECONDS = 5.0              # most time one listing spends looking inside folders to find single movies
 HIDDEN = {"@eaDir", "#recycle", "$RECYCLE.BIN", "lost+found"}
-SOURCES = ("media", "pool", "tanfo")
+SOURCES = ("media", "pool")
 
 
 class FileError(Exception):
@@ -73,7 +72,7 @@ def clean_tag(name):
 
 _linking = {}                 # list name -> {"thread", "started"}: sources being linked in the background (see add_show)
 _linking_lock = threading.Lock()
-TYPE_LABELS = {"videos": "Videos", "shorts": "Shorts", "streams": "Streams"}   # a YouTube channel's kinds of video (TA_NFOWriter)
+TYPE_LABELS = {"videos": "Videos", "shorts": "Shorts", "streams": "Streams"}   # a YouTube channel's kinds of video (its seasons)
 SHOW_MARK = ".show"           # inside a list made from a show (see add_show): the show's folder in the media view
 SEASON = re.compile(r"^(season|series|saison|staffel|temporada|book|volume)\b[\s._-]*\d*|^s\d{1,2}$|^specials?$", re.I)
 EXTRA = re.compile(r"(^|[\s._-])(trailer|sample|behindthescenes|featurette|deleted|interview|scene|short|other)$", re.I)
@@ -193,8 +192,8 @@ def shows_in(tags_root):
 
 
 def season_type(part):
-    """"videos" (Season 2026), "shorts" (Season 12026) or "streams" (Season 22026) for a TA_NFOWriter season folder name,
-    None for anything else."""
+    """"videos" (Season 2026), "shorts" (Season 12026) or "streams" (Season 22026) for a YouTube channel's season folder
+    name (a downloader that sorts by year: Pinchflat, for one), None for anything else."""
     m = re.match(r"^Season (\d{4,5})$", part.strip())
     if not m:
         return None
@@ -226,31 +225,27 @@ def _inside(path, base):
 
 
 class Files:
-    def __init__(self, media_root, catalog_dir, ta=None, follows_path=None):
-        """media_root: where the media is mounted. catalog_dir: the catalog volume (/app/catalog).
-        ta: optional, returns the TubeArchivist settings ({"enabled": bool, "library": path}); with it, the raw
-        TubeArchivist folder is hidden once its readable version is on."""
+    def __init__(self, media_root, catalog_dir, follows_path=None):
+        """media_root: where the media is mounted. catalog_dir: the catalog volume (/app/catalog)."""
         self.catalog = catalog_dir
         self.follows_path = follows_path            # where followed folders are remembered; None: not remembered
         self._follow_lock = threading.Lock()
         self._add_jobs = {}                         # adds running or just done in the background (add_in_background)
         self._jobs_lock = threading.Lock()
         self.follow_status = {}
-        self.ta = ta or (lambda: {"enabled": False, "libraries": []})
         self.tags_root = os.path.join(catalog_dir, "by-genre")
         self.roots = {"media": media_root,
-                      "pool": os.path.join(catalog_dir, "media-links"),
-                      "tanfo": os.path.join(catalog_dir, "tanfo")}
+                      "pool": os.path.join(catalog_dir, "media-links")}
 
     # ---- what exists
     def info(self):
         roots = {name: os.path.isdir(path) for name, path in self.roots.items()}
         pool = self._pool_in_use()
         # "media" is the one view the page shows: the pool when there is one, else the real media folders
-        roots["media"] = pool or roots["media"] or roots["tanfo"]
+        roots["media"] = pool or roots["media"]
         return {"roots": roots, "tags": os.path.isdir(self.tags_root), "media_source": "pool" if pool else "media"}
 
-    # ---- the one media view: the pool (or the real folders) with the YouTube view as a folder in it
+    # ---- the one media view: the pool, or the real folders until there is one
     def _pool_in_use(self):
         """The pool counts once it holds something: it is made by the sync job's first pass, and until then (or
         if that job is off) the folder can exist and be empty, which would hide all of your media."""
@@ -265,51 +260,11 @@ class Files:
         except OSError:
             return []
 
-    def _settings(self):
-        try:
-            cfg = self.ta() or {}
-        except Exception:
-            return [], []
-        libs = cfg.get("libraries") or ([cfg["library"]] if cfg.get("library") else [])
-        views = cfg.get("views") or [{"library": p, "name": n} for p, n in settings.view_names(libs).items()]
-        return libs, (views if cfg.get("enabled") else [{**v, "off": True} for v in views])
-
-    def _hidden_raw(self):
-        """Names of the raw TubeArchivist folders at the top of the media, once their readable versions are on."""
-        out = set()
-        for v in self._settings()[1]:
-            if v.get("off") or not os.path.isdir(os.path.join(self.roots["tanfo"], v["name"])):
-                continue                      # off, or not converted yet: keep showing the original
-            lib = os.path.realpath(v["library"])
-            if os.path.dirname(lib) == os.path.realpath(self.roots["media"]):
-                out.add(os.path.basename(lib))
-        return out
-
-    def _view_folders(self, base):
-        """{name shown in the media view: real folder} for each converted library that has been built: the library's
-        own folder name plus -nfo. A name something else at the top already has gets ' (converted)' added."""
-        hidden = self._hidden_raw()
-        taken = {n.casefold() for n in self._top_names(base) if n not in hidden}
-        out = {}
-        for v in self._settings()[1]:
-            real = os.path.join(self.roots["tanfo"], v["name"])
-            if not os.path.isdir(real):
-                continue
-            name = v["name"] if v["name"].casefold() not in taken else f"{v['name']} (converted)"
-            taken.add(name.casefold())
-            out[name] = real
-        return out
-
     def _locate(self, root, rel):
         """(real folder, path inside it, name to give the top folder) for a place the page names."""
         rel = clean_rel(rel)
         if root == "media":
-            base = self._media_base()
-            first, _, rest = rel.partition("/")
-            real = self._view_folders(base).get(first)
-            if real:
-                return real, rest, first
-            return base, rel, None
+            return self._media_base(), rel, None
         return self._base(root), rel, None
 
     def _base(self, root):
@@ -344,7 +299,6 @@ class Files:
         peek_until = time.time() + PEEK_SECONDS     # looking inside every folder is slow on a network share: bounded
         markers = None
         inside_show = root in SOURCES and bool(rel_shown) and (SEASON.match(os.path.basename(full)) or classify(full)[0] == "show")
-        in_playlists = os.path.basename(full) == "Playlists" and os.path.dirname(os.path.dirname(full)) == self.roots["tanfo"]
         try:
             names = sorted(os.listdir(full), key=str.casefold)
         except OSError as e:
@@ -372,15 +326,11 @@ class Files:
                     entry["size"] = os.path.getsize(path)
             except OSError:
                 continue
-            if entry["kind"] == "file" and name.endswith(".m3u8") and in_playlists:
-                entry = {"name": name[:-5], "kind": "playlist", "videos": self._playlist_size(path)}
-                entries.append(entry)
-                continue
             if entry["kind"] == "file" and not entry["video"]:
                 continue                       # only folders and videos are shown: no .nfo, images, subtitles
             if entry["kind"] == "dir" and root in SOURCES and not inside_show and time.time() < peek_until:   # one movie in a folder: show the movie
                 what, video = classify(path)
-                if what == "show" and not self._in_view(rel_shown or name):
+                if what == "show":
                     entry["show"] = True
                     if markers is None:
                         markers = self._markers()
@@ -393,20 +343,9 @@ class Files:
                         size = 0
                     entry = {"name": f"{name}/{video}", "label": name, "kind": "file", "video": True, "size": size}
             entries.append(entry)
-        if root == "media" and not rel_shown:           # the top of the media view (not inside the YouTube folder)
-            raw = self._hidden_raw()
-            entries = [e for e in entries if e["name"] not in raw]               # its readable version replaces it
-            for name in self._view_folders(base):
-                if not any(e["name"] == name for e in entries):
-                    entries.append({"name": name, "kind": "dir"})
         if root == "tags" and not rel_shown:             # shows used as sources have their own place (shows()), not the lists
             entries = [e for e in entries if not (e["kind"] == "dir" and os.path.exists(os.path.join(full, e["name"], SHOW_MARK)))]
-        if root == "media" and rel_shown and "/" not in rel_shown and rel_shown in self._view_folders(self._media_base()):
-            for e in entries:                                 # a converted library's playlists come first, as "_Playlists"
-                if e["kind"] == "dir" and e["name"] == "Playlists":
-                    e["label"] = "_Playlists"
-        entries.sort(key=lambda e: (e["kind"] != "dir", (e.get("label") or e["name"]) != "_Playlists",
-                                    (e.get("label") or e["name"]).casefold()))
+        entries.sort(key=lambda e: (e["kind"] != "dir", (e.get("label") or e["name"]).casefold()))
         return {"root": root, "path": rel_shown, "entries": entries, "truncated": truncated}
 
     # ---- shows as sources: a station can play a show directly
@@ -457,7 +396,7 @@ class Files:
         if not os.path.lexists(full):
             raise FileError("that is not in the list", 404)
         base = self._media_base()
-        places = [("", os.path.realpath(base))] + [(name, os.path.realpath(r)) for name, r in self._view_folders(base).items()]
+        places = [("", os.path.realpath(base))]
 
         def in_media(path):
             real = os.path.realpath(path)
@@ -488,26 +427,23 @@ class Files:
         without a list being made first. It is made as a list (kept up to date for a folder) and marked, so it is
         offered in the Shows choice and not among the lists. A whole top-level folder is not allowed: choose a
         series inside it. `types`: only one kind of a YouTube channel's videos ("videos", "shorts" or "streams"; each
-        has its own seasons), so no season has to be picked. A YouTube playlist (a .m3u8 in a library's Playlists
-        folder) is a source too."""
+        has its own seasons), so no season has to be picked."""
         rel = clean_rel(rel)
         if not rel:
             raise FileError("choose a series")
         types = self._clean_types(types)
         base, inner, _label = self._locate("media", rel)
         full = os.path.join(base, inner) if inner else base
-        playlist = (not os.path.lexists(full) and os.path.lexists(full + ".m3u8")
-                    and os.path.basename(os.path.dirname(full)) == "Playlists")
-        if not playlist and (not os.path.lexists(full) or not _inside(os.path.dirname(full) if os.path.isfile(full) else full, base)):
+        if (not os.path.lexists(full) or not _inside(os.path.dirname(full) if os.path.isfile(full) else full, base)):
             raise FileError("that is not there", 404)
         if os.path.isdir(full) and "/" not in rel:
             raise FileError(f"'{rel}' is a whole folder of your media: choose a series inside it (and a season, if you want one)")
-        kind = "playlist" if playlist else source_kind(full)
+        kind = source_kind(full)
         if kind is None:
-            raise FileError("only a series, a season, a playlist, or one video can be a source")
+            raise FileError("only a series, a season, or one video can be a source")
         key, label = rel, None
         if types:
-            if kind != "series" or not self._in_view(rel):
+            if kind != "series":
                 raise FileError("only a YouTube channel has shorts, streams and videos to choose between")
             key = f"{rel}?{','.join(types)}"
             label = " + ".join(TYPE_LABELS[x] for x in types)
@@ -678,41 +614,6 @@ class Files:
         return {"tag": name, "removed": removed}
 
     # ---- adding
-    @staticmethod
-    def _playlist_size(m3u):
-        try:
-            with open(m3u, encoding="utf-8", errors="replace") as f:
-                return sum(1 for line in f if line.strip() and not line.startswith("#"))
-        except OSError:
-            return 0
-
-    @staticmethod
-    def _playlist_files(m3u, view):
-        """(list folder name, [(name, link)]) for the videos of one TubeArchivist playlist: the converted links in
-        the view that its .m3u8 names, each with its episode .nfo, in the playlist's order."""
-        out, seen = [], set()
-        view = os.path.normpath(view)
-        try:
-            with open(m3u, encoding="utf-8", errors="replace") as f:
-                lines = [line.strip() for line in f]
-        except OSError as e:
-            raise FileError(f"cannot read that playlist: {e.strerror}", 403)
-        for line in lines:
-            if not line or line.startswith("#"):
-                continue
-            p = os.path.normpath(os.path.join(os.path.dirname(m3u), line))
-            if not p.startswith(view + os.sep) or not os.path.lexists(p) or not _is_video(p):
-                continue
-            name = os.path.basename(p)
-            if name in seen:
-                continue
-            seen.add(name)
-            out.append((name, p))
-            nfo = os.path.splitext(p)[0] + ".nfo"
-            if os.path.lexists(nfo):
-                out.append((os.path.basename(nfo), nfo))
-        return os.path.basename(m3u)[:-5], out
-
     def _source_files(self, root, rel):
         """(path relative to the chosen folder, full path) for each video and nfo under a source."""
         if root not in SOURCES and root != "tags":
@@ -724,10 +625,6 @@ class Files:
             self._tag_dir(rel)                         # it must be a list that exists (and not a link)
         base, rel, label = self._locate(root, rel)
         full = os.path.join(base, rel) if rel else base
-        if (root != "tags" and not os.path.lexists(full) and os.path.lexists(full + ".m3u8")
-                and os.path.basename(os.path.dirname(full)) == "Playlists"
-                and os.path.dirname(os.path.dirname(os.path.dirname(full))) == self.roots["tanfo"]):
-            return self._playlist_files(full + ".m3u8", os.path.dirname(os.path.dirname(full)))
         if not os.path.lexists(full):
             raise FileError(f"{root}/{rel} is not there", 404)
         # A link to a FILE is fine (the pool is made of them, pointing into the media). A folder, or a link to a
@@ -834,12 +731,6 @@ class Files:
         if follow and followed and self.follows_path:
             out["following"] = self._follow(tag, followed)
         return out
-
-    def _in_view(self, rel):
-        """Is this path in the media view inside a converted YouTube library (a "-nfo" folder)? A channel there is not a
-        TV series: it can go into a list like any folder."""
-        top = clean_rel(rel).split("/")[0]
-        return bool(top) and top in self._view_folders(self._media_base())
 
     def _check_no_loop(self, tag, inside, follow):
         """A list can't contain itself, and (when it is kept up to date) lists can't contain each other in a circle."""

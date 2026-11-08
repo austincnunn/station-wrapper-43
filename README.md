@@ -81,7 +81,6 @@ Add the container as an HDHomeRun tuner and its `/xmltv.xml` as the guide; your 
  your media ─────>│ console :4242  ──writes──>  fs42_fluid.db  ──reads──>  tuner :5004    │──> browser, Jellyfin, VLC
  (read-only)      │ (FieldStation42)                (sqlite)               (ffmpeg, mpegts)│
                   │ + sync (optional): keeps a pool of symlinks to your media current     │
-                  │ + ta-nfo (optional): a readable library of your TubeArchivist videos  │
                   └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,7 +96,7 @@ A small supervisor runs these and keeps them up (it restarts one that stops, tag
 
 - **This project's own code** (the wrapper, dashboard, tools and scripts) is under the [PolyForm Noncommercial License 1.0.0](LICENSE): **free for personal use** (research, hobby projects, private entertainment, study) and for other noncommercial uses the license lists. **Commercial use needs a separate agreement with the author**: contact JamesM92 through this repository.
 - **FieldStation42** (the scheduling engine, fetched from upstream when the image is built) is by shane-mason and is under the **Mozilla Public License 2.0**. It is included unmodified, with its own `LICENSE`. This project's license does not apply to it.
-- Everything else in the image (ffmpeg, Python and its packages, mpegts.js, TA_NFOWriter) keeps its own license.
+- Everything else in the image (ffmpeg, Python and its packages, mpegts.js) keeps its own license.
 - This is a plain-language summary, not legal advice. The `LICENSE` file is what counts.
 
 ## CI/CD

@@ -102,7 +102,7 @@ if [ ! -e /app/runtime/channel.socket ]; then
   touch /app/runtime/channel.socket
 fi
 
-# 2. The catalog holds REAL folders, with only the files inside them linked (by-genre/, tanfo/,
+# 2. The catalog holds REAL folders, with only the files inside them linked (by-genre/,
 #    media-links/). An earlier version also linked each whole media folder into it
 #    (catalog/anime -> /mnt/media/anime/). A link to a whole folder sends a file manager
 #    straight into the real media instead of showing a catalog, so none are made now, and the ones
@@ -159,8 +159,8 @@ fi
 
 # 4. Say which build this is, last of the startup messages and just above the services' own
 #    output, so nobody has to scroll to find it. Then run everything (the console, the tuner,
-#    and whichever of sync / ta-nfo are switched on) under a small supervisor that keeps them
+#    and the sync if it is switched on) under a small supervisor that keeps them
 #    up. tini, the real PID 1, reaps strays.
 echo "entrypoint: Station Wrapper 43 ${FS42_WRAPPER_REF:-dev} (commit ${FS42_WRAPPER_SHA:-unknown}, built ${FS42_WRAPPER_BUILT:-unknown})"
-echo "entrypoint: contains FieldStation42 $(cut -c1-7 /opt/FS42_REF 2>/dev/null || echo unknown) and TA_NFOWriter ${TA_NFOWRITER_VERSION:-unknown}"
+echo "entrypoint: contains FieldStation42 $(cut -c1-7 /opt/FS42_REF 2>/dev/null || echo unknown)"
 exec python3 /opt/supervisor/supervisor.py

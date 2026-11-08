@@ -73,10 +73,10 @@ class LoginTest(unittest.TestCase):
                          "/login.html?next=%2Fstations.html%3Fname%3DA%2520B")             # the whole address, encoded
 
     def test_every_api_call_needs_the_login(self):
-        for path in ("/api/files/info", "/api/files/list?root=media", "/api/ta/status", "/api/keeper", "/api/schedule?name=x",
+        for path in ("/api/files/info", "/api/files/list?root=media", "/api/keeper", "/api/schedule?name=x",
                      "/api/stations", "/api/stations/get?name=x"):
             self.assertEqual(self.c.request("GET", path)[0], 401, path)
-        for path in ("/api/files/create-tag", "/api/ta/settings", "/api/keeper/settings", "/api/stations/save",
+        for path in ("/api/files/create-tag", "/api/keeper/settings", "/api/stations/save",
                      "/api/stations/delete", "/api/stations/build"):
             self.assertEqual(self.c.request("POST", path, {"x": 1})[0], 401, path)
         self.assertFalse(os.path.exists(os.path.join(self.root, "catalog", "by-genre", "x")))

@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "== syntax"
-python3 -m py_compile fs42-tuner/*.py scripts/*.py fs42-sync/*.py supervisor/*.py ta-nfo/*.py
+python3 -m py_compile fs42-tuner/*.py scripts/*.py fs42-sync/*.py supervisor/*.py
 bash -n scripts/*.sh setup-dirs.sh fieldstation42/entrypoint.sh
 sh -n farm/run.sh fieldstation42/fs42-channels
 python3 -c "import json; json.load(open('fs42-tuner/config.default.json')); json.load(open('fs42-tuner/config.example.json'))"
@@ -29,7 +29,6 @@ python3 scripts/test_firstrun.py 2>&1 | tail -3
 python3 scripts/test_setup_dirs.py 2>&1 | tail -3
 (cd fs42-sync && python3 test_sync.py 2>&1 | tail -3)
 (cd supervisor && python3 test_supervisor.py 2>&1 | tail -3)
-(cd ta-nfo && python3 test_service.py 2>&1 | tail -3)
 
 echo "== FieldStation42 contract (upstream's newest, which the image build fetches)"
 fs42="$(mktemp -d)"

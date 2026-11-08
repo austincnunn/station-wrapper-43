@@ -32,7 +32,7 @@
     const g = r.guide || {};
     sys.replaceChildren(el("h2", { textContent: "System" }), table([
       ["Version", `${r.version.wrapper || "?"} (${(r.version.commit || "?").slice(0, 7)}), built ${r.version.built || "?"}`],
-      ["Inside it", `FieldStation42 ${r.version.fieldstation42 || "?"}, TA_NFOWriter ${r.version.ta_nfowriter || "?"}, ${r.ffmpeg.found ? r.ffmpeg.version : "ffmpeg NOT FOUND"}`],
+      ["Inside it", `FieldStation42 ${r.version.fieldstation42 || "?"}, ${r.ffmpeg.found ? r.ffmpeg.version : "ffmpeg NOT FOUND"}`],
       ["Running for", dur(r.uptime_seconds)],
       ["Console (:4242)", r.console.reachable ? `reachable, ${r.console.stations} stations` : `NOT reachable: ${r.console.error || ""}`],
       ["Media folder", `${r.media.path}: ${r.media.present ? "has files" : "EMPTY or missing"}`],

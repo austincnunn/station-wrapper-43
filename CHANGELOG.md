@@ -5,6 +5,16 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 
 ## [Unreleased]
 
+### Added
+- **The guide channel's picture shape and text size.** Standard (4:3) draws the guide in the middle of the picture with black
+  bars at the sides, so a 4:3 TV that crops the sides shows it edge to edge; text size runs from Small to Extra large.
+
+### Removed
+- **The TubeArchivist conversion.** The `ta-nfo` service, its panel on the Files page (*YouTube (TubeArchivist)*), the
+  `/api/ta/*` calls, the `TA_ENABLED` / `TA_LIBRARY` / `TA_INTERVAL_MINUTES` variables, the `catalog/tanfo` view and its
+  playlists, and TA_NFOWriter in the image. YouTube channels downloaded with `.nfo` files (Pinchflat, yt-dlp) still get their
+  names, and their yearly seasons can still be chosen by kind. A `ta` key left in `settings.json` is ignored.
+
 ## [0.7.0] - 2026-10-11
 
 The first public release.

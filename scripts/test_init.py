@@ -31,11 +31,10 @@ class InitTest(unittest.TestCase):
         touch(os.path.join(self.media, "bump", "b.mp4"))
         touch(os.path.join(self.media, "tvseries", "Show", "tvshow.nfo"), "<tvshow><genre>Comedy</genre></tvshow>")
         touch(os.path.join(self.media, "tvseries", "Show", "S1", "e1.mp4"))
-        # a TubeArchivist-style view: channels with tvshow.nfo, and playlists
-        touch(os.path.join(self.media, "tanfo", "Chan", "tvshow.nfo"), "<tvshow><genre>News</genre></tvshow>")
-        touch(os.path.join(self.media, "tanfo", "Chan", "Season 1", "v.mp4"))
-        touch(os.path.join(self.media, "tanfo", "Playlists", "Ads.m3u8"), "#EXTM3U\n")
-        touch(os.path.join(self.media, "tanfo", "ta_nfo.py"))
+        # a folder that is itself a TV library: channels with tvshow.nfo, and playlists
+        touch(os.path.join(self.media, "tvlib", "Chan", "tvshow.nfo"), "<tvshow><genre>News</genre></tvshow>")
+        touch(os.path.join(self.media, "tvlib", "Chan", "Season 1", "v.mp4"))
+        touch(os.path.join(self.media, "tvlib", "Playlists", "Ads.m3u8"), "#EXTM3U\n")
         touch(os.path.join(self.media, "random stuff", "notes.txt"))        # not a library
 
     def tearDown(self):
@@ -49,15 +48,15 @@ class InitTest(unittest.TestCase):
 
     def test_finds_a_tv_library_that_is_not_one_of_the_standard_folders(self):
         libs = init.candidate_libraries(self.media)
-        self.assertEqual([(l["label"], l["shows"], l["playlists"]) for l in libs], [("tanfo", 1, ["Ads"])])
+        self.assertEqual([(l["label"], l["shows"], l["playlists"]) for l in libs], [("tvlib", 1, ["Ads"])])
 
     def test_a_folder_with_no_shows_or_playlists_is_not_a_library(self):
         self.assertNotIn("random stuff", [l["label"] for l in init.candidate_libraries(self.media)])
 
     def test_the_container_check_reports_paths_no_mount_covers(self):
         dests = ["/mnt/media", "/app/runtime"]
-        self.assertEqual(init.uncovered(["/mnt/media", "/mnt/media/tanfo"], dests), [])
-        self.assertEqual(init.uncovered(["/data/tanfo", "/mnt/media2"], dests), ["/data/tanfo", "/mnt/media2"])
+        self.assertEqual(init.uncovered(["/mnt/media", "/mnt/media/tvlib"], dests), [])
+        self.assertEqual(init.uncovered(["/data/tvlib", "/mnt/media2"], dests), ["/data/tvlib", "/mnt/media2"])
 
     def test_it_writes_a_manifest_the_generator_can_read_back(self):
         out = os.path.join(self.root, "groups.toml")
@@ -67,7 +66,7 @@ class InitTest(unittest.TestCase):
         self.assertEqual(m["defaults"]["media_root"], self.media)
         # the container sees the media under /mnt/media whatever this host's path is, so the
         # library is written with both: the host folder, and where the container finds it
-        self.assertEqual(m["defaults"]["tv_library"], [os.path.join(self.media, "tanfo") + "=/mnt/media/tanfo"])
+        self.assertEqual(m["defaults"]["tv_library"], [os.path.join(self.media, "tvlib") + "=/mnt/media/tvlib"])
         self.assertEqual(m["defaults"]["target_root"], "/mnt/media")
         self.assertEqual(m["defaults"]["groups"], [])       # the examples are comments until you edit them
         self.assertIn("Comedy", text)                       # the channel preview
@@ -77,19 +76,19 @@ class InitTest(unittest.TestCase):
         out = os.path.join(self.root, "g.toml")
         self.run_init("--out", out, "--target-root", self.media)
         m = bc.load_manifest(out)
-        self.assertEqual(m["defaults"]["tv_library"], [os.path.join(self.media, "tanfo")])
+        self.assertEqual(m["defaults"]["tv_library"], [os.path.join(self.media, "tvlib")])
         self.assertNotIn("target_root", m["defaults"])                         # left as a comment
 
     def test_a_library_below_the_media_root_keeps_its_place_in_the_container(self):
         touch(os.path.join(self.media, "yt", "deep", "Chan", "tvshow.nfo"), "<tvshow/>")
         touch(os.path.join(self.media, "nested", "x.txt"))
         libs = {l["label"]: l for l in init.candidate_libraries(self.media)}
-        self.assertIn("tanfo", libs)                                           # one level down is what is looked for
+        self.assertIn("tvlib", libs)                                           # one level down is what is looked for
         out = os.path.join(self.root, "g.toml")
         self.run_init("--out", out, "--target-root", "/data/share")
         got = bc.load_manifest(out)["defaults"]
         self.assertEqual(got["target_root"], "/data/share")
-        self.assertEqual(got["tv_library"], [os.path.join(self.media, "tanfo") + "=/data/share/tanfo"])
+        self.assertEqual(got["tv_library"], [os.path.join(self.media, "tvlib") + "=/data/share/tvlib"])
 
     # ---- the container's mounts: the whole media folder, or one volume per folder
     def stub_mounts(self, destinations):
@@ -108,17 +107,17 @@ class InitTest(unittest.TestCase):
         self.assertNotIn("NOT VISIBLE", checked)
 
     def test_one_volume_per_folder_is_checked_folder_by_folder(self):
-        # the fixture has tvseries, bump and a TV library "tanfo" on the host
-        self.stub_mounts(["/mnt/media/tvseries", "/mnt/media/bump", "/mnt/media/tanfo"])
+        # the fixture has tvseries, bump and a TV library "tvlib" on the host
+        self.stub_mounts(["/mnt/media/tvseries", "/mnt/media/bump", "/mnt/media/tvlib"])
         checked = self.check()
         self.assertIn("every folder above is mounted", checked)
 
     def test_a_folder_that_has_no_volume_is_named(self):
-        self.stub_mounts(["/mnt/media/tvseries", "/mnt/media/tanfo"])          # bump has no volume
+        self.stub_mounts(["/mnt/media/tvseries", "/mnt/media/tvlib"])          # bump has no volume
         checked = self.check()
         self.assertIn("NOT VISIBLE: /mnt/media/bump", checked)
         self.assertNotIn("NOT VISIBLE: /mnt/media/tvseries", checked)
-        self.assertNotIn("NOT VISIBLE: /mnt/media/tanfo", checked)
+        self.assertNotIn("NOT VISIBLE: /mnt/media/tvlib", checked)
         self.assertIn("read-only volume", checked)
 
     def test_a_folder_of_the_host_that_the_container_cannot_see_is_not_blamed_on_a_neighbour(self):
@@ -127,7 +126,7 @@ class InitTest(unittest.TestCase):
 
     def test_folders_that_are_not_on_the_host_are_not_demanded(self):
         shutil.rmtree(os.path.join(self.media, "tvseries"))                    # anime and movies were never here
-        self.stub_mounts(["/mnt/media/bump", "/mnt/media/tanfo"])
+        self.stub_mounts(["/mnt/media/bump", "/mnt/media/tvlib"])
         self.assertNotIn("NOT VISIBLE", self.check())
 
     def test_it_will_not_overwrite_without_force(self):
@@ -178,35 +177,6 @@ class InitTest(unittest.TestCase):
                                 "--catalog", os.path.join(self.root, "catalog"))
         self.assertIn("symlinks work", text)
         self.assertNotIn("PROBLEM", text)
-
-    def test_it_finds_the_view_the_ta_nfo_service_builds_in_the_catalog(self):
-        catalog = os.path.join(self.root, "data", "catalog")
-        touch(os.path.join(catalog, "tanfo", "Chan", "tvshow.nfo"), "<tvshow><genre>News</genre></tvshow>")
-        touch(os.path.join(catalog, "tanfo", "Chan", "S1", "v.mp4"))
-        touch(os.path.join(catalog, "tanfo", "Playlists", "Ads.m3u8"), "#EXTM3U\n")
-        out = os.path.join(self.root, "g.toml")
-        saved = init.container_destinations
-        init.container_destinations = lambda container: ["/somewhere/else"]    # a container that mounts neither
-        try:
-            _, text = self.run_init("--catalog", catalog, "--out", out)
-        finally:
-            init.container_destinations = saved
-        self.assertIn("containers see it as /app/catalog/tanfo", text)
-        checked = text.split("Container check")[1].split("Symlink check")[0]
-        self.assertIn("NOT VISIBLE: /mnt/media", checked)                      # the container's own media mount is what is checked
-        self.assertNotIn(self.media, checked)                                  # not this host's path, which the container never sees
-        self.assertNotIn(f"NOT VISIBLE: {os.path.join(catalog, 'tanfo')}", checked)   # the view is judged by its container path
-        libs = bc.load_manifest(out)["defaults"]["tv_library"]
-        self.assertIn(os.path.join(catalog, "tanfo") + "=/app/catalog/tanfo", libs)
-        # and the generator accepts that exact entry
-        label, host, target = bc.parse_tv_library(os.path.join(catalog, "tanfo") + "=/app/catalog/tanfo", set())
-        self.assertEqual((label, target), ("tanfo", "/app/catalog/tanfo"))
-
-    def test_an_empty_catalog_view_is_not_reported(self):
-        catalog = os.path.join(self.root, "catalog")
-        os.makedirs(os.path.join(catalog, "tanfo"))
-        self.assertIsNone(init.catalog_view(catalog))
-        self.assertIsNone(init.catalog_view(None))
 
     def test_a_missing_media_root_is_a_clear_error(self):
         with self.assertRaises(SystemExit) as cm:

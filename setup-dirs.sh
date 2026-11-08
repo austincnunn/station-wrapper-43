@@ -8,8 +8,8 @@
 # THREE volumes make it work. Two are local folders under FS42_LOCAL_ROOT:
 #   config/    everything the container keeps: runtime/ (the schedule database and sockets),
 #              confs/ (station configs), tuner/ (the dashboard's config), groups.toml
-#   catalog/   everything made of symlinks: by-genre/ (tag folders), tanfo/ (the TubeArchivist
-#              view), media-links/ (a symlink for every video on your media)
+#   catalog/   everything made of symlinks: by-genre/ (tag folders), media-links/ (a symlink
+#              for every video on your media)
 # and the third is your media (FS42_MEDIA_ROOT), which stays on the share and may hold
 # several separate shares as subfolders.
 #
@@ -212,7 +212,7 @@ fi
 
 echo "Host directories ready:"
 echo "  $CONFIG_ROOT           (config: runtime/ confs/ tuner/)"
-echo "  $CATALOG_DIR           (catalog: by-genre/ tanfo/ media-links/)"
+echo "  $CATALOG_DIR           (catalog: by-genre/ media-links/)"
 echo "  $FS42_MEDIA_ROOT (existing; your media, may be one or several shares)"
 if [ "${RENAME_NEEDED:-0}" = 1 ]; then
   echo "! Remember to rename FS42_SSD_ROOT to FS42_LOCAL_ROOT in .env: docker compose needs the new name." >&2

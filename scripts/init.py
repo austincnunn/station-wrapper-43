@@ -6,8 +6,8 @@ channels, and write a starter groups.toml. Nothing else is written.
 
 What it does:
   1. Finds the libraries under --media-root: tvseries/, anime/, movies/ and
-     bump/, plus any other folder that is itself a TV library (a
-     TubeArchivist view built by TA_NFOWriter, for instance) and its playlists.
+     bump/, plus any other folder that is itself a TV library (a folder of
+     YouTube channels, for instance) and its playlists.
   2. Checks the FieldStation42 container can see those paths. Links only work
      when the containers mount the media at the same paths as this host. Also
      tests that the catalog and any TV-library folder can hold working
@@ -46,28 +46,7 @@ def candidate_libraries(media_root):
     return found
 
 
-CATALOG_VIEW = "tanfo"
 CONTAINER_CATALOG = "/app/catalog"
-
-
-def catalog_view(catalog):
-    """The TubeArchivist view the ta-nfo service builds inside the catalog, if it's there.
-
-    It is written by a container, so its links use container paths; the generator is
-    told both the host folder and the container path (HOST=CONTAINER).
-    """
-    if not catalog:
-        return None
-    path = os.path.join(os.path.abspath(catalog), CATALOG_VIEW)
-    if not os.path.isdir(path):
-        return None
-    playlists = sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(path, "Playlists"))
-                       if f.endswith(".m3u8")) if os.path.isdir(os.path.join(path, "Playlists")) else []
-    shows = [d for d in os.listdir(path) if os.path.isfile(os.path.join(path, d, "tvshow.nfo"))]
-    if not shows and not playlists:
-        return None
-    return {"path": path, "label": CATALOG_VIEW, "shows": len(shows), "playlists": playlists,
-            "container": f"{CONTAINER_CATALOG}/{CATALOG_VIEW}"}
 
 
 def uncovered(paths, destinations):
@@ -111,7 +90,7 @@ def render_manifest(media_root, libraries, catalog=None, target_root=None):
         lines += [f'  "{lib["path"]}{"=" + lib["container"] if lib.get("container") else ""}",' for lib in libraries]
         lines.append("]")
     else:
-        lines += ["", '# tv_libraries = ["/mnt/media/tanfo"]   # a TA_NFOWriter view, for example']
+        lines += ["", '# tv_libraries = ["/mnt/media/youtube"]   # a folder of YouTube channels, for example']
     lines += [
         "",
         "# Groups add videos to another place as symlinks; nothing is moved or copied, and the",
@@ -172,9 +151,6 @@ def main(argv=None):
     if target_root != media_root:
         for lib in libraries:       # the container sees them under its own mount, not under the host's path
             lib["container"] = f"{target_root}/{os.path.relpath(lib['path'], media_root)}"
-    view = catalog_view(args.catalog)
-    if view:
-        libraries.append(view)
     for lib in libraries:
         pl = f", {len(lib['playlists'])} playlists" if lib["playlists"] else ""
         where = f"  (the containers see it as {lib['container']})" if lib.get("container") else ""

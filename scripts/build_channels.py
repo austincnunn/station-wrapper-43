@@ -6,8 +6,8 @@ No AI: genres come from the Kodi .nfo files Sonarr and Radarr write.
   tvseries/ and anime/   each show folder's tvshow.nfo (<genre> tags)
   movies/                each movie's sidecar <video>.nfo, else movie.nfo
   --tv-library PATH      PATH itself is a TV library: each subfolder with a
-                         tvshow.nfo and videos is a show (the layout
-                         TA_NFOWriter builds). Repeatable. Labelled by the
+                         tvshow.nfo and videos is a show (a YouTube
+                         downloader's folder, say). Repeatable. Labelled by the
                          folder name in the farm.
 
 A show or movie goes under its primary genre, the first <genre> listed.
@@ -16,9 +16,8 @@ Items with no genre are reported and skipped unless --include-unclassified.
 Groups. A group takes videos from a source and sends them somewhere other
 than where their show's genre would put them. Three kinds of source, each
 NAME[=DEST], all repeatable and mixable:
-  --playlist NAME   a TA_NFOWriter playlist (<tv-library>/Playlists/NAME.m3u8,
-                    written with its --playlists option)
-  --show NAME       a whole show, series or TubeArchivist channel, by folder name
+  --playlist NAME   a playlist file (<tv-library>/Playlists/NAME.m3u8)
+  --show NAME       a whole show, series or YouTube channel, by folder name
   --video PATTERN   individual videos: PATTERN matches "<show>/<path in show>",
                     e.g. "80s Ads/Season 1986/*[abc123]*". DEST is required.
 NAME and PATTERN may be wildcards ("1980s Ads *"). DEST says where they go:
@@ -49,9 +48,9 @@ Usage:
   build_channels.py --media-root /mnt/media --catalog /path/to/catalog \
       --tuner-config /path/to/config/tuner/config.json [--dry-run]
 
-  # TubeArchivist channels via TA_NFOWriter, no Sonarr/Radarr folders:
+  # YouTube channels in a folder of their own, no Sonarr/Radarr folders:
   build_channels.py --media-root /mnt/media --no-default-libraries \
-      --tv-library /mnt/media/tanfo --catalog ... --tuner-config ...
+      --tv-library /mnt/media/youtube --catalog ... --tuner-config ...
   #   ... plus groups, in any mix:
   #   --playlist "Saturday Cartoons" --show "80s Ads=commercials" \\
   #   --video "News/*[nnRYx_dfvoY]*=Retro Mix"
@@ -145,7 +144,7 @@ def parse_tv_library(spec, reserved):
 
     The target is the path symlinks point at, as the containers see it. It
     defaults to the host path, which is right when the folder is mounted at
-    the same absolute path everywhere (the TA_NFOWriter deployment plan).
+    the same absolute path everywhere.
     """
     host, _, target = spec.partition("=")
     host = os.path.abspath(host)
@@ -222,7 +221,7 @@ def expand_playlist(name, tv_libraries):
 
 
 def read_playlist(name, tv_libraries):
-    """Videos of one TA_NFOWriter playlist, in order.
+    """Videos of one playlist (an .m3u8 in a TV library's Playlists folder), in order.
 
     Returns [(host path, path as the containers see it)] and warnings. Entries
     are relative to the .m3u8's own folder; missing ones are skipped.
@@ -255,7 +254,7 @@ def read_playlist(name, tv_libraries):
         return videos, warnings
     have = playlist_names(tv_libraries)
     raise SystemExit(f"playlist '{name}' not found in any --tv-library's Playlists folder "
-                     f"(run ta_nfo.py --playlists). Found: {', '.join(have) or 'none'}")
+                     f"Found: {', '.join(have) or 'none'}")
 
 
 def _is_video(rel):
@@ -357,8 +356,6 @@ def plan_farm(items, include_unclassified, routes=None):
                 place(g, it, rel)
             if COMMERCIALS in dests:
                 continue                    # played as commercials, not scheduled
-            if it.get("route_only"):
-                continue                    # a converted library: not listed by genre or channel, only by what you chose
             genre = it["genre"]
             if genre is None:
                 if include_unclassified:
@@ -727,22 +724,6 @@ def bump_entries(media_root, bump_target):
     return out
 
 
-def auto_tv_libraries(catalog):
-    """The converted TubeArchivist libraries inside the catalog (catalog/tanfo/<name>-nfo), one per library, each
-    that holds any channel. [] when there are none."""
-    root = os.path.join(catalog, "tanfo")
-    found = []
-    try:
-        for name in sorted(os.listdir(root)):
-            view = os.path.join(root, name)
-            if name.endswith("-nfo") and os.path.isdir(view) and any(
-                    os.path.isfile(os.path.join(view, d, "tvshow.nfo")) for d in os.listdir(view)):
-                found.append(view)
-    except OSError:
-        pass
-    return found
-
-
 def show_groups(library_dir):
     """A group per show in a TV library, so each becomes a tag folder named after it (a YouTube channel)."""
     try:
@@ -813,7 +794,7 @@ def find_duplicate_links(catalog):
     names in one tag airs twice as often. Linking a video into two different
     tags is the point of the farm and is not reported. Returns
     {tag: [[link, link, ...], ...]}, judged on the file each link finally
-    resolves to (through a TA_NFOWriter view, for example).
+    resolves to (through a folder of links, for example).
     """
     farm = os.path.join(catalog, FARM)
     found = {}
@@ -867,7 +848,7 @@ def find_dead_links(catalog, mapping):
                 continue
             host = to_host(os.readlink(path), mapping)
             # One hop, and lexists, not exists: the host path is often itself a link
-            # (a TubeArchivist view link) whose own target is a container path that
+            # (a link in a view of links) whose own target is a container path that
             # does not exist here. Following it would call healthy links dead.
             # The view's own cleanup removes a link when its video goes; a farm
             # link to that view link is then caught on the next prune.
@@ -1014,12 +995,12 @@ def build_parser():
                     help="the same archive as the containers see it; symlinks point here")
     ap.add_argument("--tv-library", action="append", default=[], metavar="HOST[=CONTAINER]",
                     help="a folder that is itself a TV library (each subfolder with a tvshow.nfo is a "
-                         "show), e.g. the TA_NFOWriter view. Repeatable. CONTAINER is the path the "
+                         "show), e.g. a YouTube downloader's folder. Repeatable. CONTAINER is the path the "
                          "containers see it at; it defaults to HOST (same-path mount)")
     ap.add_argument("--playlist", action=GroupAction, const="playlist", dest="groups", metavar="NAME[=DEST]",
-                    help="group: a TA_NFOWriter playlist (<tv-library>/Playlists/NAME.m3u8). Needs --tv-library")
+                    help="group: a playlist file (<tv-library>/Playlists/NAME.m3u8). Needs --tv-library")
     ap.add_argument("--show", action=GroupAction, const="show", dest="groups", metavar="NAME[=DEST]",
-                    help="group: a whole show, series or TubeArchivist channel, by folder name")
+                    help="group: a whole show, series or YouTube channel, by folder name")
     ap.add_argument("--video", action=GroupAction, const="video", dest="groups", metavar="PATTERN=DEST",
                     help="group: videos matching PATTERN against '<show>/<path in show>'")
     ap.add_argument("--no-default-libraries", action="store_true",
@@ -1043,7 +1024,7 @@ def build_parser():
                          "points anywhere this script doesn't manage. Without it, nothing is ever removed")
     ap.add_argument("--links-only", dest="links_only", action="store_true",
                     help="only get the files ready: fill catalog/by-genre with tag folders of links (genres from the "
-                         "NFOs, one folder per TubeArchivist channel, bump) and stop. No stations, no channel numbers, "
+                         "NFOs, bump) and stop. No stations, no channel numbers, "
                          "no schedules, no console: those are FieldStation42's own console's job. This is what the "
                          "container's `farm` job runs on its own")
     ap.add_argument("--dry-run", action="store_true", help="show the plan and write nothing")
@@ -1106,38 +1087,20 @@ def main(argv=None):
     taken_labels = {BUMP, *TV_LIBRARIES, MOVIE_LIBRARY}
     if args.links_only:
         # On its own, with no groups file needed: shows with no genre are kept (under Unclassified) so nothing is
-        # silently missing from FieldStation42. The converted TubeArchivist libraries (catalog/tanfo/<name>-nfo) are
-        # NOT made into lists here: a channel or a playlist is chosen as a source where it is used (the calendar's
-        # browser), or added to a list yourself on the Files page.
-        views = [v for v in auto_tv_libraries(args.catalog)
-                 if not any(os.path.abspath(s.partition("=")[0]) == os.path.abspath(v) for s in args.tv_library)]
-        playlist_specs = [view if in_container() else f"{view}={CONTAINER_CATALOG}/tanfo/{os.path.basename(view)}"
-                          for view in views]
+        # silently missing from FieldStation42.
         args.include_unclassified = True
-    else:
-        playlist_specs = []
     tv_libraries = []
     for spec in args.tv_library:
         lib = parse_tv_library(spec, taken_labels)
         taken_labels.add(lib[0])
         tv_libraries.append(lib)
-    playlist_libs = []                       # read for their playlists only: their shows are not listed or tagged
-    for spec in playlist_specs:
-        lib = parse_tv_library(spec, taken_labels)
-        taken_labels.add(lib[0])
-        playlist_libs.append(lib)
     if args.no_default_libraries and not tv_libraries:
         raise SystemExit("--no-default-libraries needs at least one --tv-library")
     groups = args.groups or []
-    if any(kind == "playlist" for kind, _ in groups) and not tv_libraries and not playlist_libs:
+    if any(kind == "playlist" for kind, _ in groups) and not tv_libraries:
         raise SystemExit("--playlist needs a --tv-library that holds the playlist")
-    items, warnings = discover(args.media_root, genre_map, [*tv_libraries, *playlist_libs],
-                               default_libraries=not args.no_default_libraries)
-    route_only = {lib[0] for lib in playlist_libs}
-    for it in items:
-        if it["library"] in route_only:
-            it["route_only"] = True         # placed only where a chosen playlist sends it
-    commercials, routes, group_warnings = resolve_groups(groups, items, [*tv_libraries, *playlist_libs], genre_map)
+    items, warnings = discover(args.media_root, genre_map, tv_libraries, default_libraries=not args.no_default_libraries)
+    commercials, routes, group_warnings = resolve_groups(groups, items, tv_libraries, genre_map)
     warnings += group_warnings
     plan, skipped = plan_farm(items, args.include_unclassified, routes)
     for w in warnings:
@@ -1147,7 +1110,7 @@ def main(argv=None):
 
     bump_target = f"{args.target_root.rstrip('/')}/{BUMP}"
     if args.links_only:
-        mapping = [(tgt, host) for _label, host, tgt in [*tv_libraries, *playlist_libs]]
+        mapping = [(tgt, host) for _label, host, tgt in tv_libraries]
         if not args.no_default_libraries:
             mapping.append((args.target_root, args.media_root))
         return links_only(args, plan, commercials, bump_target, mapping)

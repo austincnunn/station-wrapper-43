@@ -9,9 +9,6 @@ FieldStation42                       https://github.com/shane-mason/FieldStation
     there); the commit is recorded in the image at /opt/FS42_REF. The wrapper changes nothing in it: behaviour is adjusted by
     fieldstation42/console_launch.py, which wraps a few methods at run time.
 
-TA_NFOWriter                         https://github.com/JamesM92/TA_NFOWriter
-    MIT License. Downloaded at build time (version and SHA-256 are pinned in the Dockerfile).
-
 mpegts.js                            https://github.com/xqq/mpegts.js
     Apache License 2.0. Downloaded at build time (version and SHA-256 are pinned in the Dockerfile) and served to the web player.
 

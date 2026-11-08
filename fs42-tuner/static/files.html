@@ -23,49 +23,9 @@
     </p>
     <p id="msg" class="files-msg" role="status" aria-live="polite"></p>
 
-    <details class="ta-card" id="ta-details" aria-label="YouTube">
-      <summary class="pane-head">
-        <h2>YouTube (TubeArchivist)</h2>
-        <span id="ta-summary" class="ta-summary dim"></span>
-      </summary>
-      <div class="pane-head">
-        <label class="switch"><input type="checkbox" id="ta-enabled"> Convert my TubeArchivist library</label>
-      </div>
-      <p class="ta-help">
-        TubeArchivist stores videos in folders named <code>UC…</code> with no readable titles. Switch this on and the
-        wrapper builds a readable version as links (a folder per channel, with seasons and episode names) that shows
-        up in <strong>Media</strong> as a folder named after yours with <code>-nfo</code> added (<code>youtube</code> becomes
-        <code>youtube-nfo</code>), and your original folder is hidden there. Add more than one library if you have them.
-        Your TubeArchivist files are only read, never changed.
-      </p>
-      <div class="ta-row">
-        <label>Check for new videos
-          <select id="ta-interval" aria-label="How often">
-            <option value="15">every 15 minutes</option>
-            <option value="60">every hour</option>
-            <option value="360">every 6 hours</option>
-            <option value="720">every 12 hours</option>
-            <option value="1440">once a day</option>
-            <option value="10080">once a week</option>
-          </select>
-        </label>
-        <button id="ta-save" type="button" class="btn primary">Save</button>
-        <button id="ta-run" type="button" class="btn">Convert now</button>
-      </div>
-      <ul id="ta-libs" class="ta-libs" aria-label="Library folders"></ul>
-      <div class="ta-row">
-        <label>Add a library folder
-          <select id="ta-add" aria-label="Library folder to add"></select>
-        </label>
-        <input id="ta-add-other" type="text" placeholder="/mnt/media/…" hidden aria-label="Library folder path">
-        <button id="ta-add-btn" type="button" class="btn">Add</button>
-      </div>
-      <p id="ta-status" class="ta-status" role="status" aria-live="polite"></p>
-    </details>
-
     <details id="sources-card" class="panel" hidden>
       <summary><strong>Sources made for stations</strong> <span id="sources-count" class="dim"></span></summary>
-      <p class="dim">A series, a season, a video, a playlist, or several of them together that a slot, a mid card or a commercial block uses. One that no station uses any more can be removed here (your media is never touched).</p>
+      <p class="dim">A series, a season, a video, or several of them together that a slot, a mid card or a commercial block uses. One that no station uses any more can be removed here (your media is never touched).</p>
       <div id="sources-list"></div>
     </details>
 

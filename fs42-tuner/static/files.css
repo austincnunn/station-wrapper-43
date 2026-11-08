@@ -44,30 +44,14 @@
 .tag-list li .count { margin-left: auto; color: var(--dim); font-size: 0.85em; }
 .tag-list li .pick { color: var(--accent); }
 
-.ta-card { background: var(--panel); border: 1px solid var(--line); border-radius: 0.5em; padding: 0.8em; margin-bottom: 1em; }
+/* a row of labelled settings (the keeper and captions on Stations) and a note under it */
 .ta-help { color: var(--dim); margin: 0.2em 0 0.7em; max-width: 60em; }
 .ta-help code { background: var(--bg); padding: 0 0.3em; border-radius: 0.3em; }
 .ta-row { display: flex; flex-wrap: wrap; gap: 0.6em 1em; align-items: end; }
 .ta-row label { display: flex; flex-direction: column; gap: 0.2em; color: var(--dim); font-size: 0.9em; min-width: 0; max-width: 100%; }
 .ta-row select { width: 100%; text-overflow: ellipsis; }
 .ta-row select, .ta-row input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 0.4em; padding: 0.4em 0.6em; font: inherit; max-width: 100%; }
-.switch { display: flex; align-items: center; gap: 0.5em; cursor: pointer; }
-.switch input { width: 1.2em; height: 1.2em; }
-.ta-status { margin: 0.6em 0 0; color: var(--dim); }
-.ta-status.err { color: var(--danger); }
-.ta-status.ok { color: var(--accent); }
 
-.ta-libs { list-style: none; margin: 0.8em 0; padding: 0; display: grid; gap: 0.4em; }
-.ta-libs li { display: flex; flex-wrap: wrap; gap: 0.4em 1em; align-items: center; padding: 0.4em 0.6em; border: 1px solid var(--line); border-radius: 0.4em; }
-.ta-libs .lib-path { font-family: monospace; overflow-wrap: anywhere; }
-.ta-libs .lib-note { color: var(--dim); font-size: 0.9em; flex: 1; min-width: 12em; }
-.ta-libs li.dim .lib-note { color: var(--bad, #c0392b); }
-
-details.ta-card > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4em 1em; }
-details.ta-card > summary::-webkit-details-marker { display: none; }
-details.ta-card > summary::before { content: "▸"; color: var(--dim); }
-details.ta-card[open] > summary::before { content: "▾"; }
-.ta-summary { font-size: 0.9em; }
 .ref-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 0.6em; color: var(--dim); font-size: 0.9em; }
 .ref-label select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 0.4em; padding: 0.3em 0.5em; font: inherit; }
 

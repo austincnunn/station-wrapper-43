@@ -128,7 +128,6 @@ Built and tried against the real HDHomeRun FLEX 4K (`192.168.1.20`) and local st
 - `scripts/preflight.sh` fails in the local sandbox at the Docker build's `apt-get` step (network); CI's image build is the real check.
 - Tests that start a real tuner give it up to 90 seconds; a busy runner once overran 30.
 - The first catalog build over the slow share took about 50 minutes for 483 videos (length pass) and again for chapter marks.
-  TA_NFOWriter 0.5.0 (16 workers) should be faster on the YouTube conversion; untimed.
 
 ## 7. How the work is released
 

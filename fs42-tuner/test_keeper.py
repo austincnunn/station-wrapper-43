@@ -237,9 +237,9 @@ class SettingsTest(unittest.TestCase):
             with self.assertRaises(settings.SettingsError, msg=str(bad)):
                 settings.set_keeper(bad, self.path)
         self.assertFalse(os.path.exists(self.path))
-        settings.set_ta({"enabled": True}, self.path)
+        settings.set_titles({"episode_names": False}, self.path)
         settings.set_keeper({"days_ahead": 10}, self.path)
-        self.assertTrue(settings.get_ta(path=self.path)["enabled"])               # the TubeArchivist setting survived
+        self.assertFalse(settings.get_titles(self.path)["episode_names"])        # the other setting survived
         self.assertEqual(settings.get_keeper({}, self.path)["days_ahead"], 10)
 
     def test_odd_environment_values_never_raise(self):
