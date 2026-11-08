@@ -262,6 +262,12 @@ class DetailsTest(unittest.TestCase):
         kids = titles.details_from_nfo("<episodedetails><title>x</title><genre>Animation</genre></episodedetails>")
         self.assertEqual(kids["genres"], ["Animation", "Kids"])                            # and a cartoon under Kids
 
+    def test_a_music_video_is_named_by_its_title_and_not_filed_under_movies(self):
+        nfo = ("<?xml version=\"1.0\"?><musicvideo><title>Tom Sawyer (Live in Montreal 1981)</title><artist>Rush</artist>"
+               "<year>1981</year><plot>From Exit Stage Left.</plot><genre>Rock</genre></musicvideo>")
+        self.assertEqual(titles.parts_from_nfo(nfo), ("Tom Sawyer (Live in Montreal 1981)", None))
+        self.assertEqual(titles.details_from_nfo(nfo), {"kind": "movie", "plot": "From Exit Stage Left.", "year": 1981, "genres": ["Rock"]})
+
     def test_the_picture_beside_a_video_is_found_through_the_link_a_list_holds(self):
         import os, tempfile
         d = tempfile.mkdtemp()

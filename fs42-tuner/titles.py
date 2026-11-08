@@ -7,6 +7,7 @@ video (the ones most media tools and YouTube downloaders write) has that:
     an episode of a show  the show's name, and the episode's title apart      (<showtitle> and <title>)
     a YouTube video       the channel's name, and the video's title apart     (the same, with a youtube <uniqueid>)
     a movie               the movie's title                                   (<movie><title>)
+    a music video         its title                                           (<musicvideo><title>)
 
 Nothing is ever written. A video with no .nfo is named by Emby/Jellyfin when one is set up (mediaserver.py), else from
 its folders and file name (from_path). Answers are remembered for a while, a missing .nfo
@@ -53,7 +54,7 @@ def parts_from_nfo(text):
         if show:
             return show, (episode if episode and episode != show else None)
         return episode, None
-    if "<movie" in low:
+    if "<movie" in low or "<musicvideo" in low:
         return _tag(text, "title"), None
     return None, None
 
@@ -62,7 +63,7 @@ def details_from_nfo(text):
     """What the guide can say about a video besides its names, from its .nfo: {"plot", "season", "episode", "aired", "year",
     "genres"} with only what the file has. {} when it says nothing usable."""
     low = text[:2000].lower()
-    if "<episodedetails" not in low and "<movie" not in low:
+    if "<episodedetails" not in low and "<movie" not in low and "<musicvideo" not in low:
         return {}
     out = {"kind": "episode" if "<episodedetails" in low else "movie"}
     plot = _tag(text, "plot", 600) or _tag(text, "outline", 600)

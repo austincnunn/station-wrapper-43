@@ -13,6 +13,9 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   into one slot) used to be one long entry named after the station; the guide, the guide channel and Jellyfin/Emby now show each
   video with its own name, times and picture, in the order the block plays them (a shuffled loop stays shuffled).
 
+- **Music video .nfo files.** A Kodi `<musicvideo>` .nfo beside a video names it in the guide by its `<title>`, with its plot,
+  year and genres (it is not filed under Movies).
+
 ### Removed
 - **The TubeArchivist conversion.** The `ta-nfo` service, its panel on the Files page (*YouTube (TubeArchivist)*), the
   `/api/ta/*` calls, the `TA_ENABLED` / `TA_LIBRARY` / `TA_INTERVAL_MINUTES` variables, the `catalog/tanfo` view and its
