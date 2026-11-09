@@ -84,6 +84,10 @@ class SyncFeed(unittest.TestCase):
         self.assertEqual(self.feed.handle("POST", "/sync/hello", {}, AUTH, hello, "10.0.0.5")[0], 204)
         [p] = self.feed.players()
         self.assertEqual((p["name"], p["addr"], p["mismatch"], p["gone"], p["errors"]), ("crt", "10.0.0.5", True, False, ["no media"]))
+        self.feed.clock = lambda: p["seen"] + 600
+        self.assertTrue(self.feed.players()[0]["gone"])
+        self.feed.clock = lambda: p["seen"] + 2 * 24 * 3600
+        self.assertEqual(self.feed.players(), [])
 
 
 if __name__ == "__main__":

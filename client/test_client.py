@@ -137,6 +137,18 @@ class ClientSync(unittest.TestCase):
         self.assertEqual(getattr(e.exception, "code", None), 403)
 
 
+class StopPlayer(unittest.TestCase):
+    @unittest.skipUnless(os.path.isdir("/proc/self"), "needs /proc (Linux)")
+    def test_the_player_is_stopped_without_pkill(self):
+        import subprocess
+        d = tempfile.mkdtemp()
+        open(os.path.join(d, "field_player.py"), "w").write("import time\ntime.sleep(60)\n")
+        proc = subprocess.Popen(["python3", "field_player.py"], cwd=d)
+        time.sleep(0.5)
+        client.stop_player()
+        self.assertIsNotNone(proc.wait(timeout=5))
+
+
 class Screen(unittest.TestCase):
     def test_profiles_and_overrides(self):
         crt, hd = client.screen({"FS42_SCREEN": "crt"}), client.screen({"FS42_SCREEN": "hd"})

@@ -26,6 +26,7 @@ import time
 SKIP_DIRS = {".prefetch", ".tmdb_cache"}      # caches the server makes for itself
 CACHE_SECONDS = 30                            # how long a computed part is reused: a minute's polls by many clients cost one walk
 STALE_SECONDS = 300                           # a player not heard from for this long is reported as gone
+FORGET_SECONDS = 24 * 3600                    # ...and after this long it is dropped from the list
 
 
 def _h(data):
@@ -152,6 +153,8 @@ class Feed:
     def players(self):
         now = self.clock()
         with self._lock:
+            for name in [n for n, p in self._players.items() if now - p["seen"] > FORGET_SECONDS]:
+                del self._players[name]                # a player gone for a day was retired, not broken
             out = []
             for p in sorted(self._players.values(), key=lambda p: p["name"]):
                 p = dict(p, age=round(now - p["seen"]))

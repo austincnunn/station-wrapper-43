@@ -25,7 +25,7 @@ def text(number):
 
 
 def show(number, seconds):
-    msg = json.dumps({"command": ["show-text", text(number), int(seconds * 1000)]}) + "\n"
+    msg = json.dumps({"command": ["expand-properties", "show-text", text(number), int(seconds * 1000)]}) + "\n"
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(2)
         s.connect(MPV)

@@ -25,7 +25,6 @@ import random
 import signal
 import socket
 import sqlite3
-import subprocess
 import sys
 import time
 import urllib.error
@@ -235,7 +234,16 @@ def my_versions():
 
 
 def stop_player():
-    subprocess.run(["pkill", "-f", "^python3 field_player.py"], check=False)
+    """Stop FieldStation42's player (player.sh starts it again). The image has no pkill: look through /proc."""
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                if f.read().startswith(b"python3\0field_player.py"):
+                    os.kill(int(pid), signal.SIGTERM)
+        except (OSError, ValueError):
+            continue
 
 
 def now_on():
