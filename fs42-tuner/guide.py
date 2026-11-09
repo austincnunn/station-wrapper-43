@@ -58,6 +58,45 @@ def _fetch(url, timeout=30):
 
 OFF_AIR_TITLES = {"offair", "off air", "off-air"}      # what FieldStation42 calls the blocks it fills with the test pattern
 
+SHORT = timedelta(minutes=10)      # a channel whose typical video is shorter than this is a music video / shorts channel
+SLOT = timedelta(minutes=30)       # ...and its guide lists half-hour blocks instead (Emby's guide falls apart on 3-minute programmes)
+
+
+def _blocks(listings, name):
+    """On a channel of short videos, the runs of videos under half an hour become one programme per half hour of the
+    clock, called by the channel's name, with what plays in its description. Longer videos (a concert film) keep their
+    own. Any other channel is left as it is."""
+    durs = sorted(b["end"] - b["start"] for b in listings)
+    if not durs or durs[len(durs) // 2] >= SHORT:
+        return listings
+    out, run = [], []                                  # run: the short videos of the half hour being gathered
+
+    def close():
+        if not run:
+            return
+        if out and out[-1].get("_group") and run[0]["start"] == out[-1]["end"] and run[-1]["end"] - run[0]["start"] < SHORT:
+            out[-1]["_group"] += run                   # a few minutes left over before a long video: part of the block before
+            out[-1]["end"] = run[-1]["end"]
+        else:
+            out.append({"title": name, "start": run[0]["start"], "end": run[-1]["end"], "_group": list(run)})
+        run.clear()
+
+    for b in listings:
+        if b["end"] - b["start"] >= SLOT or str(b.get("title", "")).strip().lower() in OFF_AIR_TITLES:
+            close()
+            out.append(b)
+            continue
+        slot = b["start"].replace(minute=b["start"].minute // 30 * 30, second=0, microsecond=0)
+        if run and (run[-1]["end"] != b["start"] or (slot > run[0]["_slot"] and run[-1]["end"] - run[0]["start"] >= SHORT)):
+            close()                                    # (a few minutes after a long video run on into the next half hour)
+        run.append(dict(b, _slot=slot))
+    close()
+    for g in out:
+        vids = g.pop("_group", None)
+        if vids:
+            g["desc"] = "\n".join(f"{v['start']:%-I:%M} {v['title']}" + (f" - {v['subtitle']}" if v.get("subtitle") else "") for v in vids)
+    return out
+
 
 class GuideBuilder:
     """Assembles and caches the merged XMLTV document."""
@@ -241,7 +280,7 @@ class GuideBuilder:
             title = (self.static() if self.static else {}).get(station)
             if title and not listings:               # a channel with no schedule of its own (the guide channel): one long programme
                 listings = [{"title": title, "start": now - timedelta(hours=1), "end": end}]
-            for b in listings:
+            for b in _blocks(listings, self.display(station) if self.display else station):
                 if str(b.get("title", "")).strip().lower() in OFF_AIR_TITLES:
                     continue                          # time with nothing scheduled is a gap in the guide, not a programme called Offair
                 pr = ET.Element("programme", {
@@ -255,6 +294,10 @@ class GuideBuilder:
                     st = ET.SubElement(pr, "sub-title")
                     st.set("lang", "en")
                     st.text = b["subtitle"]
+                if b.get("desc"):                        # a block of short videos: what plays in it
+                    d = ET.SubElement(pr, "desc")
+                    d.set("lang", "en")
+                    d.text = b["desc"]
                 self._describe(pr, b)
                 progs.append(pr)
         return chans, progs
