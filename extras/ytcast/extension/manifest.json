@@ -1,0 +1,12 @@
+{
+    "manifest_version": 3,
+    "name": "YouTube TV for Browser",
+    "description": "Sends a TV user agent to youtube.com/tv. From github.com/angeloanan/youtube-tv-browser (MIT), update_url removed.",
+    "version": "0.1.0",
+    "permissions": ["declarativeNetRequest"],
+    "declarative_net_request": {
+        "rule_resources": [{ "id": "youtube-tv", "enabled": true, "path": "user-agent.json" }]
+    },
+    "host_permissions": ["*://*.youtube.com/tv*"],
+    "browser_specific_settings": { "gecko": { "id": "{01912552-4c6b-78cd-89b7-24736bd98539}" } }
+}

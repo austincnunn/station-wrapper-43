@@ -1,0 +1,39 @@
+# Paste these two services under `services:` in ~/fieldstation42/docker-compose.yml, next to
+# the wrapper, and copy this ytcast folder to ~/fieldstation42/ytcast. Guide:
+# https://github.com/austincnunn/station-wrapper-43/wiki/YouTube-Channel
+
+  # Takes the stream from ytcast and serves it as HLS: http://<server>:8888/youtube/index.m3u8
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    restart: unless-stopped
+    ports:
+      - "8888:8888"   # HLS out (the Sources page and players read this)
+    environment:
+      MTX_HLSVARIANT: mpegts      # plain MPEG-TS segments: play in Emby, Jellyfin, ffmpeg and mpv
+      MTX_HLSALWAYSREMUX: "yes"   # keep HLS ready so the channel tunes in fast
+      MTX_RTSPTRANSPORTS: tcp
+
+  # YouTube's TV app in Firefox, captured as a stream
+  ytcast:
+    build: ./ytcast
+    container_name: ytcast
+    restart: unless-stopped
+    shm_size: 1g        # required: Firefox's video tabs crash with Docker's 64 MB default
+    mem_limit: 3g
+    volumes:
+      - ./data/ytcast/profile:/profile   # Firefox profile: keeps your phone pairing and sign-in
+    environment:
+      PUBLISH_URL: rtsp://mediamtx:8554/youtube
+      # Optional, all defaults shown:
+      # SCREEN: 1280x720      # what Firefox draws
+      # OUT_SIZE: "854:480"   # what gets streamed
+      # FPS: "60"
+      # VIDEO_KBPS: "2500"
+    # Optional: encode on an Intel GPU instead of the CPU (x86 only). Pass in just that GPU's
+    # render node (`ls -l /dev/dri/by-path/` shows which is which) and name it in VAAPI_DEVICE:
+    # devices:
+    #   - /dev/dri/renderD128
+    # and add under environment:  VAAPI_DEVICE: /dev/dri/renderD128
+    depends_on:
+      - mediamtx

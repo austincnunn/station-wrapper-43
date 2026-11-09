@@ -1,6 +1,6 @@
 # Extras
 
-Optional scripts that go with the guides in the [wiki](https://github.com/austincnunn/station-wrapper-43/wiki). None of them run inside the container, and the image doesn't need them.
+Optional scripts that go with the guides in the [wiki](https://github.com/austincnunn/station-wrapper-43/wiki). None of them run inside the wrapper's container, and its image doesn't need them.
 
 | File | Runs on | What it does | Guide |
 |---|---|---|---|
@@ -8,5 +8,6 @@ Optional scripts that go with the guides in the [wiki](https://github.com/austin
 | `remote-player/fs42-sync` | the player PC | Copies the server's schedule, station configs and catalog links once an hour, so the player shows the same broadcast | [Syncing a Remote Player](https://github.com/austincnunn/station-wrapper-43/wiki/Syncing-a-Remote-Player) |
 | `remote-player/fs42-streams` | the player PC | Turns the server's Sources channels and guide into stations the player can show. Self-check: `fs42-streams --test` | [Syncing a Remote Player](https://github.com/austincnunn/station-wrapper-43/wiki/Syncing-a-Remote-Player) |
 | `backup/fs42-backup.sh` | the server | Nightly backup of your configs, schedule and catalog links | [Backups](https://github.com/austincnunn/station-wrapper-43/wiki/Backups) |
+| `ytcast/` | the server (its own container) | YouTube's TV app as a channel you cast to from your phone. See its [README](ytcast/README.md) | [YouTube Channel](https://github.com/austincnunn/station-wrapper-43/wiki/YouTube-Channel) |
 
 Each script has a short settings block at the top. Change those to match your machines before you use it.
