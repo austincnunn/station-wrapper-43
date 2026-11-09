@@ -29,7 +29,7 @@ STALE_SECONDS = 300                           # a player not heard from for this
 
 
 def _h(data):
-    return hashlib.sha1(data).hexdigest()
+    return hashlib.sha1(data, usedforsecurity=False).hexdigest()      # a change detector, not security
 
 
 class Feed:

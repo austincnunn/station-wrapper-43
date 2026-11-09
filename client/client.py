@@ -91,6 +91,8 @@ def setup():
 # -- talking to the server ---------------------------------------------------
 class Server:
     def __init__(self, base, token, timeout=60):
+        if not base.startswith(("http://", "https://")):
+            raise ValueError(f"FS42_SERVER must start with http:// or https://, not {base!r}")
         self.base, self.token, self.timeout = base.rstrip("/"), token or "", timeout
 
     def get(self, path, etag=None):
@@ -99,7 +101,7 @@ class Server:
         if etag:
             req.add_header("If-None-Match", etag)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:   # nosec B310 - http(s) only, checked above
                 return r.status, r.headers, r.read()
         except urllib.error.HTTPError as e:
             if e.code == 304:
@@ -109,7 +111,7 @@ class Server:
     def post(self, path, obj):
         req = urllib.request.Request(self.base + path, data=json.dumps(obj).encode(), method="POST",
                                      headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=10):
+        with urllib.request.urlopen(req, timeout=10):   # nosec B310 - http(s) only, checked in __init__
             pass
 
 
@@ -185,7 +187,7 @@ def apply_catalog(manifest, fetch):
 
 def _hash_confs():
     import hashlib
-    h = hashlib.sha1()
+    h = hashlib.sha1(usedforsecurity=False)
     for f in sorted(os.listdir(CONFS)) if os.path.isdir(CONFS) else []:
         if f.endswith(".json"):
             h.update(f.encode())
@@ -279,7 +281,11 @@ def main():
     if not base:
         print("client: FS42_SERVER is not set: it must be the server's address, like http://192.168.1.20:5004", flush=True)
         return 78
-    server = Server(base, os.environ.get("FS42_SYNC_TOKEN"))
+    try:
+        server = Server(base, os.environ.get("FS42_SYNC_TOKEN"))
+    except ValueError as e:
+        print(f"client: {e}", flush=True)
+        return 78
     scr, every = screen(), int(os.environ.get("FS42_SYNC_SECONDS", "60"))
     name = os.environ.get("FS42_PLAYER_NAME") or socket.gethostname()
     try:
