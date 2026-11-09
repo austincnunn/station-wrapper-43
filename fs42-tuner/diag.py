@@ -152,6 +152,13 @@ def checks(report):
     for k, v in (g.get("sources") or {}).items():
         if isinstance(v, dict) and v.get("error"):
             add("warn", f"Guide source {k} failed: {v['error']}", "/iptv.html", "Open Sources")
+    for pl in report.get("players") or []:                       # player PCs in client mode (syncfeed.py)
+        if pl.get("gone"):
+            add("warn", f"Player {pl['name']} has not checked in for {pl['age'] // 60} minutes: is it on?")
+        elif pl.get("mismatch"):
+            add("warn", f"Player {pl['name']} runs a different version than this server: run docker compose pull on it.")
+        for e in pl.get("errors") or []:
+            add("error", f"Player {pl['name']}: {e}")
     if not report.get("ffmpeg", {}).get("found"):
         add("error", "ffmpeg was not found: nothing can be streamed.")
     if not out:

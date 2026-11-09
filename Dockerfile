@@ -47,11 +47,16 @@ RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 # guide station exists.
 # ffmpeg: FieldStation42 shells out to ffprobe, and the tuner encodes streams with it.
 # tini: PID 1, so processes that outlive their parent (ffmpeg) are reaped.
+# mpv and the Intel video drivers: client mode only (FS42_ROLE=client), where field_player.py plays to the screen with mpv
+# drawing straight to it (DRM, no X). The server never starts them. One image for both roles keeps their versions in step.
+ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       ffmpeg \
       libtk8.6 \
       tini \
+      mpv \
+    && if [ "${TARGETARCH:-amd64}" = amd64 ]; then apt-get install -y --no-install-recommends i965-va-driver intel-media-va-driver; fi \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -72,7 +77,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 # The tuner. The player script is fetched at build time and checked against a SHA-256, so
 # a changed file fails the build. To update: change the version and the hash together.
 COPY fs42-tuner/resolver.py fs42-tuner/tuner.py fs42-tuner/guide.py \
-     fs42-tuner/upstream.py fs42-tuner/library.py fs42-tuner/stations.py fs42-tuner/files.py fs42-tuner/settings.py fs42-tuner/console_client.py fs42-tuner/stationform.py fs42-tuner/stationsapi.py fs42-tuner/keeper.py fs42-tuner/schedlock.py fs42-tuner/auth.py fs42-tuner/captions.py fs42-tuner/legacy.py fs42-tuner/schedules.py fs42-tuner/prefetch.py fs42-tuner/guide_channel.py fs42-tuner/breaksnap.py fs42-tuner/breakstore.py fs42-tuner/iptv.py fs42-tuner/titles.py fs42-tuner/mediaserver.py fs42-tuner/diag.py fs42-tuner/channel_logo.py fs42-tuner/art.py fs42-tuner/ccinject.py /opt/tuner/
+     fs42-tuner/upstream.py fs42-tuner/library.py fs42-tuner/stations.py fs42-tuner/files.py fs42-tuner/settings.py fs42-tuner/console_client.py fs42-tuner/stationform.py fs42-tuner/stationsapi.py fs42-tuner/keeper.py fs42-tuner/schedlock.py fs42-tuner/auth.py fs42-tuner/captions.py fs42-tuner/legacy.py fs42-tuner/schedules.py fs42-tuner/prefetch.py fs42-tuner/guide_channel.py fs42-tuner/breaksnap.py fs42-tuner/breakstore.py fs42-tuner/iptv.py fs42-tuner/titles.py fs42-tuner/mediaserver.py fs42-tuner/diag.py fs42-tuner/channel_logo.py fs42-tuner/art.py fs42-tuner/ccinject.py fs42-tuner/syncfeed.py /opt/tuner/
 COPY fs42-tuner/static/ /opt/tuner/static/
 ADD --checksum=sha256:ceb67d511fae54f442a5b9c03e6b8ea30a89efc9bde7fa3ce0687f05f31e6d6a \
     https://cdn.jsdelivr.net/npm/mpegts.js@1.8.2/dist/mpegts.min.js /opt/tuner/static/mpegts.min.js
@@ -88,8 +93,10 @@ COPY fieldstation42/fs42-channels /usr/local/bin/fs42-channels
 COPY assets/ /opt/assets/
 COPY farm/run.sh /opt/farm/run.sh
 COPY supervisor/supervisor.py fs42-tuner/stations.py /opt/supervisor/
+# Client mode: copies the server's schedule (client.py) and plays it (player.sh, banner.py).
+COPY client/client.py client/playerconfs.py client/player.sh client/banner.py /opt/client/
 COPY fieldstation42/entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh /opt/farm/run.sh /usr/local/bin/fs42-channels && chmod 644 /opt/tuner/static/mpegts.min.js
+RUN chmod 755 /entrypoint.sh /opt/farm/run.sh /opt/client/player.sh /usr/local/bin/fs42-channels && chmod 644 /opt/tuner/static/mpegts.min.js
 
 ENV FS42_TUNER_CONF=/config/tuner/config.json \
     FS42_IN_CONTAINER=1

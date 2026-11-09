@@ -43,6 +43,15 @@
       ["CPU / memory", `load ${r.cpu.load1} on ${r.cpu.count} cores; ${r.memory ? r.memory.available_mb + " of " + r.memory.total_mb + " MB free" : "?"}`],
       ["Disk free", Object.entries(r.disk).map(([k, d]) => `${k} ${d.free_mb == null ? "?" : d.free_mb + " MB"}`).join(", ")],
     ]));
+    const pl = $("players");                            // player PCs in client mode (only when FS42_SYNC_TOKEN is set)
+    pl.hidden = !r.players;
+    if (r.players) {
+      pl.replaceChildren(el("h2", { textContent: "Players" }));
+      pl.append(r.players.length ? table(r.players.map((p) => [p.name, `${p.gone ? "NOT SEEN" : "seen"} ${dur(p.age)} ago from ${p.addr}` +
+        (p.channel ? `, on ${p.channel}` : "") + (p.screen ? `, ${p.screen} screen` : "") + (p.mismatch ? ", DIFFERENT VERSION" : "") +
+        (p.errors && p.errors.length ? `, ${p.errors.length} problem(s)` : "")]))
+        : el("p", { className: "dim", textContent: "No player has checked in yet." }));
+    }
     const rec = $("recent");
     rec.replaceChildren(el("h2", { textContent: "Recent problems the container printed" }));
     rec.append(r.recent_problems.length ? el("pre", { className: "dim", textContent: r.recent_problems.map((x) => `${new Date(x.at * 1000).toLocaleTimeString()}  ${x.line}`).join("\n") })

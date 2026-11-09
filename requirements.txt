@@ -1,6 +1,6 @@
 # What the image installs with pip, pinned (a first-level choice is in the comments). Dependabot / `pip-audit -r requirements.txt`
 # watch this file. FieldStation42's own list is in its repository (install/requirements.in), fetched at build time.
-# first level: fastapi uvicorn ffmpeg-python rich jsonschema requests mutagen pillow defusedxml
+# first level: fastapi uvicorn ffmpeg-python rich jsonschema requests mutagen pillow defusedxml; client mode: python-mpv-jsonipc pyserial
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
@@ -24,6 +24,8 @@ pillow==13.0.0
 pydantic==2.14.0
 pydantic_core==2.50.0
 pygments==2.21.0
+pyserial==3.5
+python-mpv-jsonipc==1.5.0
 referencing==0.37.0
 requests==2.34.2
 rich==15.0.0

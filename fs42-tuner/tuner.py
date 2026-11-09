@@ -61,7 +61,7 @@ import uuid
 from collections import deque
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from xml.sax.saxutils import escape
 
 import auth as authmod
@@ -85,6 +85,7 @@ import stationsapi
 import art
 import channel_logo
 import mediaserver
+import syncfeed
 import titles
 diag.RING.install()                  # the Status page shows what this process last said
 from resolver import ScheduleGap
@@ -216,6 +217,28 @@ NORMALIZE = [
     "-g", str(GOP), "-keyint_min", str(GOP), "-sc_threshold", "0",
     "-c:a", "aac", "-b:a", V.get("abitrate", "192k"), "-ar", "48000", "-ac", "2",
 ]
+def variant_args(kbps):
+    """The encoder options for a lower-rate copy of a channel (a player PC asking /auto/v<n>?kbps=N): 854x480 at 2000 kbps and
+    under, else this tuner's own size, at that rate."""
+    w, h = (854, 480) if kbps <= 2000 else (W, H)
+    out = list(NORMALIZE)
+    for k, v in (("-b:v", f"{kbps}k"), ("-maxrate", f"{kbps}k"), ("-bufsize", f"{kbps * 2}k"),
+                 ("-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:color=black,fps={FPS},format=yuv420p")):
+        out[out.index(k) + 1] = v
+    return out
+
+
+def stream_kbps(query):
+    """The rate asked for in ?kbps=, held between 500 and this tuner's own (video.vbitrate), or None for the channel as it is."""
+    top = int(float(V.get("vbitrate", "4000k").rstrip("k")))
+    try:
+        want = int((query.get("kbps") or [""])[0])
+    except ValueError:
+        return None
+    want = max(500, min(want, top))
+    return None if want >= top else want
+
+
 MUX = [
     "-f", "mpegts",
     "-mpegts_flags", "+resend_headers+initial_discontinuity",
@@ -550,6 +573,41 @@ class Channel:
         if had:
             self.pool.release(self.number)
 
+    def _run_variant(self):
+        """A lower-rate copy (Variant): one ffmpeg re-encodes the full-rate channel's stream for everyone watching this copy."""
+        import select
+        src = self.source.attach()
+        if src is None:
+            print(f"[ch{self.number}] the full-rate channel has no encoder free", flush=True)
+            self.stop.wait(5)
+            return
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "mpegts", "-i", "pipe:0"] + self.args + MUX + ["pipe:1"]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+
+        def feed():
+            try:
+                src.pump(proc.stdin.write)
+            except (BrokenPipeError, ValueError, OSError):
+                pass
+        threading.Thread(target=feed, daemon=True, name=f"variant-{self.number}").start()
+        try:
+            fd = proc.stdout.fileno()
+            while not self.stop.is_set() and self._current():
+                ready, _w, _x = select.select([fd], [], [], 1.0)
+                if not ready:
+                    continue
+                chunk = os.read(fd, CHUNK)
+                if not chunk:
+                    break
+                self._broadcast(chunk)
+        finally:
+            self.source.detach(src)
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+        if not self.stop.is_set():
+            self.stop.wait(2)
+
     def _run_external(self, info):
         """A channel of an external IPTV source (iptv.py): ffmpeg reads the stream and makes it this tuner's MPEG-TS, until the
         last viewer leaves. A stream that drops is picked up again a few seconds later."""
@@ -591,6 +649,13 @@ class Channel:
             self.stop.wait(5)
 
     def _run(self):
+        if getattr(self, "source", None) is not None:          # a lower-rate copy of another channel
+            while not self.stop.is_set() and self._current():
+                self._run_variant()
+            return
+        self._run_schedule()
+
+    def _run_schedule(self):
         """Walk the schedule from 'now' forward. Nothing is pre-rendered: the
         schedule is re-read at every segment boundary, so an FS42 rebuild
         mid-stream is picked up and a viewer tuning in at 8:17 joins whatever
@@ -844,9 +909,33 @@ if MEDIA_SERVER.enabled:
 GUIDE_MUSIC = guide_channel.MusicIndex(os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "guide-music.json"))
 POOL = EncoderPool(MAX_ENCODERS)
 CHANS = {n: Channel(n, s, POOL) for n, s in CHANNELS.items()}
+VARIANTS = {}                       # (channel number, kbps) -> the lower-rate copy of that channel (variant())
+VARIANTS_LOCK = threading.Lock()
+
+
+def variant(chan, kbps):
+    """The shared lower-rate copy of a channel at `kbps`: made on first use, counted against max_encoders like any channel."""
+    with VARIANTS_LOCK:
+        v = VARIANTS.get((chan.number, kbps))
+        if v is None or v.source is not chan:
+            v = Channel(f"{chan.number}@{kbps}", chan.station, POOL)
+            v.source, v.args = chan, variant_args(kbps)
+            VARIANTS[(chan.number, kbps)] = v
+        return v
 EXTERNAL = {}                       # "iptv:<number>" -> the channel of an external IPTV source (iptv.py) that has that number
+def _fs42_ref_full():
+    try:
+        with open("/opt/FS42_REF") as f:
+            return f.read().split()[0]
+    except (OSError, IndexError):
+        return None
+
+
 SOURCES = iptv.Sources(os.environ.get("FS42_IPTV") or os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "sources.json"))
 SOURCES_LOCK = threading.Lock()
+# What player PCs in client mode copy from here (syncfeed.py). Off unless FS42_SYNC_TOKEN is set.
+FEED = syncfeed.Feed(os.environ.get("FS42_SYNC_TOKEN"), DB_PATH, CONFS_DIR, os.path.join(CATALOG_ROOT, "catalog"), SOURCES.path,
+                     versions={"wrapper": os.environ.get("FS42_WRAPPER_SHA") or "", "fieldstation42": (_fs42_ref_full() or "")})
 EXTERNAL_CLASHES = []               # channels whose number was taken, from the last sync
 SLOW_START_SECONDS = float(os.environ.get("SLOW_START_SECONDS", "2"))
 GUIDE_FPS = max(5, min(30, int(os.environ.get("GUIDE_FPS", "15"))))     # frames per second the guide channel is drawn at
@@ -1144,6 +1233,7 @@ def status_report(recent=60):
         "advertise": {"configured": ADVERTISE, "used_for_clients": "the address each client itself used" if ADVERTISE.split("//")[-1].startswith(("localhost", "127.0.0.1")) else ADVERTISE},
         "recent": diag.RING.recent(recent),
         "recent_problems": diag.RING.recent(15, problems_only=True),
+        "players": FEED.players() if FEED.enabled else None,
     }
     report["checks"] = diag.checks(report)
     return report
@@ -1605,8 +1695,31 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return body
 
+    def _sync(self, method):
+        """/sync/: what player PCs in client mode copy (syncfeed.py). Its own token, not the dashboard login."""
+        u = urlparse(self.path)
+        body = b""
+        if method == "POST":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                n = -1
+            if not 0 <= n <= 65536:
+                return self.send_error(413)
+            body = self.rfile.read(n)
+        code, headers, data = FEED.handle(method, u.path, parse_qs(u.query), self.headers, body, self.client_address[0])
+        self.send_response(code)
+        for k, v in headers:
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if data:
+            self.wfile.write(data)
+
     def do_POST(self):
         p = urlparse(self.path).path
+        if p.startswith("/sync/"):
+            return self._sync("POST")
         if self._gate(p):
             return
         if p.startswith("/api/auth/"):
@@ -1710,6 +1823,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         p = urlparse(self.path).path
+        if p.startswith("/sync/"):
+            return self._sync("GET")
         if self._gate(p, urlparse(self.path).query):
             return
         if p == "/api/auth/status":
@@ -1951,7 +2066,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, num):
         if num in CHANS:
-            return self._stream_fs42(CHANS[num])
+            kbps = stream_kbps(parse_qs(urlparse(self.path).query))
+            return self._stream_fs42(CHANS[num] if kbps is None else variant(CHANS[num], kbps))
         up = upstream_map().get(num)
         if up is not None:
             return self._stream_passthrough(num, up)

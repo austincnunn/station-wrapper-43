@@ -54,6 +54,16 @@ def services_from_env(env=None, exists=os.path.exists):
     """The services this container should run, from its environment."""
     env = os.environ if env is None else env
     flag = lambda name: env.get(name, "").lower() in TRUE
+    role = env.get("FS42_ROLE", "server").strip().lower() or "server"
+    if role == "client":                      # a player PC: copy the server's schedule and play it (client/client.py)
+        client = env.get("FS42_CLIENT_DIR", "/opt/client")
+        out = [Service("client", ["python3", "-u", f"{client}/client.py"], core=True),
+               Service("player", ["sh", f"{client}/player.sh"], cwd=env.get("FS42_APP", "/app"))]
+        if env.get("FS42_BANNER", "on").lower() not in ("0", "false", "no", "off"):
+            out.append(Service("banner", ["python3", "-u", f"{client}/banner.py"]))
+        return out
+    if role != "server":
+        return [Service("role", ["sh", "-c", f"echo 'FS42_ROLE must be server or client, not {role!r}'; exit {REFUSED}"], core=True)]
     config = env.get("FS42_TUNER_CONF", "/config/tuner/config.json")
     out = [Service("console", ["python3", env.get("FS42_CONSOLE_LAUNCH", "/opt/wrapper/console_launch.py"), "-s"], cwd=env.get("FS42_APP", "/app"), core=True)]
     if exists(config):
@@ -74,6 +84,8 @@ def notes_from_env(env=None, exists=os.path.exists):
     """What was left out and why, for the log."""
     env = os.environ if env is None else env
     notes = []
+    if env.get("FS42_ROLE", "server").strip().lower() == "client":
+        return [f"client mode: playing what {env.get('FS42_SERVER') or '(FS42_SERVER is not set!)'} schedules"]
     if not exists(env.get("FS42_TUNER_CONF", "/config/tuner/config.json")):
         notes.append("the tuner is not started: no config.json at "
                      f"{env.get('FS42_TUNER_CONF', '/config/tuner/config.json')}")

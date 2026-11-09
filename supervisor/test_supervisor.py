@@ -394,5 +394,23 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(s, {"console": True, "tuner": True, "firstrun": False, "farm": False, "sync": False})
 
 
+class RoleTest(unittest.TestCase):
+    def names(self, env):
+        return [s.name for s in sv.services_from_env(env, exists=lambda p: True)]
+
+    def test_unset_and_server_are_todays_services(self):
+        self.assertEqual(self.names({}), self.names({"FS42_ROLE": "server"}))
+        self.assertIn("console", self.names({}))
+
+    def test_a_client_runs_only_the_sync_the_player_and_the_banner(self):
+        self.assertEqual(self.names({"FS42_ROLE": "client"}), ["client", "player", "banner"])
+        self.assertEqual(self.names({"FS42_ROLE": "Client", "FS42_BANNER": "off"}), ["client", "player"])
+
+    def test_an_unknown_role_refuses_to_start(self):
+        svc = sv.services_from_env({"FS42_ROLE": "tv"}, exists=lambda p: True)
+        self.assertEqual([(s.name, s.core) for s in svc], [("role", True)])
+        self.assertIn(str(sv.REFUSED), svc[0].argv[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

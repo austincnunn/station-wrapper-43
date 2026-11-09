@@ -1,0 +1,43 @@
+# A PLAYER PC in client mode: plays what a Station Wrapper 43 server schedules, on the screen plugged into this PC.
+# The server builds every schedule; this copies it about once a minute and plays it with mpv, drawing straight to the
+# screen (no desktop, no X). Settings go in .env next to this file (see .env.example).
+#
+# Before you start:
+#   1. Mount the SAME media share the server uses, at the SAME path inside the container (/mnt/media). The schedule
+#      names videos by that path, so a different path means nothing plays. On the host, a line in /etc/fstab, e.g.
+#        //192.168.1.10/media /mnt/media cifs ro,credentials=/root/.smb-media,vers=3.0,_netdev,nofail 0 0
+#   2. Use the same time zone as the server (timedatectl set-timezone ...).
+#   3. Nothing else may be drawing on the screen: no desktop, no X autologin. mpv takes the screen itself.
+#   4. On the server, set FS42_SYNC_TOKEN (any long random text) and put the same text in this .env.
+#
+# Update it the same way as the server, and keep both on the same version:  docker compose pull && docker compose up -d
+name: fs42-player
+
+services:
+  player:
+    image: ghcr.io/austincnunn/station-wrapper-43:latest   # the SAME tag the server runs
+    container_name: fs42-player
+    restart: unless-stopped
+    network_mode: host            # the remote control page on :4242, and live streams straight from where they come from
+    devices:
+      - /dev/dri                  # the graphics card: mpv draws to the screen and decodes video with it
+      - /dev/snd                  # sound
+    volumes:
+      - ./data/config:/config           # the copied schedule and station configs (local disk)
+      - ./data/catalog:/app/catalog     # the copied catalog links (local disk: links don't work on a share)
+      - /mnt/media:/mnt/media:ro        # the media share, at the same path as on the server
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      FS42_ROLE: client
+      FS42_SERVER: ${FS42_SERVER}                 # the server's tuner, e.g. http://192.168.1.20:5004
+      FS42_SYNC_TOKEN: ${FS42_SYNC_TOKEN}
+      FS42_SCREEN: ${FS42_SCREEN:-hd}             # crt: 4:3, cropped widescreen, lighter streams. hd: 16:9, whole picture
+      FS42_DRM_CONNECTOR: ${FS42_DRM_CONNECTOR:-} # which output, e.g. VGA-1, HDMI-A-1 (empty: the first connected)
+      FS42_GAMMA: ${FS42_GAMMA:-0}
+      FS42_BANNER_SECONDS: ${FS42_BANNER_SECONDS:-8}
+      FS42_PLAYER_NAME: ${FS42_PLAYER_NAME:-}
+      # One setting each, over what FS42_SCREEN picks:
+      FS42_PANSCAN: ${FS42_PANSCAN:-}             # 0 = whole picture with bars, 1 = fill a 4:3 screen by cropping the sides
+      FS42_DRM_MODE: ${FS42_DRM_MODE:-}           # preferred, highest, or e.g. 1024x768@60
+      FS42_MPV_PROFILE: ${FS42_MPV_PROFILE:-}     # fast (weak PCs) or high-quality
+      FS42_STREAM_KBPS: ${FS42_STREAM_KBPS:-}     # rate of channels streamed from the server (the guide), 500-4000

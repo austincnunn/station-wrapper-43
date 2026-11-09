@@ -102,6 +102,14 @@ if [ ! -e /app/runtime/channel.socket ]; then
   touch /app/runtime/channel.socket
 fi
 
+# Client mode (FS42_ROLE=client): a player PC. Its catalog, stations and schedule are copied from the server
+# (client/client.py), so none of the server's own setup below applies: set up mpv for this screen and start.
+if [ "${FS42_ROLE:-server}" = client ]; then
+  python3 /opt/client/client.py --setup
+  echo "entrypoint: Station Wrapper 43 ${FS42_WRAPPER_REF:-dev} (commit ${FS42_WRAPPER_SHA:-unknown}), client mode"
+  exec python3 /opt/supervisor/supervisor.py
+fi
+
 # 2. The catalog holds REAL folders, with only the files inside them linked (by-genre/,
 #    media-links/). An earlier version also linked each whole media folder into it
 #    (catalog/anime -> /mnt/media/anime/). A link to a whole folder sends a file manager
