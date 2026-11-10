@@ -5,6 +5,13 @@ plugged into. The server builds every schedule; this only copies and plays it.
   client.py --setup   once, from the entrypoint: mpv's settings and FieldStation42's main_config.json for this screen
   client.py           the sync loop, under the supervisor: every FS42_SYNC_SECONDS it asks the server's /sync/state and
                       copies only the parts that changed (schedule database, station configs, catalog links, Sources list)
+  client.py --display before each start of the player (player.sh): "x11" when a station needs a browser (pay-per-view),
+                      else "drm"; writes mpv's settings for that way of drawing
+  client.py --fit     with X up: the web stations' windows are made the size of the screen (there is no window manager)
+
+How it draws: mpv straight to the screen (DRM), with nothing else. A pay-per-view station is a web page drawn by
+FieldStation42's own browser (Qt WebEngine), which needs X: while the server has one, player.sh starts a bare X server in
+this container and mpv draws in it instead. That needs /dev/tty0 and /dev/tty7 in the container's devices.
 
 Settings (environment):
   FS42_SERVER         the server's tuner address, e.g. http://192.168.1.20:5004            (required)
@@ -22,9 +29,11 @@ import gzip
 import json
 import os
 import random
+import re
 import signal
 import socket
 import sqlite3
+import subprocess  # nosec B404: fixed commands only (xrandr)
 import sys
 import time
 import urllib.error
@@ -64,13 +73,87 @@ def screen(env=None):
     return out
 
 
-def mpv_conf(scr, env=None):
+def mpv_conf(scr, env=None, x11=False):
+    """mpv's settings: drawing straight to the screen, or (x11) full screen in the X server player.sh started."""
     env = os.environ if env is None else env
-    lines = ["vo=gpu", "gpu-context=drm", f"drm-mode={scr['drm_mode']}", f"profile={scr['mpv_profile']}",
-             "hwdec=auto-safe", "sid=no", "sub-auto=no", "cursor-autohide=always", f"gamma={int(env.get('FS42_GAMMA', '0') or 0)}"]
+    common = [f"profile={scr['mpv_profile']}", "hwdec=auto-safe", "sid=no", "sub-auto=no", "cursor-autohide=always",
+              f"gamma={int(env.get('FS42_GAMMA', '0') or 0)}"]
+    if x11:
+        return "\n".join(["vo=gpu", "gpu-context=x11egl", "fullscreen=yes"] + common) + "\n"
+    lines = ["vo=gpu", "gpu-context=drm", f"drm-mode={scr['drm_mode']}"] + common
     if env.get("FS42_DRM_CONNECTOR"):
         lines.insert(2, f"drm-connector={env['FS42_DRM_CONNECTOR']}")
     return "\n".join(lines) + "\n"
+
+
+def _station_confs():
+    for f in sorted(os.listdir(CONFS)) if os.path.isdir(CONFS) else []:
+        if f.endswith(".json") and f not in KEEP_CONFS:
+            try:
+                with open(os.path.join(CONFS, f)) as fh:
+                    data = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if isinstance(data, dict) and isinstance(data.get("station_conf"), dict):
+                yield os.path.join(CONFS, f), data
+
+
+def web_needed():
+    """Does a station need FieldStation42's browser (a pay-per-view or other web station)?"""
+    return any(d["station_conf"].get("network_type") == "web" for _, d in _station_confs())
+
+
+def vaapi_driver(probe=None):
+    """The VA-API driver that works on this GPU (i965, iHD, ...), or "". Drawing straight to the screen, libva finds it
+    itself; in X it asks the X server, which can name one that does not work (an old Intel chip then decodes on the CPU)."""
+    if os.environ.get("LIBVA_DRIVER_NAME"):
+        return os.environ["LIBVA_DRIVER_NAME"]
+    if probe is None:
+        if not os.path.exists("/dev/dri/renderD128"):
+            return ""
+        try:
+            probe = subprocess.run(["ffmpeg", "-v", "verbose", "-hide_banner", "-init_hw_device", "vaapi=va:/dev/dri/renderD128",  # nosec B603 B607
+                                    "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.1", "-f", "null", "-"],
+                                   capture_output=True, text=True, timeout=30).stderr
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    tried = ""
+    for line in probe.splitlines():
+        m = re.search(r"Trying to open .*/(\w+)_drv_video\.so", line)
+        if m:
+            tried = m[1]
+        elif "va_openDriver() returns 0" in line and tried:
+            return tried
+    return ""
+
+
+def display():
+    """How the player draws from now on: writes mpv's settings and returns "x11 <vaapi driver>" or "drm"."""
+    x11 = web_needed()
+    d = os.path.expanduser("~/.config/mpv")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "mpv.conf"), "w") as f:
+        f.write(mpv_conf(screen(), x11=x11))
+    return f"x11 {vaapi_driver()}".strip() if x11 else "drm"
+
+
+def fit(width, height):
+    """Make each web station's window the whole screen. FieldStation42 asks for full screen, which only a window manager
+    can grant; given a size it places the window itself. Returns how many configs were changed."""
+    n = 0
+    for path, data in _station_confs():
+        c = data["station_conf"]
+        if c.get("network_type") == "web" and (c.get("width"), c.get("height"), c.get("x"), c.get("y")) != (width, height, 0, 0):
+            c.update(width=width, height=height, x=0, y=0)
+            _atomic(path, json.dumps(data).encode())
+            n += 1
+    return n
+
+
+def screen_size(xrandr_out):
+    """(width, height) of the X screen, from `xrandr`'s first line ("Screen 0: minimum 320 x 200, current 1024 x 768, ...")."""
+    m = re.search(r"current (\d+) x (\d+)", xrandr_out)
+    return (int(m[1]), int(m[2])) if m else None
 
 
 def setup():
@@ -285,6 +368,17 @@ def sync_once(server, scr, state):
 def main():
     if "--setup" in sys.argv:
         return setup()
+    if "--display" in sys.argv:
+        print(display())
+        return 0
+    if "--fit" in sys.argv:
+        size = screen_size(subprocess.run(["xrandr"], capture_output=True, text=True, timeout=10).stdout)  # nosec B603 B607: fixed command
+        if not size:
+            print("client: could not read the screen's size from xrandr", flush=True)
+            return 1
+        if fit(*size):
+            print(f"client: web stations drawn at {size[0]}x{size[1]}", flush=True)
+        return 0
     base = os.environ.get("FS42_SERVER", "").strip()
     if not base:
         print("client: FS42_SERVER is not set: it must be the server's address, like http://192.168.1.20:5004", flush=True)

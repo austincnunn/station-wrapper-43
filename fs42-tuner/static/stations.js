@@ -16,6 +16,7 @@
 
   function status(s) {
     if (s.type === "guide") return ["On air. The guide is drawn live: nothing needs scheduling.", "ok"];
+    if (s.type === "web") return ["On air on your players (not in Emby or Jellyfin): a menu, nothing needs scheduling.", "ok"];
     if (!s.scheduled_until) return ["Off air: nothing is scheduled yet. Use Build to make a schedule.", "bad"];
     if (!s.on_air) return [`Off air: the schedule ended ${fmtWhen(s.scheduled_until)}. Add days to put it back on.`, "bad"];
     if (s.low) return [`On air, but the schedule ends ${fmtWhen(s.scheduled_until)}. Add days soon.`, "warn"];
@@ -43,9 +44,10 @@
       return b;
     };
     if (s.editable) actions.append(el("a", { className: "btn", href: `/station.html?name=${encodeURIComponent(s.name)}`, textContent: "Edit" }));
-    if (s.editable && s.type !== "guide") actions.append(el("a", { className: "btn", href: `/station.html?copy=${encodeURIComponent(s.name)}`, textContent: "Duplicate", title: "A new station that starts as a copy of this one" }));
-    if (s.type !== "guide") actions.append(el("a", { className: "btn", href: `/schedule.html?name=${encodeURIComponent(s.name)}`, textContent: "Schedule" }));
-    if (s.type !== "guide") {                  // a guide channel is drawn live: nothing to schedule or build
+    const live = s.type === "guide" || s.type === "web";      // drawn live (the guide) or by a player (pay-per-view): no schedule
+    if (s.editable && !live) actions.append(el("a", { className: "btn", href: `/station.html?copy=${encodeURIComponent(s.name)}`, textContent: "Duplicate", title: "A new station that starts as a copy of this one" }));
+    if (!live) actions.append(el("a", { className: "btn", href: `/schedule.html?name=${encodeURIComponent(s.name)}`, textContent: "Schedule" }));
+    if (!live) {                               // nothing to schedule or build
       actions.append(btn("Add 7 days", "", () => run(() => build(s.name, 7, false)), !editable || busy));
       actions.append(btn("Update videos", "", () => run(() => refresh(s)), !editable || busy));
       actions.append(btn("Rebuild schedule", "", () => run(() => rebuild(s)), !editable || busy));

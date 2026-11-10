@@ -9,7 +9,8 @@ The form:
    "blocks": [{"from": 0, "to": 6, "lists": ["Cartoons"]}, {"from": 6, "to": 24, "lists": ["Movies"]}],
    "increment": 30, "bump": "bump", "commercials": "commercials" or "",     # standard
    "breaks": "end",       # where commercials go: "standard" (interrupt the show), "end" (after it), "center" (one break in the middle)
-   "loop": {"list": "Test Pattern", "shuffle": false}}                       # loop
+   "loop": {"list": "Test Pattern", "shuffle": false},                       # loop
+   "ppv": {"folder": "/mnt/media/movies", "theme": "modern", "seconds": 10}}  # ppv
 A standard station plays the lists named for each stretch of the day. `blocks` is the same every day of the
 week; a station whose days differ has `days` instead: {"monday": [blocks], ... "sunday": [blocks]} (all
 seven). Only ONE of the two ever comes out of validate/parse: if every day is the same it is `blocks`.
@@ -20,6 +21,7 @@ why, and the page shows it read-only with a pointer to the FieldStation42 consol
 """
 import guide_channel
 import os
+import ppv
 import re
 import copy
 import json
@@ -37,8 +39,10 @@ ADVANCED_KEYS = ("date_overrides", "slot_overrides", "tag_overrides", "week_over
                  "clip_shows", "autobump", "off_air_autobump", "meta_hints", "fallback_tag", "schedule_offset")
 # what the form owns; everything else in an existing config is kept as it was
 OWNED = ("network_name", "channel_number", "network_type", "content_dir", "bump_dir", "commercial_dir",
-         "commercial_free", "schedule_increment", "day_templates", "shuffle_loop", "break_strategy", "wrapper_break_snap", "wrapper_pack_short", "wrapper_no_breaks", "wrapper_start_cards", "wrapper_end_cards", "wrapper_mid_cards", "wrapper_show_cards", "tag_overrides", "wrapper_logo", "wrapper_caption_track") + DAYS
+         "commercial_free", "schedule_increment", "day_templates", "shuffle_loop", "break_strategy", "wrapper_break_snap", "wrapper_pack_short", "wrapper_no_breaks", "wrapper_start_cards", "wrapper_end_cards", "wrapper_mid_cards", "wrapper_show_cards", "tag_overrides", "wrapper_logo", "wrapper_caption_track", "web_url", "wrapper_ppv") + DAYS
 MAX_NAME = 100
+PPV_THEMES = ("modern", "retro", "terminal")     # FieldStation42's PPV page (?variation=)
+PPV_PAGE = "http://localhost:4242/static/ppv/ppv.html"   # drawn by each player's own FieldStation42 (its port 4242)
 OFF_AIR_CLIP = os.environ.get("FS42_OFFAIR_CLIP", "/opt/assets/test-pattern.mp4")      # shipped in the image (assets/)
 
 
@@ -206,6 +210,21 @@ def _guide(g):
             "theme": theme, "aspect": aspect, "text_size": text_size}
 
 
+def _ppv(p):
+    if not isinstance(p, dict):
+        raise FormError("choose the folder of movies")
+    folder = p.get("folder")
+    if not isinstance(folder, str) or not folder.strip().startswith("/") or ".." in folder.split("/"):
+        raise FormError("the movies folder must be a folder inside your media, like /mnt/media/movies")
+    theme = p.get("theme", "modern")
+    if theme not in PPV_THEMES:
+        raise FormError("the style must be one of: " + ", ".join(PPV_THEMES))
+    seconds = p.get("seconds", 10)
+    if isinstance(seconds, bool) or not isinstance(seconds, int) or not 3 <= seconds <= 120:
+        raise FormError("each movie stays on screen for 3 to 120 seconds")
+    return {"folder": folder.strip().rstrip("/") or "/", "theme": theme, "seconds": seconds}
+
+
 def validate(form, existing_names=(), existing_numbers=None, original=None):
     """Clean a form or raise FormError. existing_*: the other stations, to refuse a clash.
     existing_numbers: {channel number: station name}. original: the name being edited, if any."""
@@ -223,8 +242,10 @@ def validate(form, existing_names=(), existing_numbers=None, original=None):
     if kind == "guide":
         clean = {"name": name, "number": number, "kind": "guide", "guide": _guide(form.get("guide")), "logo": _logo(form.get("logo"))}
         return clean
+    if kind == "ppv":
+        return {"name": name, "number": number, "kind": "ppv", "ppv": _ppv(form.get("ppv")), "logo": _logo(form.get("logo"))}
     if kind not in ("standard", "loop"):
-        raise FormError("the station type must be standard or loop")
+        raise FormError("the station type must be standard, loop, guide or pay-per-view")
     clean = {"name": name, "number": number, "kind": kind, "logo": _logo(form.get("logo")),
              "caption_track": form.get("caption_track") is not False}
     if kind == "standard":
@@ -296,7 +317,7 @@ def make_cards_dir(lists_dir, start, end):
 
 def lists_used(form):
     """Every list a validated form plays from, once each, in the order they first appear."""
-    if form["kind"] == "guide":
+    if form["kind"] in ("guide", "ppv"):
         return []
     if form["kind"] == "loop":
         return [form["loop"]["list"]]
@@ -317,7 +338,7 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
     conf = {k: copy.deepcopy(v) for k, v in (existing or {}).items() if not k.startswith("_")}
     for key in OWNED + (("date_overrides", "week_overrides") if "schedule" in form else ()) + (GUIDE_KEYS if form["kind"] == "guide" else ()):
         conf.pop(key, None)
-    if form.get("caption_track") is False and form["kind"] != "guide":
+    if form.get("caption_track") is False and form["kind"] not in ("guide", "ppv"):
         conf["wrapper_caption_track"] = False                # no caption track in the stream (on unless said no; tuner.py)
     if form.get("logo"):
         conf["wrapper_logo"] = form["logo"]                  # the picture a client shows beside the channel (channel_logo.py)
@@ -332,6 +353,13 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
         conf["scroll_speed"] = g["scroll_speed"]       # would not start at all if a media share were away: the music is ours
         conf["wrapper_guide"] = {"title": g["title"], "hours": g["hours"], "theme": g["theme"], "music": g["music"],
                                  "aspect": g["aspect"], "text_size": g["text_size"]}
+        return conf
+    if form["kind"] == "ppv":                            # a menu of movies, drawn by each player's browser (ppv.py makes the folder)
+        p = form["ppv"]
+        conf["network_type"] = "web"
+        conf["content_dir"] = ppv.content_dir(form["number"])
+        conf["web_url"] = f"{PPV_PAGE}?channel={form['number']}&variation={p['theme']}&duration={p['seconds'] * 1000}"
+        conf["wrapper_ppv"] = dict(p)
         return conf
     if form["kind"] == "loop":
         conf["network_type"] = "loop"
@@ -447,6 +475,12 @@ def _parse(conf):
             "theme": extra.get("theme") if extra.get("theme") in guide_channel.THEMES else guide_channel.DEFAULT_THEME,
             "aspect": extra.get("aspect") if extra.get("aspect") in guide_channel.ASPECTS else "16:9",
             "text_size": extra.get("text_size") if extra.get("text_size") in guide_channel.TEXT_SIZES else "normal"}}, None
+    if kind == "web" and isinstance(conf.get("wrapper_ppv"), dict):
+        p = conf["wrapper_ppv"]
+        return {"name": name, "number": number, "kind": "ppv", "logo": conf.get("wrapper_logo") or "", "ppv": {
+            "folder": p.get("folder") if isinstance(p.get("folder"), str) else "",
+            "theme": p.get("theme") if p.get("theme") in PPV_THEMES else "modern",
+            "seconds": p.get("seconds") if isinstance(p.get("seconds"), int) and not isinstance(p.get("seconds"), bool) else 10}}, None
     if kind != "standard":
         return None, f"a '{kind}' station is edited in the FieldStation42 console"
     if conf.get("content_dir") != CONTENT_DIR:

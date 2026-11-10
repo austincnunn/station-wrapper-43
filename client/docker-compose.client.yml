@@ -1,6 +1,6 @@
 # A PLAYER PC in client mode: plays what a Station Wrapper 43 server schedules, on the screen plugged into this PC.
 # The server builds every schedule; this copies it about once a minute and plays it with mpv, drawing straight to the
-# screen (no desktop, no X). Settings go in .env next to this file (see .env.example).
+# screen (no desktop, no X; a bare X server of its own only while the server has a pay-per-view station). Settings go in .env next to this file (see .env.example).
 #
 # Before you start:
 #   1. Mount the SAME media share the server uses, at the SAME path inside the container (/mnt/media). The schedule
@@ -22,6 +22,8 @@ services:
     devices:
       - /dev/dri                  # the graphics card: mpv draws to the screen and decodes video with it
       - /dev/snd                  # sound
+      - /dev/tty0                 # these two: the bare X server for a pay-per-view station (FieldStation42's browser needs X);
+      - /dev/tty7                 #   it only runs while the server has one
     volumes:
       - ./data/config:/config           # the copied schedule and station configs (local disk)
       - ./data/catalog:/app/catalog     # the copied catalog links (local disk: links don't work on a share)

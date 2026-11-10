@@ -11,12 +11,12 @@
 #                  for every video). LOCAL disk.
 #   /mnt/media     your media, read-only. It may hold several separate shares as subfolders.
 #
-# Headless build of FieldStation42 (https://github.com/shane-mason/FieldStation42): only
-# station_42.py is run. field_player.py (the mpv/X11 on-screen player) is never started, so
-# none of its dependencies (mpv, X11 libs, pulseaudio) are installed. FieldStation42's own guide
-# channel needs tkinter and a screen, so the tuner draws its own (fs42-tuner/guide_channel.py, with Pillow). The pip list below is hand-picked from
-# FieldStation42's install/requirements.in rather than installed wholesale, which would pull
-# mpv/GL/Qt bindings that only field_player uses.
+# FieldStation42 (https://github.com/shane-mason/FieldStation42) as a server is headless: only station_42.py is run.
+# field_player.py (the on-screen player) runs only in client mode (FS42_ROLE=client, on a PC plugged into a TV), so mpv,
+# a bare X server and Qt WebEngine (for web/pay-per-view stations) are in the image but never started on a server.
+# FieldStation42's own guide channel needs tkinter and a screen, so the tuner draws its own (fs42-tuner/guide_channel.py,
+# with Pillow). The pip list below is hand-picked from FieldStation42's install/requirements.in rather than installed
+# wholesale.
 # FieldStation42 itself is fetched from upstream at build time, unmodified: FS42_REF is a branch, a tag or a commit
 # (upstream's main by default, so every build has the newest; pin one with --build-arg FS42_REF=<commit>). This stage
 # only fetches it: git never reaches the final image. The exact commit is kept in /opt/FS42_REF. Upstream's three sample
@@ -49,6 +49,8 @@ RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 # tini: PID 1, so processes that outlive their parent (ffmpeg) are reaped.
 # mpv and the Intel video drivers: client mode only (FS42_ROLE=client), where field_player.py plays to the screen with mpv
 # drawing straight to it (DRM, no X). The server never starts them. One image for both roles keeps their versions in step.
+# A bare X server and the libraries Qt WebEngine needs: client mode too, only while the server has a pay-per-view (web)
+# station, which FieldStation42 draws with its browser (PySide6, in requirements.txt); see client/player.sh.
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -56,6 +58,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libtk8.6 \
       tini \
       mpv \
+      xserver-xorg-core x11-xserver-utils \
+      libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+      libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxkbfile1 \
+      libgl1 libegl1 libfontconfig1 libdbus-1-3 libxshmfence1 libgbm1 fonts-dejavu-core \
     && if [ "${TARGETARCH:-amd64}" = amd64 ]; then apt-get install -y --no-install-recommends i965-va-driver intel-media-va-driver; fi \
     && rm -rf /var/lib/apt/lists/*
 
@@ -77,7 +83,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 # The tuner. The player script is fetched at build time and checked against a SHA-256, so
 # a changed file fails the build. To update: change the version and the hash together.
 COPY fs42-tuner/resolver.py fs42-tuner/tuner.py fs42-tuner/guide.py \
-     fs42-tuner/upstream.py fs42-tuner/library.py fs42-tuner/stations.py fs42-tuner/files.py fs42-tuner/settings.py fs42-tuner/console_client.py fs42-tuner/stationform.py fs42-tuner/stationsapi.py fs42-tuner/keeper.py fs42-tuner/schedlock.py fs42-tuner/auth.py fs42-tuner/captions.py fs42-tuner/legacy.py fs42-tuner/schedules.py fs42-tuner/prefetch.py fs42-tuner/guide_channel.py fs42-tuner/breaksnap.py fs42-tuner/breakstore.py fs42-tuner/iptv.py fs42-tuner/titles.py fs42-tuner/mediaserver.py fs42-tuner/diag.py fs42-tuner/channel_logo.py fs42-tuner/art.py fs42-tuner/ccinject.py fs42-tuner/syncfeed.py /opt/tuner/
+     fs42-tuner/upstream.py fs42-tuner/library.py fs42-tuner/stations.py fs42-tuner/files.py fs42-tuner/settings.py fs42-tuner/console_client.py fs42-tuner/stationform.py fs42-tuner/stationsapi.py fs42-tuner/keeper.py fs42-tuner/schedlock.py fs42-tuner/auth.py fs42-tuner/captions.py fs42-tuner/legacy.py fs42-tuner/schedules.py fs42-tuner/prefetch.py fs42-tuner/guide_channel.py fs42-tuner/breaksnap.py fs42-tuner/breakstore.py fs42-tuner/iptv.py fs42-tuner/titles.py fs42-tuner/mediaserver.py fs42-tuner/diag.py fs42-tuner/channel_logo.py fs42-tuner/art.py fs42-tuner/ccinject.py fs42-tuner/syncfeed.py fs42-tuner/ppv.py /opt/tuner/
 COPY fs42-tuner/static/ /opt/tuner/static/
 ADD --checksum=sha256:ceb67d511fae54f442a5b9c03e6b8ea30a89efc9bde7fa3ce0687f05f31e6d6a \
     https://cdn.jsdelivr.net/npm/mpegts.js@1.8.2/dist/mpegts.min.js /opt/tuner/static/mpegts.min.js

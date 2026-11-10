@@ -97,6 +97,14 @@ class Library:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosec B310: the address is the owner's own setting
             return json.load(r)
 
+    def image(self, url):
+        """The bytes of a picture the server named (a record's "image"), or None when it is not the server's."""
+        if not (self.enabled and url.startswith(self.url + "/")):
+            return None
+        req = urllib.request.Request(url, headers={"X-Emby-Token": self.key, "Authorization": f'MediaBrowser Token="{self.key}"'})
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosec B310: the address is the owner's own setting
+            return r.read(8 * 1024 * 1024)
+
     def refresh(self):
         """Ask the server for everything again. True when it answered."""
         if not self.enabled:

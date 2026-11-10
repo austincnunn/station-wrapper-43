@@ -261,6 +261,7 @@ class Stations:
         self.horizon = horizon or (lambda: None)
         self._empty_seen = {}                           # list name -> (when looked at, it had no videos)
         self.jobs = Jobs(console, db_path, lists_dir)
+        self.on_ppv = None                              # optional: makes the PPV stations' folders again (tuner.py, ppv.py)
 
     # ---- reading
     def _coverage(self, name, now):
@@ -371,10 +372,23 @@ class Stations:
         if not guide_channel.audio_files(real):
             raise sf.FormError(f"there is no music in {music} (it plays mp3, flac, ogg, m4a, wav and opus files)")
 
+    def _check_ppv(self, form):
+        """A PPV station's movies must be a folder inside the media."""
+        folder = form["ppv"]["folder"]
+        if self.media_root:
+            real, root = os.path.realpath(folder), os.path.realpath(self.media_root)
+            if real != root and not real.startswith(root.rstrip("/") + "/"):
+                raise sf.FormError(f"the movies must be inside your media ({self.media_root}), because that is what the players can see")
+        if not os.path.isdir(folder):
+            raise sf.FormError(f"{folder} is not a folder that is there: is its volume mounted?")
+        return [] if _has_video(folder) else [f"there are no videos in {folder} yet, so the menu will be empty"]
+
     def _check_lists(self, form):
         if form["kind"] == "guide":
             self._check_music(form)
             return []
+        if form["kind"] == "ppv":
+            return self._check_ppv(form)
         names = sf.lists_used(form)
         if form["kind"] == "standard":
             names += [form["bump"], form["bump_end"]]
@@ -429,7 +443,10 @@ class Stations:
             schedules.put(form["name"], form["schedule"], skipped=self._empty_lists(names=sf.lists_used(form), fresh=True))   # the editor's own copy: seasons, special days, commercials
         else:
             schedules.drop(form["name"])
-        return {"name": form["name"], "created": existing is None, "needs_build": form["kind"] != "guide", "warnings": warnings}
+        if form["kind"] == "ppv" and self.on_ppv:
+            self.on_ppv()                                    # its folder of movies is made now (ppv.py), not at the next round
+        return {"name": form["name"], "created": existing is None, "needs_build": form["kind"] not in ("guide", "ppv"),
+                "warnings": warnings}
 
     def rename(self, old, new):
         """Rename a station of any kind. FieldStation42 keeps a station's schedule and catalog under its NAME, so
@@ -467,6 +484,8 @@ class Stations:
             raise NotFound(f"there is no station called '{name}'")
         self.console.delete(name)
         schedules.drop(name)
+        if self.on_ppv:
+            self.on_ppv()                                    # a PPV station's folder goes with it
 
         return {"name": name}
 
@@ -557,6 +576,8 @@ class Stations:
             raise NotFound(f"there is no station called '{name}'")
         if conf.get("network_type") == "guide":
             raise sf.FormError("a guide channel is drawn live: there is nothing to build")
+        if conf.get("network_type") == "web":
+            raise sf.FormError("a pay-per-view or web channel has no schedule: there is nothing to build")
         return self.jobs.start(name, days, rebuild, refresh, resume)
 
     # ---- the schedule

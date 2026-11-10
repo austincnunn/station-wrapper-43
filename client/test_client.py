@@ -165,6 +165,45 @@ class Screen(unittest.TestCase):
             self.assertIn(line + "\n", conf)
 
 
+class WebStations(unittest.TestCase):
+    """A pay-per-view station needs X and a window the size of the screen."""
+
+    def setUp(self):
+        shutil.rmtree(client.CONFS, ignore_errors=True)
+        os.makedirs(client.CONFS)
+        json.dump({"station_conf": {"network_name": "News", "channel_number": 3, "network_type": "standard"}},
+                  open(os.path.join(client.CONFS, "news.json"), "w"))
+
+    def test_drm_until_a_web_station_comes(self):
+        self.assertFalse(client.web_needed())
+        json.dump({"station_conf": {"network_name": "PPV", "channel_number": 115, "network_type": "web", "web_url": "http://x"}},
+                  open(os.path.join(client.CONFS, "ppv.json"), "w"))
+        self.assertTrue(client.web_needed())
+        self.assertEqual(client.fit(1024, 768), 1)
+        self.assertEqual(client.fit(1024, 768), 0)                     # already that size: the file is left alone
+        c = json.load(open(os.path.join(client.CONFS, "ppv.json")))["station_conf"]
+        self.assertEqual((c["width"], c["height"], c["x"], c["y"], c["web_url"]), (1024, 768, 0, 0, "http://x"))
+        self.assertNotIn("width", json.load(open(os.path.join(client.CONFS, "news.json")))["station_conf"])
+
+    def test_mpv_in_x(self):
+        conf = client.mpv_conf(client.screen({"FS42_SCREEN": "crt"}), {"FS42_DRM_CONNECTOR": "VGA-1", "FS42_GAMMA": "10"}, x11=True)
+        for line in ("gpu-context=x11egl", "fullscreen=yes", "profile=fast", "gamma=10"):
+            self.assertIn(line + "\n", conf)
+        self.assertNotIn("drm", conf)
+
+    def test_screen_size_and_vaapi_driver(self):
+        self.assertEqual(client.screen_size("Screen 0: minimum 320 x 200, current 1024 x 768, maximum 8192 x 8192"), (1024, 768))
+        probe = ("libva: Trying to open /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so\nlibva: va_openDriver() returns 1\n"
+                 "libva: Trying to open /usr/lib/x86_64-linux-gnu/dri/i965_drv_video.so\nlibva: va_openDriver() returns 0\n")
+        old = os.environ.pop("LIBVA_DRIVER_NAME", None)
+        try:
+            self.assertEqual(client.vaapi_driver(probe), "i965")
+            self.assertEqual(client.vaapi_driver("no gpu here"), "")
+        finally:
+            if old is not None:
+                os.environ["LIBVA_DRIVER_NAME"] = old
+
+
 class StreamConfs(unittest.TestCase):
     """What extras/remote-player/fs42-streams --test checked."""
 

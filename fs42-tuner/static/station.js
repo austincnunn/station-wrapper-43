@@ -687,7 +687,7 @@
   let libCounts = null;
   async function summarise() {
     const box = $("plan-summary");
-    if (kind() === "guide") { box.textContent = ""; return; }
+    if (kind() === "guide" || kind() === "ppv") { box.textContent = ""; return; }
     if (!libCounts) {
       try {
         const lib = await (await fetch("/library.json")).json();
@@ -733,9 +733,11 @@
     $("standard").hidden = kind() !== "standard";
     $("loop").hidden = kind() !== "loop";
     $("guide-panel").hidden = kind() !== "guide";
-    $("f-captions-field").hidden = kind() === "guide";                     // a guide channel has no videos to caption
+    $("ppv-panel").hidden = kind() !== "ppv";
+    const live = kind() === "guide" || kind() === "ppv";                      // drawn live, or by each player: nothing to build
+    $("f-captions-field").hidden = live;                                     // and no stream to caption
     $("save-apply").hidden = kind() !== "guide";
-    $("save-build").hidden = $("build-note").hidden = kind() === "guide";      // a guide channel is drawn live: nothing to build
+    $("save-build").hidden = $("build-note").hidden = live;
   }
   document.querySelectorAll("input[name=kind]").forEach((r) => r.addEventListener("change", showKind));
   function breaksChanged() {
@@ -768,6 +770,8 @@
         aspect: $("g-aspect").value, text_size: $("g-textsize").value,
         messages: $("g-messages").value.split("\n").map((m) => m.trim()).filter(Boolean), music: $("g-music").value.trim(),
       };
+    } else if (form.kind === "ppv") {
+      form.ppv = { folder: $("p-folder").value.trim(), theme: $("p-theme").value, seconds: Number($("p-seconds").value) };
     } else {
       form.loop = { list: $("f-looplist").value, shuffle: $("f-shuffle").checked };
     }
@@ -811,6 +815,11 @@
       $("g-speed").value = String(near);
       $("g-messages").value = g.messages.join("\n");
       $("g-music").value = g.music;
+    } else if (form.kind === "ppv") {
+      $("p-folder").value = form.ppv.folder;
+      $("p-theme").value = form.ppv.theme || "modern";
+      const secs = [5, 10, 15, 30];
+      $("p-seconds").value = String(secs.reduce((a, b) => (Math.abs(b - form.ppv.seconds) < Math.abs(a - form.ppv.seconds) ? b : a)));
     } else {
       fields.loop.set(form.loop.list);
       $("f-shuffle").checked = form.loop.shuffle;
@@ -890,7 +899,9 @@
     state.showKinds = shows.kinds || {};
     state.members = shows.members || {};
     call("/api/files/list?root=media&path=").then((m) => {         // suggestions for the music folder: the folders inside your media
-      $("g-music-hints").replaceChildren(...m.entries.filter((e) => e.kind === "dir").map((e) => el("option", { value: `/mnt/media/${e.name}` })));
+      const dirs = m.entries.filter((e) => e.kind === "dir");
+      $("g-music-hints").replaceChildren(...dirs.map((e) => el("option", { value: `/mnt/media/${e.name}` })));
+      $("p-folder-hints").replaceChildren(...dirs.map((e) => el("option", { value: `/mnt/media/${e.name}` })));
     }).catch(() => {});
     state.edit = lib.edit;
     call("/api/titles").then((n) => { $("g-episodes").checked = n.settings.episode_names; }).catch(() => {});

@@ -13,7 +13,8 @@ import time
 def discover(confs_dir):
     """{channel number (text): station name} for every station config in confs_dir.
 
-    Files that are not station configs (main_config.json), or that can't be read, are skipped.
+    Files that are not station configs (main_config.json), or that can't be read, are skipped, and so are web stations
+    (pay-per-view): a player's own browser draws them, so there is nothing for the tuner to stream.
     """
     found = {}
     for path in sorted(glob.glob(os.path.join(confs_dir, "*.json"))):
@@ -23,7 +24,7 @@ def discover(confs_dir):
         except (OSError, ValueError):
             continue
         conf = data.get("station_conf") if isinstance(data, dict) else None
-        if not isinstance(conf, dict):
+        if not isinstance(conf, dict) or conf.get("network_type") == "web":
             continue
         name, number = conf.get("network_name"), conf.get("channel_number")
         if isinstance(name, str) and name and isinstance(number, (int, str)) and not isinstance(number, bool) \

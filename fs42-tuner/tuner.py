@@ -85,6 +85,7 @@ import stationsapi
 import art
 import channel_logo
 import mediaserver
+import ppv
 import syncfeed
 import titles
 diag.RING.install()                  # the Status page shows what this process last said
@@ -911,6 +912,35 @@ POOL = EncoderPool(MAX_ENCODERS)
 CHANS = {n: Channel(n, s, POOL) for n, s in CHANNELS.items()}
 VARIANTS = {}                       # (channel number, kbps) -> the lower-rate copy of that channel (variant())
 VARIANTS_LOCK = threading.Lock()
+
+
+PPV_NOW = threading.Event()         # set: make the PPV stations' folders now (a station was saved, the media server changed)
+
+
+def ppv_poster(info, video):
+    """A PPV movie's poster: the media server's, else a picture beside it, its embedded cover or a frame of it (art.py)."""
+    if info.get("image"):
+        data = MEDIA_SERVER.image(info["image"])
+        if data:
+            return data
+    got = art.get(video)
+    if got:
+        with open(got[0], "rb") as f:
+            return f.read()
+    return None
+
+
+def ppv_loop():
+    """The PPV stations' folders of movies (ppv.py), made again every half hour for movies added or removed, and at once
+    when a station is saved or the media server has new names."""
+    while True:
+        try:
+            ppv.build_all(stations.station_confs(CONFS_DIR), os.path.join(CATALOG_ROOT, "catalog"),
+                          lookup=titles._from_server, poster=ppv_poster)
+        except Exception as e:
+            print(f"[ppv] could not make the PPV folders: {e}", flush=True)
+        PPV_NOW.wait(1800)
+        PPV_NOW.clear()
 
 
 def variant(chan, kbps):
@@ -2238,9 +2268,11 @@ if __name__ == "__main__":
     # Emby/Jellyfin's poster when it has one, else made when a client asks (art.py): its embedded cover, a frame, or the show's poster
     GUIDE.art_url = lambda path: ((titles._from_server(media_path(path)) or {}).get("image")
                                   or f"@@BASE@@/art/{quote(path)}")
-    MEDIA_SERVER.on_change = lambda: (titles.forget(), threading.Thread(target=lambda: GUIDE.xmltv(force=True), daemon=True,
+    MEDIA_SERVER.on_change = lambda: (titles.forget(), PPV_NOW.set(), threading.Thread(target=lambda: GUIDE.xmltv(force=True), daemon=True,
                                                                        name="guide-after-mediaserver").start())
     MEDIA_SERVER.start()
+    STATIONS.on_ppv = PPV_NOW.set
+    threading.Thread(target=ppv_loop, daemon=True, name="ppv").start()
     GUIDE.extra_sources = external_guide_sources
     sync_external()                                              # the channels of the external IPTV sources, from what was last read
     threading.Thread(target=refresh_sources_loop, daemon=True, name="iptv-sources").start()

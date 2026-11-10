@@ -51,6 +51,7 @@
             <label><input type="radio" name="kind" value="standard" checked> Scheduled from your lists</label>
             <label><input type="radio" name="kind" value="loop"> Repeats one list all day</label>
             <label><input type="radio" name="kind" value="guide"> A scrolling guide of every channel</label>
+            <label><input type="radio" name="kind" value="ppv"> Pay-per-view: pick a movie with the remote</label>
           </div>
         </div>
       </div>
@@ -172,6 +173,25 @@
           <span class="hint">It plays every mp3, flac, ogg, m4a, wav or opus file in that folder, shuffled, over and over. Leave it empty for no music.</span>
         </div>
         <p class="dim">Save takes effect the next time the channel starts (when nobody is watching, or within the hour). “Save and apply now” restarts it right away for anyone watching.</p>
+      </div>
+
+      <div id="ppv-panel" class="panel" hidden>
+        <h2>Pay-per-view</h2>
+        <p class="dim">A menu of movies on your TV players: page through the posters with the remote's up and down, and press Enter to watch one from the start. Each player draws it itself (in client mode), so it is not in Emby or Jellyfin. Titles, plots and posters come from your media server when it knows the movie, otherwise from the folder names. New movies show up within half an hour.</p>
+        <div class="field">
+          <label for="p-folder">Movies (a folder inside your media)</label>
+          <input id="p-folder" type="text" list="p-folder-hints" placeholder="/mnt/media/movies">
+          <datalist id="p-folder-hints"></datalist>
+          <span class="hint">Every video in it and in the folders inside it, one per movie.</span>
+        </div>
+        <div class="field">
+          <label for="p-theme">Style</label>
+          <select id="p-theme"><option value="modern" selected>Modern</option><option value="retro">Retro</option><option value="terminal">Terminal</option></select>
+        </div>
+        <div class="field">
+          <label for="p-seconds">Each movie stays on screen for</label>
+          <select id="p-seconds"><option value="5">5 seconds</option><option value="10" selected>10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select>
+        </div>
       </div>
 
       <div class="form-actions">
