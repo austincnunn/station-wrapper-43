@@ -30,6 +30,7 @@ import json
 import os
 import random
 import re
+import shutil
 import signal
 import socket
 import sqlite3
@@ -48,7 +49,7 @@ RUNTIME, CONFS, CATALOG = (os.path.join(APP, d) for d in ("runtime", "confs", "c
 STATE = os.path.join(RUNTIME, "client_state.json")       # the hashes of what was last copied
 READY = os.path.join(RUNTIME, "client_ready")             # the player waits for this (player.sh)
 KEEP_CONFS = ("main_config.json",)
-STANDBY = "/opt/assets/black.png"     # what the player shows while a channel starts or between programmes (not "Please Stand By")                        # this player's own; never replaced by the server's
+STANDBY = "/opt/assets/black.png"     # copied over runtime/standby.png: shown as a channel starts and between programmes                        # this player's own; never replaced by the server's
 
 PROFILES = {
     "crt": {"panscan": 1.0, "drm_mode": "preferred", "mpv_profile": "fast", "kbps": 1500},
@@ -166,8 +167,10 @@ def setup():
         f.write(mpv_conf(scr))
     os.makedirs(CONFS, exist_ok=True)
     with open(os.path.join(CONFS, "main_config.json"), "w") as f:
-        json.dump({"overlay_conf": {"overlay_text_color": [0, 0, 0, 0], "overlay_shadow_color": [0, 0, 0, 0]},
-                   "standby_image": STANDBY}, f)
+        json.dump({"overlay_conf": {"overlay_text_color": [0, 0, 0, 0], "overlay_shadow_color": [0, 0, 0, 0]}}, f)
+    if os.path.isfile(STANDBY):        # FieldStation42 always shows runtime/standby.png (main_config can't change it): make it black
+        os.makedirs(RUNTIME, exist_ok=True)
+        shutil.copyfile(STANDBY, os.path.join(RUNTIME, "standby.png"))
     print(f"client: {scr['screen']} screen: panscan {scr['panscan']}, mode {scr['drm_mode']}, mpv profile {scr['mpv_profile']}, "
           f"server streams at {scr['kbps']} kbps", flush=True)
 
