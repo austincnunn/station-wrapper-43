@@ -335,9 +335,10 @@ def with_text(cmd, text):
 
 
 def filler_cmd(seconds, text=None):
+    """Black and silence for `seconds`: what a channel shows when there is nothing to play (never colour bars or a tone)."""
     return with_text(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-re",
-                      "-f", "lavfi", "-i", f"smptebars=size={W}x{H}:rate={FPS}",
-                      "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+                      "-f", "lavfi", "-i", f"color=c=black:size={W}x{H}:rate={FPS}",
+                      "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
                       "-t", f"{max(seconds, 1):.1f}"] + NORMALIZE + MUX + ["pipe:1"], text)
 
 
@@ -691,6 +692,10 @@ class Channel:
         try:
             cur = resolver.resolve(DB_PATH, self.station)
         except ScheduleGap as e:
+            if e.until is not None:                 # the videos end a few seconds before the slot: black until it ends, like TV
+                self.now_playing = "Between programmes"
+                self._pipe(filler_cmd(min(max((e.until - datetime.now()).total_seconds(), 1), 15)))
+                return
             print(f"[ch{self.number}] {e} -- filling")
             self.now_playing = "Off air"
             self._pipe(filler_cmd(15, "QUEUEING"))              # the next part of the schedule is not there yet
@@ -838,9 +843,9 @@ def offair_reason(station, entry, block_title):
     air when the block is named so, FieldStation42 says the content is off air, or the file is the shipped test pattern.
     The reason is the lists the station's calendar left out because they had no videos, else that nothing is scheduled."""
     name = os.path.basename(str(getattr(entry, "path", "") or "")).lower()
-    shipped = os.path.basename(stationform.OFF_AIR_CLIP).lower()
+    shipped = {os.path.basename(c).lower() for c in (stationform.OFF_AIR_CLIP, stationform.OLD_OFF_AIR_CLIP)}
     if not (str(block_title).strip().lower() in ("offair", "off air", "off-air") or getattr(entry, "content_type", "") == "off_air"
-            or (name and name == shipped)):
+            or (name and name in shipped)):
         return None
     try:
         empty = sorted(schedules.skipped_of(station), key=str.casefold)

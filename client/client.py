@@ -47,7 +47,8 @@ APP = os.environ.get("FS42_APP", "/app")
 RUNTIME, CONFS, CATALOG = (os.path.join(APP, d) for d in ("runtime", "confs", "catalog"))
 STATE = os.path.join(RUNTIME, "client_state.json")       # the hashes of what was last copied
 READY = os.path.join(RUNTIME, "client_ready")             # the player waits for this (player.sh)
-KEEP_CONFS = ("main_config.json",)                        # this player's own; never replaced by the server's
+KEEP_CONFS = ("main_config.json",)
+STANDBY = "/opt/assets/black.png"     # what the player shows while a channel starts or between programmes (not "Please Stand By")                        # this player's own; never replaced by the server's
 
 PROFILES = {
     "crt": {"panscan": 1.0, "drm_mode": "preferred", "mpv_profile": "fast", "kbps": 1500},
@@ -165,7 +166,8 @@ def setup():
         f.write(mpv_conf(scr))
     os.makedirs(CONFS, exist_ok=True)
     with open(os.path.join(CONFS, "main_config.json"), "w") as f:
-        json.dump({"overlay_conf": {"overlay_text_color": [0, 0, 0, 0], "overlay_shadow_color": [0, 0, 0, 0]}}, f)
+        json.dump({"overlay_conf": {"overlay_text_color": [0, 0, 0, 0], "overlay_shadow_color": [0, 0, 0, 0]},
+                   "standby_image": STANDBY}, f)
     print(f"client: {scr['screen']} screen: panscan {scr['panscan']}, mode {scr['drm_mode']}, mpv profile {scr['mpv_profile']}, "
           f"server streams at {scr['kbps']} kbps", flush=True)
 

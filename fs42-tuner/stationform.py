@@ -43,7 +43,8 @@ OWNED = ("network_name", "channel_number", "network_type", "content_dir", "bump_
 MAX_NAME = 100
 PPV_THEMES = ("modern", "retro", "terminal")     # FieldStation42's PPV page (?variation=)
 PPV_PAGE = "http://localhost:4242/static/ppv/ppv.html"   # drawn by each player's own FieldStation42 (its port 4242)
-OFF_AIR_CLIP = os.environ.get("FS42_OFFAIR_CLIP", "/opt/assets/test-pattern.mp4")      # shipped in the image (assets/)
+OFF_AIR_CLIP = os.environ.get("FS42_OFFAIR_CLIP", "/opt/assets/off-air.mp4")      # black and silent, shipped in the image (assets/)
+OLD_OFF_AIR_CLIP = "/opt/assets/test-pattern.mp4"          # what stations got before: colour bars and a tone. Saving one moves it on
 
 
 class FormError(ValueError):
@@ -389,7 +390,8 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
         conf["wrapper_mid_cards"] = False                 # no default cards (console_launch.py); absent means on
     conf["schedule_increment"] = form["increment"]
     conf["break_strategy"] = form["breaks"]
-    conf.setdefault("off_air_video", OFF_AIR_CLIP)       # time with no slot assigned shows the test pattern (kept if one is set)
+    if conf.get("off_air_video") in (None, OLD_OFF_AIR_CLIP):     # time with no slot assigned is black and silent (one of your own is kept)
+        conf["off_air_video"] = OFF_AIR_CLIP
     if form.get("snap"):
         conf["wrapper_break_snap"] = True
     if form.get("pack") is False:

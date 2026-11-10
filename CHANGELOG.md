@@ -5,6 +5,12 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 
 ## [Unreleased]
 
+### Fixed
+- **No more colour bars and tone.** When a block's videos end a few seconds before its slot (breaks can't be filled to the
+  second), the stream showed 15 seconds of colour bars with a tone, and the next programme started late. It is now black and
+  silent for exactly the gap. Every other "nothing to play" picture is black and silent too, off-air time uses a black clip
+  (`assets/off-air.mp4`), and a client-mode player shows black instead of the "Please Stand By" card.
+
 ### Added
 - **The guide channel's picture shape and text size.** Standard (4:3) draws the guide in the middle of the picture with black
   bars at the sides, so a 4:3 TV that crops the sides shows it edge to edge; text size runs from Small to Extra large.

@@ -44,6 +44,11 @@ conn.execute(
     ("ch3", "LiquidBlock", (T0 + timedelta(minutes=30)).isoformat(sep=" "), (T0 + timedelta(minutes=60)).isoformat(sep=" "),
      "standard", "Night Gallery", json.dumps([
          {"path": "catalog/ch3/shows/ng1.mkv", "skip": 0, "duration": 1800, "is_stream": False, "content_type": "feature"}])))
+conn.execute(       # breaks can't be filled to the second: this block's videos end 7 seconds before its slot does
+    "INSERT INTO liquid_blocks (station, liquid_type, start_time, end_time, break_strategy, title, plan_json) VALUES (?,?,?,?,?,?,?)",
+    ("ch3", "LiquidBlock", (T0 + timedelta(minutes=60)).isoformat(sep=" "), (T0 + timedelta(minutes=90)).isoformat(sep=" "),
+     "standard", "Thriller", json.dumps([
+         {"path": "catalog/ch3/shows/th1.mkv", "skip": 0, "duration": 1793, "is_stream": False, "content_type": "feature"}])))
 conn.commit(); conn.close()
 
 print("stations:", stations(DB))
@@ -67,6 +72,14 @@ for secs, want_path, want_seek, note in cases:
     ok &= hit
     print(f"{'PASS' if hit else 'FAIL'}  t+{secs:>4}s  {c.block_title:<18} "
           f"{os.path.basename(c.entry.path):<12} seek={c.seek:<6.1f} rem={c.remaining:<6.1f} | {note}")
+
+try:
+    resolve(DB, "ch3", T0 + timedelta(seconds=3600 + 1795))
+    print("FAIL  the seconds after a short block's videos should raise"); ok = False
+except ScheduleGap as e:
+    hit = e.until == T0 + timedelta(minutes=90)
+    ok &= hit
+    print(f"{'PASS' if hit else 'FAIL'}  a short block's last seconds are a gap that ends with its slot ({e.until})")
 
 try:
     resolve(DB, "ch3", T0 + timedelta(hours=3))

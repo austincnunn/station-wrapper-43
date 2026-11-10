@@ -65,7 +65,12 @@ class Cursor:
 
 
 class ScheduleGap(Exception):
-    """No block covers the requested instant -- schedule ran out or has a hole."""
+    """No block covers the requested instant -- schedule ran out or has a hole. `until` is when the hole ends, when that
+    is known: a block whose videos end a few seconds before its slot does (breaks can't be filled to the second)."""
+
+    def __init__(self, message, until=None):
+        super().__init__(message)
+        self.until = until
 
 
 def _rows_to_plan(plan_json: str) -> list:
@@ -181,7 +186,8 @@ def resolve(db_path: str, station: str, when: datetime = None) -> Cursor:
     # Block's plan is shorter than the block's wall-clock span: FS42's own
     # get_play_point returns None here and the player falls through. Treat the
     # tail as dead air rather than crashing the stream.
-    raise ScheduleGap(f"{station}: plan for '{block_title}' underruns its slot at {when.isoformat()}")
+    raise ScheduleGap(f"{station}: plan for '{block_title}' underruns its slot at {when.isoformat()}",
+                      until=datetime.fromisoformat(end_s))
 
 
 def stations(db_path: str) -> list:
