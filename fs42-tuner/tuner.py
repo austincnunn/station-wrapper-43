@@ -2272,6 +2272,7 @@ if __name__ == "__main__":
                                                                        name="guide-after-mediaserver").start())
     MEDIA_SERVER.start()
     STATIONS.on_ppv = PPV_NOW.set
+    STATIONS.catalog = os.path.join(CATALOG_ROOT, "catalog")
     threading.Thread(target=ppv_loop, daemon=True, name="ppv").start()
     GUIDE.extra_sources = external_guide_sources
     sync_external()                                              # the channels of the external IPTV sources, from what was last read

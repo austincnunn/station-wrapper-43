@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import console_client
 import files as filemgr
 import guide_channel
+import ppv
 import legacy
 import resolver
 import schedules
@@ -262,6 +263,7 @@ class Stations:
         self._empty_seen = {}                           # list name -> (when looked at, it had no videos)
         self.jobs = Jobs(console, db_path, lists_dir)
         self.on_ppv = None                              # optional: makes the PPV stations' folders again (tuner.py, ppv.py)
+        self.catalog = None                             # the catalog folder, where a PPV station's folder is (ppv.py)
 
     # ---- reading
     def _coverage(self, name, now):
@@ -422,6 +424,10 @@ class Stations:
             if channel_logo.custom(self.media_root, form["logo"]) is None:
                 warnings.append(f"the logo “{form['logo']}” is not there (or is not a picture under 2 MB inside your media), "
                                 "so a logo drawn from the channel's name is used")
+        if form["kind"] == "ppv" and self.catalog:
+            # FieldStation42 skips a station whose content_dir is not there when it loads it, so the folder is made first
+            # (empty; its movies follow from on_ppv)
+            os.makedirs(os.path.join(self.catalog, ppv.ROOT, str(form["number"])), exist_ok=True)
         conf = sf.to_conf(form, existing, shows=self._shows(),
                           skip=self._empty_lists(names=sf.lists_used(form), fresh=True) if form["kind"] == "standard" else ())
         if existing is not None:

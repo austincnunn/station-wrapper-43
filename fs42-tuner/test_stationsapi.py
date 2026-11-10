@@ -350,6 +350,24 @@ class WeekApiTest(Base):
         self.assertTrue(any("'Movies' has no videos" in w for w in out["warnings"]))
 
 
+class PpvApiTest(Base):
+    def test_its_folder_is_there_before_fieldstation42_reads_it_and_nothing_is_built(self):
+        self.api.catalog, made = os.path.join(self.root, "catalog"), []
+        self.api.on_ppv = lambda: made.append(1)
+        self.api.media_root = self.root
+        movies = os.path.join(self.root, "Movies")
+        os.makedirs(os.path.join(movies, "Heat (1995)"))
+        open(os.path.join(movies, "Heat (1995)", "heat.mkv"), "w").close()
+        out = self.api.save(None, {"name": "PPV", "number": 115, "kind": "ppv", "ppv": {"folder": movies}})
+        self.assertEqual((out["needs_build"], out["warnings"], made), (False, [], [1]))
+        self.assertTrue(os.path.isdir(os.path.join(self.root, "catalog", "ppv", "115")))
+        self.assertEqual(self.console.confs["PPV"]["content_dir"], "catalog/ppv/115")
+        with self.assertRaises(sf.FormError):
+            self.api.build("PPV", 7)
+        with self.assertRaises(sf.FormError):                                  # outside the media
+            self.api.save(None, {"name": "Other", "number": 116, "kind": "ppv", "ppv": {"folder": "/etc"}})
+
+
 class ReadTest(Base):
     def test_listing_says_what_each_station_is_and_whether_it_is_on_air(self):
         self.api.save(None, form())
