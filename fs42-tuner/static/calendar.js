@@ -109,7 +109,8 @@
     const name = b.lists ? b.lists[0] : b.start || b.list;
     return name ? `hsl(${hue(name)} 45% 34%)` : "#7a4a2b";
   };
-  const text = (b) => (b.lists ? (b.lists.length ? b.lists.join(", ") : "(choose a list)")
+  const short = (n) => String(n).split("/").pop();          // a folder inside a list is named by its own name
+  const text = (b) => (b.lists ? (b.lists.length ? b.lists.map(short).join(", ") : "(choose a list)")
     : b.start ? (b.end && b.end !== b.start ? `${b.start} / ${b.end}` : b.start) : b.list || "(choose a list)");
 
   function el(tag, props, ...kids) {

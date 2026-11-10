@@ -12,6 +12,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   (`assets/off-air.mp4`), and a client-mode player shows black instead of the "Please Stand By" card.
 
 ### Added
+- **Intro cards and folders inside a list on the Stations page.** A video slot can have an intro card (a folder of clips,
+  one played as each hour of the slot starts: FieldStation42's `start_bump`), and its lists can be folders inside a list.
+  A station with those (made by a script) was read-only on the Stations page; it now opens and saves back unchanged.
+
 - **The guide channel's picture shape and text size.** Standard (4:3) draws the guide in the middle of the picture with black
   bars at the sides, so a 4:3 TV that crops the sides shows it edge to edge; text size runs from Small to Extra large.
 

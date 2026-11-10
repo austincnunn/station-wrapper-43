@@ -34,7 +34,7 @@ INCREMENTS = (5, 10, 15, 30, 60)         # 5 rounds a movie up to the next 5 min
 BREAKS = ("end", "standard", "center")
 COM_OFF = ".commercials.off"             # the station's commercial folder while its default commercials are off (empty, hidden)
 OFF_CARDS = ".cards.off"                  # the station's bump folder while its default mid cards are off (an empty, hidden folder)
-SLOT_KEYS_OK = {"tags", "sequence"}        # a slot with anything else (marathon, bumps...) is advanced; "sequence" only as ours (SERIES)
+SLOT_KEYS_OK = {"tags", "sequence", "start_bump", "random_tags"}   # a slot with anything else (marathon...) is advanced; "sequence" only as ours (SERIES)
 ADVANCED_KEYS = ("date_overrides", "slot_overrides", "tag_overrides", "week_overrides", "active_rules",
                  "clip_shows", "autobump", "off_air_autobump", "meta_hints", "fallback_tag", "schedule_offset")
 # what the form owns; everything else in an existing config is kept as it was
@@ -160,11 +160,15 @@ def _blocks(blocks):
         if not isinstance(lists, list) or not lists:
             raise FormError(f"time block {i}: choose at least one list")
         clean = []
-        for name in lists:
-            name = _list_name(name)
-            if name not in clean:
-                clean.append(name)
-        out.append({"from": lo, "to": hi, "lists": clean})
+        try:
+            for name in lists:
+                name = schedules.list_path(name, f"time block {i}")
+                if name not in clean:
+                    clean.append(name)
+            intro = schedules.list_path(b["intro"], f"time block {i}") if b.get("intro") else None
+        except schedules.ScheduleError as e:
+            raise FormError(str(e))
+        out.append({"from": lo, "to": hi, "lists": clean, **({"intro": intro} if intro else {})})
         expect = hi
     if expect != 24:
         raise FormError(f"the time blocks must reach the end of the day (they stop at hour {expect})")
@@ -418,6 +422,8 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
             tags = b["lists"][0] if len(b["lists"]) == 1 else list(b["lists"])
             for h in range(b["from"], b["to"]):
                 hours[str(h)] = {"tags": tags}
+                if b.get("intro"):
+                    hours[str(h)]["start_bump"] = b["intro"]
                 if any(n in shows for n in b["lists"]):
                     hours[str(h)]["sequence"] = schedules.SERIES
         return hours
@@ -559,16 +565,18 @@ def _blocks_of_template(tmpl):
     per_hour = []
     for h in range(24):
         slot = tmpl[str(h)]
-        if not isinstance(slot, dict) or set(slot) - SLOT_KEYS_OK or "tags" not in slot or slot.get("sequence", schedules.SERIES) != schedules.SERIES:
+        if not isinstance(slot, dict) or set(slot) - SLOT_KEYS_OK or "tags" not in slot or slot.get("sequence", schedules.SERIES) != schedules.SERIES \
+                or slot.get("random_tags", True) is not True or not isinstance(slot.get("start_bump", ""), str):
             return None, f"the slot at hour {h} uses advanced settings"
         tags = slot["tags"]
         tags = [tags] if isinstance(tags, str) else tags
         if not isinstance(tags, list) or not tags or not all(isinstance(t, str) and t for t in tags):
             return None, f"the slot at hour {h} has no usable list"
-        per_hour.append(tags)
+        per_hour.append((tags, slot.get("start_bump") or None))        # several lists: one is picked at random (random_tags)
     blocks, start = [], 0
     for h in range(1, 25):
         if h == 24 or per_hour[h] != per_hour[start]:
-            blocks.append({"from": start, "to": h, "lists": per_hour[start]})
+            tags, intro = per_hour[start]
+            blocks.append({"from": start, "to": h, "lists": tags, **({"intro": intro} if intro else {})})
             start = h
     return blocks, None

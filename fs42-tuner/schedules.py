@@ -7,7 +7,9 @@ What the station page edits is a DEFINITION, kept by the wrapper (schedules.json
                  "spring": WEEK or None, "summer": ..., "fall": ..., "winter": ...},     # None: same as default
      "events": [EVENT, ...]}
     WEEK  = {"monday": DAY, ... "sunday": DAY}
-    DAY   = {"videos": [{"from": 18, "to": 20.5, "lists": ["Sitcoms"]}], "commercials": [{"from": 18, "to": 21, "list": "Ads"}]}
+    DAY   = {"videos": [{"from": 18, "to": 20.5, "lists": ["Sitcoms"], "intro": "Cards/evening"}], "commercials": [{"from": 18, "to": 21, "list": "Ads"}]}
+    A block's lists may be folders inside a list ("Night Shift/After Dark/Futurama"); `intro` (optional) is a folder of short
+    clips, one of which plays at the start of each hour of the block (FieldStation42's start_bump).
     EVENT = {"id", "name", "when": RANGE or NTH, "replace": bool, "mode": "same" or "weekday", "schedule": DAY or WEEK}
     RANGE = {"type": "range", "start": "07-21", "end": "07-27", "year": 2026 or None (every year)}
     NTH   = {"type": "nth", "month": 11, "weekday": "thursday", "nth": 4 (1-5, or -1 for the last), "days": 1}
@@ -61,6 +63,16 @@ def _list_name(value, where):
     return value.strip()
 
 
+def list_path(value, where):
+    """A list, or a folder inside one ("Night Shift/After Dark/Futurama"), as a time block names it. Each part is one
+    folder name: no empty parts, none hidden (so no "..") and no backslashes, so the path stays inside the Lists folder."""
+    parts = value.split("/") if isinstance(value, str) else [""]
+    parts = [p.strip() for p in parts]
+    if "\\" in str(value) or "\0" in str(value) or any(not p or p.startswith(".") for p in parts):
+        raise ScheduleError(f"{where}: a list is a folder from the Lists page, or a folder inside one")
+    return "/".join(parts)
+
+
 def _half_hours(value, where):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value * 2 != int(value * 2):
         raise ScheduleError(f"{where}: times must be in half hours")
@@ -91,10 +103,12 @@ def _videos(blocks, full, where):
             raise ScheduleError(f"{where}: block {i} needs at least one list")
         clean = []
         for name in lists:
-            name = _list_name(name, where)
+            name = list_path(name, where)
             if name not in clean:
                 clean.append(name)
         blk = {"from": lo, "to": hi, "lists": clean}
+        if b.get("intro"):                                  # a card at the start of each hour of this block
+            blk["intro"] = list_path(b["intro"], where)
         start = b.get("start") or b.get("end")            # cards of this slot's own: the start and end of its breaks
         if start:
             blk["start"] = _list_name(start, where)
@@ -326,7 +340,8 @@ def validate(defn):
 def from_legacy(form):
     """The default week of a form that has the older `blocks` / `days` (whole hours, no seasons or special days)."""
     def day(blocks):
-        return {"videos": [{"from": b["from"], "to": b["to"], "lists": list(b["lists"])} for b in blocks], "commercials": [], "cards": []}
+        return {"videos": [{"from": b["from"], "to": b["to"], "lists": list(b["lists"]), **({"intro": b["intro"]} if b.get("intro") else {})}
+                           for b in blocks], "commercials": [], "cards": []}
     if form.get("days"):
         week = {d: day(form["days"][d]) for d in DAYS}
     else:
@@ -341,7 +356,7 @@ def lists_of(defn):
     def day(d):
         for b in d["videos"]:
             seen.extend(x for x in b["lists"] if x not in seen)
-            seen.extend(x for x in (b.get("start"), b.get("end")) if x and x not in seen)
+            seen.extend(x for x in (b.get("start"), b.get("end"), b.get("intro")) if x and x not in seen)
         for c in d["commercials"]:
             if c["list"] not in seen:
                 seen.append(c["list"])
@@ -371,7 +386,7 @@ def is_plain(defn):
     if defn.get("events") or any(defn["seasons"].get(s) for s in SEASONS):
         return False
     return not any(defn["default"][d]["commercials"] or defn["default"][d].get("cards")
-                   or any(b.get("start") for b in defn["default"][d]["videos"]) for d in DAYS)
+                   or any(b.get("start") or b.get("intro") for b in defn["default"][d]["videos"]) for d in DAYS)
 
 
 # ---- dates ------------------------------------------------------------------------------------------------
@@ -513,6 +528,9 @@ def hours_of(day, shows=(), skip=()):
                 slot["bump_dir"] = cards[h]
             if any(x in shows for x in firsts):
                 slot["sequence"] = SERIES
+        intro = videos[a if a is not None else b].get("intro")
+        if intro and intro not in skip:                  # FieldStation42 plays one clip of this folder as the hour starts
+            slot["start_bump"] = intro
         hours[str(h)] = slot
     return hours
 

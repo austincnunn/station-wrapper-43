@@ -67,7 +67,7 @@ class ValidateTest(unittest.TestCase):
                [{"from": 0, "to": 6, "lists": ["A"]}, {"from": 8, "to": 24, "lists": ["B"]}],  # gap
                [{"from": 0, "to": 25, "lists": ["A"]}], [{"from": 6, "to": 6, "lists": ["A"]}],
                [{"from": 0, "to": 24, "lists": []}], [{"from": 0, "to": 24}],
-               [{"from": 0.5, "to": 24, "lists": ["A"]}], [{"from": 0, "to": 24, "lists": ["a/b"]}])
+               [{"from": 0.5, "to": 24, "lists": ["A"]}], [{"from": 0, "to": 24, "lists": ["../b"]}])
         for b in bad:
             with self.assertRaises(FormError, msg=str(b)):
                 sf.validate(standard(blocks=b))

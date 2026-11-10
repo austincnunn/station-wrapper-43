@@ -312,7 +312,11 @@
   };
   const memberText = (m) => `${m.path.split("/").pop()}${m.types ? ` (${m.types.join(", ")})` : m.root === "tags" ? " (list)" : ""}`;
 
-  function chooser({ selected, multi, combine, onChange, none, label, pool }) {
+  // a folder inside a list ("Night Shift/After Dark/Futurama") reads as its own name, with where it is
+  const listText = (n) => (n.includes("/") ? `${n.split("/").pop()} (in ${n.split("/").slice(0, -1).join(" / ")})` : n);
+
+  // `folders`: the choice is a folder of the Lists, at any depth, used as it is (an intro card's folder): no Media, no videos
+  function chooser({ selected, multi, combine, onChange, none, label, pool, folders }) {
     const box = el("div", { className: "chooser" });
     const chips = el("div", { className: "chips" });
     const toggle = el("button", { type: "button", className: "btn", textContent: multi || combine ? "Add…" : "Change…" });
@@ -320,7 +324,7 @@
     const crumbs = el("div", { className: "crumbs" });
     const rows = el("div", { className: "chooser-rows" });
     const note = el("span", { className: "dim" });
-    const kind = (n) => (state.shows.includes(n) ? (state.showKinds[n] || "series") + (state.linking.has(n) ? ", linking…" : "") : "list");
+    const kind = (n) => (state.shows.includes(n) ? (state.showKinds[n] || "series") + (state.linking.has(n) ? ", linking…" : "") : n.includes("/") ? "folder" : "list");
     const current = () => (combine ? (selected ? state.members[selected] || [{ root: "tags", path: selected }] : []) : []);
     const chip = (text, remove) => {
       const c = el("span", { className: "chip" }, el("span", { textContent: text }));
@@ -358,7 +362,7 @@
       if (selected && state.linking.has(selected)) chips.append(el("span", { className: "dim", textContent: "linking its videos…" }));
     } else {
       const names = multi ? selected : selected ? [selected] : [];
-      for (const n of names) chip(`${n} (${kind(n)})`, multi || none ? () => onChange(multi ? selected.filter((s) => s !== n) : "") : null);
+      for (const n of names) chip(folders ? listText(n) : `${listText(n)} (${kind(n)})`, multi || none ? () => onChange(multi ? selected.filter((s) => s !== n) : "") : null);
     }
     if (!chips.children.length) chips.append(el("span", { className: "dim", textContent: none || (multi || combine ? "Nothing chosen yet." : "Nothing chosen.") }));
     let loc = { root: "", path: "" };
@@ -412,7 +416,7 @@
       parts.forEach((p, i) => crumb(p, loc.root, parts.slice(0, i + 1).join("/")));
       if (!loc.root) {
         row("Lists (files you re-use)", { open: () => go("lists", "") });
-        row("Media (series, seasons, folders, videos, playlists)", { open: () => go("media", "") });
+        if (!folders) row("Media (series, seasons, folders, videos, playlists)", { open: () => go("media", "") });
         return;
       }
       let entries = [];
@@ -429,6 +433,13 @@
         return;
       }
       const here = (n) => (loc.path ? `${loc.path}/${n}` : n);
+      if (folders) {
+        if (loc.path) row("This folder", { use: () => onChange(loc.path) });
+        const dirs = entries.filter((e) => e.kind === "dir");
+        if (!dirs.length) rows.append(el("span", { className: "dim", textContent: "No folders in here." }));
+        for (const e of dirs) row(e.name, { open: () => go("lists", here(e.name)), use: () => onChange(here(e.name)) });
+        return;
+      }
       if (loc.root === "lists" && loc.path && !loc.path.includes("/")) row("This whole list", { use: () => chooseList(loc.path) });
       if (loc.root === "media" && loc.path.includes("/")) {
         // a YouTube channel keeps shorts, streams and standard videos in seasons of their own: choose a kind in one go
@@ -484,6 +495,9 @@
           if (!x.start && !x.end) { delete x.start; delete x.end; }
           else { x.start = x.start || x.end; x.end = x.end || x.start; }       // one chosen: the other is the same
         }) });
+      box.append(el("span", { className: "dim", textContent: "Intro card at the start of each hour of this slot (a folder of short clips: one is picked at random each time):" }),
+        chooser({ selected: b.intro || "", folders: true, none: "No intro card.", label: "Intro card for this slot",
+                  onChange: (v) => cal.update((x) => { if (v) x.intro = v; else delete x.intro; }) }));
       box.append(el("span", { className: "dim", textContent: "Mid cards for this show here, at the start of a break:" }), cardPick("Start-of-break cards for this slot", "start"),
         el("span", { className: "dim", textContent: "and at its end:" }), cardPick("End-of-break cards for this slot", "end"));
       const burn = el("input", { type: "checkbox", checked: b.burn === true });
