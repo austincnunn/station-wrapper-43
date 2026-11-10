@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Station Wrapper 43 -- Settings</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/dashboard.css">
+<link rel="stylesheet" href="/views.css">
+<link rel="stylesheet" href="/iptv.css">
+</head>
+<body>
+  <main id="dash">
+    <div class="view-head"><h1>Settings</h1></div>
+    <p class="dim">Settings from the compose file, changed here. A value set here wins over the compose file's; leave a
+      box empty (or pick "as the compose file") to go back to it. Saving restarts only the part that uses it. The schedule
+      keeper, episode names and captions are on the <a href="/stations.html">Stations</a> page.</p>
+    <p id="msg" class="msg" role="status" aria-live="polite"></p>
+    <section id="machine" class="panel" aria-label="This machine"></section>
+    <section id="server" class="panel" aria-label="This server"></section>
+    <section id="players" class="panel" aria-label="Players"></section>
+  </main>
+  <script src="/common.js"></script>
+  <script src="/settings.js"></script>
+</body>
+</html>

@@ -16,6 +16,12 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   before a catalog build stay gone.
 
 ### Added
+- **Settings page.** The compose-file settings people change (the pool sync, the farm, followed folders, the Library
+  scan, the schedule keeper's timing, prefetch, the media server) can be changed on a new Settings page; a value set there
+  wins over the compose file's, and only the part that uses it is restarted. Each player PC (client mode) gets its screen,
+  banner and sync settings from the same page on the server, within a minute. The role, the login switches, paths and
+  secrets stay in the compose file; the page shows the role and whether each secret is set.
+
 - **Intro cards and folders inside a list on the Stations page.** A video slot can have an intro card (a folder of clips,
   one played as each hour of the slot starts: FieldStation42's `start_bump`), and its lists can be folders inside a list.
   A station with those (made by a script) was read-only on the Stations page; it now opens and saves back unchanged.

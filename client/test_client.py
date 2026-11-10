@@ -131,6 +131,25 @@ class ClientSync(unittest.TestCase):
         finally:
             shutil.move(os.path.join(SRV, "media-away"), os.path.join(SRV, "media"))
 
+    def test_settings_from_the_server_are_kept_and_new_screen_settings_remake_the_streams(self):
+        path = os.path.join(APP, "player-settings.json")
+        FEED.player_settings = lambda name: {"FS42_GAMMA": "12"} if name == "crt" else {}
+        srv = client.Server(BASE, "tok")
+        self.assertTrue(client.keep_settings(srv.post("/sync/hello", {"name": "crt"}), path))
+        self.assertEqual(json.load(open(path)), {"FS42_GAMMA": "12"})
+        self.assertFalse(client.keep_settings(srv.post("/sync/hello", {"name": "crt"}), path))      # unchanged: not written
+        self.assertFalse(client.keep_settings(None, path))                                           # an older server: kept
+        self.assertTrue(client.keep_settings(srv.post("/sync/hello", {"name": "den"}), path))       # none: back to compose
+        self.assertEqual(json.load(open(path)), {})
+        os.makedirs(client.RUNTIME, exist_ok=True)
+        os.makedirs(client.CONFS, exist_ok=True)
+        state = {}
+        client.sync_once(srv, client.screen({"FS42_SCREEN": "crt"}), state)
+        CALLS.clear()
+        client.sync_once(srv, client.screen({"FS42_SCREEN": "hd"}), state)
+        self.assertIn("/sync/confs", CALLS)
+        self.assertEqual(json.load(open(os.path.join(client.CONFS, "guide.json")))["station_conf"]["panscan"], 0.0)
+
     def test_a_wrong_token_is_refused(self):
         with self.assertRaises(Exception) as e:
             client.sync_once(client.Server(BASE, "wrong"), client.screen({}), {})

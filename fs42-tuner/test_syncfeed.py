@@ -81,13 +81,23 @@ class SyncFeed(unittest.TestCase):
 
     def test_a_player_saying_hello_is_listed_with_its_problems(self):
         hello = json.dumps({"name": "crt", "versions": {"wrapper": "old", "fieldstation42": "def"}, "errors": ["no media"]}).encode()
-        self.assertEqual(self.feed.handle("POST", "/sync/hello", {}, AUTH, hello, "10.0.0.5")[0], 204)
+        self.assertEqual(self.feed.handle("POST", "/sync/hello", {}, AUTH, hello, "10.0.0.5")[:1], (200,))
         [p] = self.feed.players()
         self.assertEqual((p["name"], p["addr"], p["mismatch"], p["gone"], p["errors"]), ("crt", "10.0.0.5", True, False, ["no media"]))
         self.feed.clock = lambda: p["seen"] + 600
         self.assertTrue(self.feed.players()[0]["gone"])
         self.feed.clock = lambda: p["seen"] + 2 * 24 * 3600
         self.assertEqual(self.feed.players(), [])
+
+    def test_hello_answers_with_that_players_settings_and_keeps_what_it_runs_with(self):
+        self.feed.player_settings = lambda name: {"FS42_GAMMA": "12"} if name == "crt" else {}
+        hello = json.dumps({"name": "crt", "env": {"FS42_GAMMA": "10", "X": 5}, "applied": {"FS42_GAMMA": "10"}}).encode()
+        code, _h, body = self.feed.handle("POST", "/sync/hello", {}, AUTH, hello, "10.0.0.5")
+        self.assertEqual((code, json.loads(body)), (200, {"settings": {"FS42_GAMMA": "12"}}))
+        [p] = self.feed.players()
+        self.assertEqual((p["env"], p["applied"]), ({"FS42_GAMMA": "10"}, {"FS42_GAMMA": "10"}))
+        other = self.feed.handle("POST", "/sync/hello", {}, AUTH, json.dumps({"name": "den"}).encode(), "10.0.0.6")
+        self.assertEqual(json.loads(other[2]), {"settings": {}})
 
 
 if __name__ == "__main__":

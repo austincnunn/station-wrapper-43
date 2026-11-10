@@ -22,6 +22,9 @@ Settings (environment):
   FS42_GAMMA          mpv's gamma, -100..100 (a CRT often wants a little, like 10)
   FS42_PLAYER_NAME    the name the server's Status page shows (default: the host name)
   FS42_SYNC_SECONDS   how often to look for changes (default 60)
+The screen, banner and sync settings can also be set for this player on the server's Settings page: the server sends
+them in its answer to /sync/hello, they are kept in FS42_PLAYER_SETTINGS (/config/player-settings.json), and the
+supervisor lays them over these and restarts what reads them (envsettings.py).
 
 The videos are never copied: they are read from /mnt/media, which must be the same share at the same path as on the server.
 """
@@ -43,6 +46,11 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import playerconfs  # noqa: E402
+try:
+    import envsettings  # noqa: E402
+except ImportError:         # run from the repo: it sits in the tuner's folder
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fs42-tuner"))
+    import envsettings  # noqa: E402
 
 APP = os.environ.get("FS42_APP", "/app")
 RUNTIME, CONFS, CATALOG = (os.path.join(APP, d) for d in ("runtime", "confs", "catalog"))
@@ -198,8 +206,35 @@ class Server:
     def post(self, path, obj):
         req = urllib.request.Request(self.base + path, data=json.dumps(obj).encode(), method="POST",
                                      headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=10):   # nosec B310 - http(s) only, checked in __init__
-            pass
+        with urllib.request.urlopen(req, timeout=10) as r:   # nosec B310 - http(s) only, checked in __init__
+            body = r.read()
+        return json.loads(body) if body else None       # an older server answers 204, with nothing
+
+
+def keep_settings(reply, path=None):
+    """Keep the settings the server's answer to /sync/hello carries for this player (the supervisor watches the file
+    and restarts what they change). Nothing is written when they are the same, or the server sent none (an older one).
+    True when the file changed."""
+    if not isinstance(reply, dict) or not isinstance(reply.get("settings"), dict):
+        return False
+    path = path or envsettings.PLAYER_PATH
+    try:
+        with open(path) as f:
+            if json.load(f) == reply["settings"]:
+                return False
+    except (OSError, ValueError):
+        pass
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    _atomic(path, json.dumps(reply["settings"], indent=2, sort_keys=True).encode())
+    print("client: new settings from the server:", reply["settings"] or "none (the compose file's)", flush=True)
+    return True
+
+
+def my_settings():
+    """This player's settings as its compose file has them, and as it runs with them now (for the server's page)."""
+    keys = envsettings.keys("client")
+    return ({k: v for k, v in envsettings.compose_env().items() if k in keys},
+            {k: os.environ[k] for k in keys if k in os.environ})
 
 
 # -- applying what came ----------------------------------------------------------
@@ -346,6 +381,9 @@ def now_on():
 # -- one round ------------------------------------------------------------------
 def sync_once(server, scr, state):
     """Copy what changed since `state` (the hashes last copied; updated in place). True when the player must restart."""
+    if state.get("screen") != scr:                 # new screen settings: the stream stations are made again for them
+        state.pop("etag", None)
+        state.get("parts", {}).pop("confs", None)
     code, headers, body = server.get("/sync/state", state.get("etag"))
     if code == 304:
         return False
@@ -366,7 +404,7 @@ def sync_once(server, scr, state):
     if want["confs"] != have.get("confs") or want["sources"] != have.get("sources"):
         with open(os.path.join(RUNTIME, "server_sources.json")) as f:
             playerconfs.write(APP, json.load(f), server.base, scr["panscan"], scr["kbps"])
-    state.update(parts=dict(want), etag=headers.get("ETag"), versions=st.get("versions"), tz=st.get("tz"))
+    state.update(parts=dict(want), etag=headers.get("ETag"), versions=st.get("versions"), tz=st.get("tz"), screen=scr)
     return _hash_confs() != before
 
 
@@ -435,10 +473,12 @@ def main():
             for e in errors:
                 print(f"client: ! {e}", flush=True)
             said = errors
+        env, applied = my_settings()
         try:
-            server.post("/sync/hello", {"name": name, "versions": my_versions(), "channel": now_on(), "last_sync": last_ok,
-                                        "errors": errors, "screen": scr["screen"], "tz": time.strftime("%Z %z")})
-        except (urllib.error.URLError, OSError):
+            keep_settings(server.post("/sync/hello", {"name": name, "versions": my_versions(), "channel": now_on(),
+                                                      "last_sync": last_ok, "errors": errors, "screen": scr["screen"],
+                                                      "tz": time.strftime("%Z %z"), "env": env, "applied": applied}))
+        except (urllib.error.URLError, OSError, ValueError):
             pass
         time.sleep(every)
 

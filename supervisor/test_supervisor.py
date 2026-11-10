@@ -342,6 +342,71 @@ class SettleTest(unittest.TestCase):
             r.stop()
 
 
+class SettingsWatchTest(unittest.TestCase):
+    """A value saved on the Settings page restarts only the services that read it, or switches one on or off."""
+
+    def run_with(self, names, env):
+        state = {"env": dict(env)}
+        make = lambda e: [svc(n, f"import os, time\nprint('{n}', os.environ.get('SYNC_INTERVAL_MINUTES'), "
+                                 f"os.environ.get('FS42_GAMMA'), flush=True)\nwhile True: time.sleep(1)")
+                          for n in names(e)]
+        r = Run(make(env), env=env, watch_settings=lambda: dict(state["env"]), make_services=make, watch_every=0.05)
+        return r, state
+
+    def count(self, r, name):
+        return r.text().count(f"started {name} ")
+
+    def test_a_changed_setting_restarts_only_its_service_with_the_new_value(self):
+        r, state = self.run_with(lambda e: ["console", "tuner", "sync"], {"SYNC_INTERVAL_MINUTES": "60"})
+        try:
+            self.assertTrue(r.wait_for("[sync] sync 60"))
+            state["env"] = {"SYNC_INTERVAL_MINUTES": "30"}
+            self.assertTrue(r.wait_for("[sync] sync 30"))
+            self.assertIn("SYNC_INTERVAL_MINUTES 60 -> 30", r.text())
+            self.assertEqual((self.count(r, "console"), self.count(r, "tuner"), self.count(r, "sync")), (1, 1, 2))
+        finally:
+            r.stop()
+
+    def test_an_on_off_setting_stops_and_starts_the_service(self):
+        names = lambda e: ["console"] + (["farm"] if e.get("FARM_ENABLED", "1") != "0" else [])
+        r, state = self.run_with(names, {})
+        try:
+            self.assertTrue(r.wait_for("started farm"))
+            state["env"] = {"FARM_ENABLED": "0"}
+            self.assertTrue(r.wait_for("farm stopped (switched off in the settings)"))
+            time.sleep(0.3)
+            self.assertEqual(self.count(r, "farm"), 1)                  # stays off
+            state["env"] = {"FARM_ENABLED": "1"}
+            self.assertTrue(r.wait_for("switching farm on"))
+            end = time.time() + 5
+            while self.count(r, "farm") < 2 and time.time() < end:
+                time.sleep(0.02)
+            self.assertEqual((self.count(r, "farm"), self.count(r, "console")), (2, 1))
+        finally:
+            r.stop()
+
+    def test_a_player_setting_restarts_only_the_player(self):
+        r, state = self.run_with(lambda e: ["client", "player", "banner"], {"FS42_ROLE": "client", "FS42_GAMMA": "10"})
+        try:
+            self.assertTrue(r.wait_for("[player] player None 10"))
+            state["env"] = {"FS42_ROLE": "client", "FS42_GAMMA": "12"}
+            self.assertTrue(r.wait_for("[player] player None 12"))
+            self.assertEqual((self.count(r, "client"), self.count(r, "banner"), self.count(r, "player")), (1, 1, 2))
+        finally:
+            r.stop()
+
+    def test_the_overlay_wins_over_the_compose_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            with open(path, "w") as f:
+                f.write('{"env": {"FARM_ENABLED": false, "SYNC_INTERVAL_MINUTES": 15, "DASHBOARD_LOGIN": "0"}}')
+            saved = sv.envsettings.overlay("server", path)
+            env = sv.envsettings.effective({"FARM_ENABLED": "1", "SYNC_INTERVAL_MINUTES": "60"}, saved, "server")
+            self.assertEqual((env["FARM_ENABLED"], env["SYNC_INTERVAL_MINUTES"]), ("0", "15"))
+            self.assertNotIn("DASHBOARD_LOGIN", env)                    # not a setting the page may change
+            self.assertNotIn("farm", [s.name for s in sv.services_from_env(env, exists=lambda p: True)])
+
+
 class ConfigTest(unittest.TestCase):
     def names(self, env, exists):
         return [s.name for s in sv.services_from_env(env, exists=lambda p: exists)]

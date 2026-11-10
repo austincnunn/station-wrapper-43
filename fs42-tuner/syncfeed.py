@@ -9,7 +9,8 @@ carries one hash per part, and the client fetches only the parts whose hash chan
   GET  /sync/catalog   the catalog: {"links": {path: target}, "files": {path: [size, mtime]}, "dirs": [path]}, gzipped
   GET  /sync/file?path=one real file of the catalog (a bump card, an .nfo)
   GET  /sync/sources   the Sources page list
-  POST /sync/hello     the client says who it is, what it runs and what is wrong; the Status page lists it
+  POST /sync/hello     the client says who it is, what it runs and what is wrong; the Status page lists it. The answer
+                       is its settings from the Settings page: {"settings": {KEY: "value"}}
 
 Off unless FS42_SYNC_TOKEN is set. Every call needs "Authorization: Bearer <that token>". It only reads.
 """
@@ -34,7 +35,8 @@ def _h(data):
 
 
 class Feed:
-    def __init__(self, token, db_path, confs_dir, catalog_dir, sources_path, versions=None, clock=time.time):
+    def __init__(self, token, db_path, confs_dir, catalog_dir, sources_path, versions=None, clock=time.time,
+                 player_settings=None):
         self.token = (token or "").strip()
         self.db_path, self.confs_dir, self.catalog_dir, self.sources_path = db_path, confs_dir, catalog_dir, sources_path
         self.versions = versions or {}                 # {"wrapper": sha, "fieldstation42": commit}
@@ -42,6 +44,7 @@ class Feed:
         self._lock = threading.Lock()
         self._cache = {}                               # part -> (computed at, signature, body bytes, hash)
         self._players = {}                             # name -> report
+        self.player_settings = player_settings or (lambda name: {})   # name -> {KEY: value} set on the Settings page
 
     @property
     def enabled(self):
@@ -147,9 +150,13 @@ class Feed:
     # -- players -------------------------------------------------------------
     def hello(self, report, addr):
         name = str(report.get("name") or addr)[:64]
-        keep = {k: report.get(k) for k in ("versions", "channel", "last_sync", "errors", "screen", "tz")}
+        keep = {k: report.get(k) for k in ("versions", "channel", "last_sync", "errors", "screen", "tz", "env", "applied")}
+        for k in ("env", "applied"):          # its settings from its compose file, and those it runs with: strings only
+            v = keep[k]
+            keep[k] = {str(a)[:64]: str(b)[:500] for a, b in v.items() if isinstance(b, str)} if isinstance(v, dict) else None
         with self._lock:
             self._players[name] = dict(keep, name=name, addr=addr, seen=self.clock())
+        return {"settings": self.player_settings(name)}
 
     def players(self):
         now = self.clock()
@@ -174,8 +181,8 @@ class Feed:
             return 403, [], b"wrong or missing sync token"
         try:
             if method == "POST" and path == "/sync/hello":
-                self.hello(json.loads(body or b"{}"), addr)
-                return 204, [], b""
+                got = self.hello(json.loads(body or b"{}"), addr)
+                return 200, [("Content-Type", "application/json")], json.dumps(got).encode()
             if method != "GET":
                 return 405, [], b""
             if path == "/sync/state":

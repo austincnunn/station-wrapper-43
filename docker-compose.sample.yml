@@ -35,7 +35,7 @@ services:
       - youtube:/mnt/media/youtube:ro
       - movies:/mnt/media/movies:ro
       - tvseries:/mnt/media/tvseries:ro
-    environment:
+    environment:                         # most of these can also be changed on the dashboard's Settings page
       TZ: America/Toronto                # CHANGE: the guide and the schedule use this clock
       SYNC_ENABLED: "1"                  # keeps the symlink pool current (add-only)
       SYNC_INTERVAL_MINUTES: "60"

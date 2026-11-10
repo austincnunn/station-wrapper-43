@@ -38,6 +38,7 @@ services:
       FS42_GAMMA: ${FS42_GAMMA:-0}
       FS42_BANNER_SECONDS: ${FS42_BANNER_SECONDS:-8}
       FS42_PLAYER_NAME: ${FS42_PLAYER_NAME:-}
+      # The screen, banner and sync settings here can also be set on the server's Settings page (Players): those win.
       # One setting each, over what FS42_SCREEN picks:
       FS42_PANSCAN: ${FS42_PANSCAN:-}             # 0 = whole picture with bars, 1 = fill a 4:3 screen by cropping the sides
       FS42_DRM_MODE: ${FS42_DRM_MODE:-}           # preferred, highest, or e.g. 1024x768@60

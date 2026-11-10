@@ -79,6 +79,7 @@ import schedules
 import library
 import resolver
 import settings
+import envsettings
 import stationform
 import stations
 import stationsapi
@@ -135,7 +136,7 @@ def follow_loop(interval_minutes, first_delay):
 # false in this config) turns it off, for anyone who puts their own login in front. See auth.py.
 LOGIN_ON     = bool(CONF.get("login", True)) and os.environ.get("DASHBOARD_LOGIN", "1").lower() not in ("0", "false", "no", "off")
 AUTH         = authmod.Auth(os.environ.get("FS42_AUTH") or os.path.join(os.path.dirname(settings.PATH), "auth.json"), enabled=LOGIN_ON)
-PROTECTED_PAGES = {"/stations.html", "/station.html", "/schedule.html", "/files.html", "/iptv.html", "/status.html"}
+PROTECTED_PAGES = {"/stations.html", "/station.html", "/schedule.html", "/files.html", "/iptv.html", "/status.html", "/settings.html"}
 SESSION_COOKIE = "sw43_session"
 if LOGIN_ON and os.environ.get("DASHBOARD_PASSWORD") and not AUTH.has_password():
     try:
@@ -970,7 +971,22 @@ SOURCES = iptv.Sources(os.environ.get("FS42_IPTV") or os.path.join(os.path.dirna
 SOURCES_LOCK = threading.Lock()
 # What player PCs in client mode copy from here (syncfeed.py). Off unless FS42_SYNC_TOKEN is set.
 FEED = syncfeed.Feed(os.environ.get("FS42_SYNC_TOKEN"), DB_PATH, CONFS_DIR, os.path.join(CATALOG_ROOT, "catalog"), SOURCES.path,
-                     versions={"wrapper": os.environ.get("FS42_WRAPPER_SHA") or "", "fieldstation42": (_fs42_ref_full() or "")})
+                     versions={"wrapper": os.environ.get("FS42_WRAPPER_SHA") or "", "fieldstation42": (_fs42_ref_full() or "")},
+                     player_settings=envsettings.player_overlay)
+
+
+def settings_report():
+    """The Settings page: this server's settings (what is in force and where it came from, as of the supervisor's last
+    start of this tuner), what is saved, and each player's."""
+    saved = envsettings.overlay("server")
+    players = []
+    for pl in (FEED.players() if FEED.enabled else []):
+        mine = envsettings.player_overlay(pl["name"])
+        players.append({"name": pl["name"], "gone": pl["gone"], "age": pl["age"], "applied": pl.get("applied"),
+                        "settings": envsettings.describe("client", mine, pl.get("env") or {})})
+    return {"machine": envsettings.machine(), "edit": EDIT_FILES, "sync_on": FEED.enabled,
+            "settings": envsettings.describe("server", saved, envsettings.compose_env()),
+            "running": {k: os.environ.get(k) for k in envsettings.keys("server")}, "players": players}
 EXTERNAL_CLASHES = []               # channels whose number was taken, from the last sync
 SLOW_START_SECONDS = float(os.environ.get("SLOW_START_SECONDS", "2"))
 GUIDE_FPS = max(5, min(30, int(os.environ.get("GUIDE_FPS", "15"))))     # frames per second the guide channel is drawn at
@@ -1773,6 +1789,22 @@ class Handler(BaseHTTPRequestHandler):
             if not EDIT_FILES:
                 return self._json({"error": "this is switched off (DASHBOARD_EDIT=0)"}, 403)
             return self._json(diag.speed_test(CONF.get("media_root", "/mnt/media")))
+        if p in ("/api/settings", "/api/settings/player"):
+            body = self._json_body()
+            if body is None:
+                return None
+            if not EDIT_FILES:
+                return self._json({"error": "changing settings is switched off (DASHBOARD_EDIT=0)"}, 403)
+            try:
+                if p == "/api/settings":
+                    envsettings.save(body.get("values"))
+                else:
+                    envsettings.save_player(body.get("name"), body.get("values"))
+            except envsettings.SettingsError as e:
+                return self._json({"error": str(e)}, 400)
+            except OSError as e:
+                return self._json({"error": f"could not save the settings: {e.strerror}"}, 500)
+            return self._json(settings_report())
         if p == "/api/captions/settings":
             body = self._json_body()
             if body is None:
@@ -2021,6 +2053,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/keeper":
             return self._json({"settings": settings.get_keeper(), "status": KEEPER.snapshot()})
+        if p == "/api/settings":
+            return self._json(settings_report())
 
         if p == "/api/titles":
             return self._json({"settings": settings.get_titles(), "edit": EDIT_FILES})

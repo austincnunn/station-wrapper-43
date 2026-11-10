@@ -19,6 +19,10 @@ up (the tuner reads its config at start) without bouncing the console:
     docker kill --signal=USR1 station-wrapper-43
 tini passes the signal on to this process.
 
+Settings saved on the dashboard's Settings page (envsettings.py) are laid over the environment: every service starts
+with them, and when one changes, only the services that read it are restarted (or started, or stopped, for an on/off
+setting). On a player (client mode) the same holds for the settings the server sent it.
+
 It is not PID 1: tini is, so processes that outlive their parent get reaped.
 """
 import os
@@ -30,9 +34,11 @@ import time
 
 try:
     from stations import discover as discover_stations, is_busy as builds_running
+    import envsettings
 except ImportError:         # run from the repo: the module sits in the tuner's folder
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fs42-tuner"))
     from stations import discover as discover_stations, is_busy as builds_running
+    import envsettings
 
 REFUSED = 78
 TRUE = ("1", "true", "yes", "on")
@@ -48,6 +54,7 @@ class Service:
         self.next_start = 0.0
         self.state = "waiting"          # waiting | running | finished | refused
         self.restart_requested = False
+        self.off = False                # switched off by a setting: stopped, and not started again
 
 
 def services_from_env(env=None, exists=os.path.exists):
@@ -98,8 +105,14 @@ def notes_from_env(env=None, exists=os.path.exists):
 
 class Supervisor:
     def __init__(self, services, out=None, backoff_base=1.0, backoff_max=30.0, stable_after=60.0,
-                 grace=10.0, poll=0.2, watch_stations=None, watch_every=3.0, busy=None, settle=0.0):
+                 grace=10.0, poll=0.2, watch_stations=None, watch_every=3.0, busy=None, settle=0.0,
+                 env=None, watch_settings=None, make_services=None):
         self.services = services
+        # watch_settings() -> the environment the services should have now (envsettings overlay); make_services(env) ->
+        # the services that environment runs. A change restarts only the services REGISTRY names for it.
+        self.env = dict(os.environ if env is None else env)
+        self.watch_settings, self.make_services = watch_settings, make_services
+        self._said_settings_wait = False
         # watch_stations() -> {channel: station}. The tuner reads its channels at start, so when the
         # stations you manage in FieldStation42's console change, it is restarted to pick them up.
         self.watch_stations, self.watch_every = watch_stations, watch_every
@@ -129,7 +142,7 @@ class Supervisor:
 
     # ---- one service
     def _start(self, svc):
-        env = {**os.environ, **svc.env}
+        env = {**self.env, **svc.env}
         try:
             svc.proc = subprocess.Popen(svc.argv, cwd=svc.cwd, env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -156,6 +169,10 @@ class Supervisor:
             svc.reader.join(timeout=2)
         now = time.monotonic()
         svc.proc = None
+        if svc.off:
+            svc.state = "off"
+            self.say("supervisor", f"{svc.name} stopped (switched off in the settings)")
+            return
         if svc.restart_requested:
             svc.restart_requested = False
             svc.fails, svc.next_start, svc.state = 0, now, "waiting"
@@ -218,6 +235,50 @@ class Supervisor:
             self._stations_seen = seen
             self.request_restart("tuner")
 
+    def _check_settings(self):
+        try:
+            new = self.watch_settings()
+        except Exception as e:      # a half-written settings file must never take the supervisor down
+            self.say("supervisor", f"could not read the settings: {e}")
+            return
+        changed = sorted(k for k in envsettings.BY_KEY if new.get(k) != self.env.get(k))
+        if not changed:
+            self.env[envsettings.COMPOSE_ENV] = new.get(envsettings.COMPOSE_ENV, "")
+            return
+        wanted = {s.name: s for s in self.make_services(new)} if self.make_services else {s.name: s for s in self.services}
+        restart = {n for k in changed for n in envsettings.BY_KEY[k]["restarts"]}
+        have = {s.name: s for s in self.services}
+        if "tuner" in restart and "tuner" in have and self.busy and self.busy():
+            if not self._said_settings_wait:
+                self._said_settings_wait = True
+                self.say("supervisor", "the settings changed, but a build is running: applying them when it is done")
+            return
+        self._said_settings_wait = False
+        self.say("supervisor", "settings: " + "; ".join(f"{k} {self.env.get(k, '(unset)')} -> {new.get(k, '(unset)')}"
+                                                         for k in changed))
+        self.env = dict(new)
+        for name, svc in have.items():
+            if name not in wanted and not svc.off:
+                svc.off = True
+                self.say("supervisor", f"switching {name} off")
+                if svc.proc is not None and svc.proc.poll() is None:
+                    svc.proc.terminate()
+                else:
+                    svc.state = "off"
+        for name, svc in wanted.items():
+            old = have.get(name)
+            if old is None:
+                self.services.append(svc)
+                self.say("supervisor", f"switching {name} on")
+                self._start(svc)
+            elif old.off:
+                old.off, old.fails, old.state, old.next_start = False, 0, "waiting", 0.0
+                self.say("supervisor", f"switching {name} on")
+            elif name in restart:
+                self.say("supervisor", f"restarting {name} for the new settings")
+                if not self.request_restart(name):
+                    old.next_start = 0.0                 # not running now: it starts with the new settings anyway
+
     def _terminate_all(self):
         running = [s for s in self.services if s.proc and s.proc.poll() is None]
         for s in running:
@@ -245,22 +306,38 @@ class Supervisor:
                         self._exited(svc, code)
                 elif svc.state == "waiting" and now >= svc.next_start:
                     self._start(svc)
-            if self.watch_stations and now >= self._next_watch:
+            if (self.watch_stations or self.watch_settings) and now >= self._next_watch:
                 self._next_watch = now + self.watch_every
-                self._check_stations()
+                if self.watch_stations:
+                    self._check_stations()
+                if self.watch_settings:
+                    self._check_settings()
             self.stopping.wait(self.poll)
         self._terminate_all()
         return self.exit_code if self.exit_code is not None else 0
 
 
+def settings_env(base=None):
+    """The environment with the Settings page's values on top (for this machine's role)."""
+    base = dict(os.environ if base is None else base)
+    role = (base.get("FS42_ROLE") or "server").strip().lower()
+    return envsettings.effective(base, envsettings.overlay(role), role)
+
+
 def main():
-    for note in notes_from_env():
+    base = dict(os.environ)
+    env = settings_env(base)
+    saved = sorted(k for k in envsettings.BY_KEY if env.get(k) != base.get(k))
+    if saved:
+        print(f"[supervisor] set on the Settings page: {', '.join(f'{k}={env[k]}' for k in saved)}", flush=True)
+    for note in notes_from_env(env):
         print(f"[supervisor] {note}", flush=True)
-    svcs = services_from_env()
+    svcs = services_from_env(env)
     print(f"[supervisor] running: {', '.join(s.name for s in svcs)}", flush=True)
     confs = os.environ.get("FS42_CONFS", "/app/confs")
     sup = Supervisor(svcs, watch_stations=lambda: discover_stations(confs), busy=builds_running,
-                     settle=float(os.environ.get("SUPERVISOR_SETTLE_SECONDS", "8")))
+                     settle=float(os.environ.get("SUPERVISOR_SETTLE_SECONDS", "8")),
+                     env=env, watch_settings=lambda: settings_env(base), make_services=services_from_env)
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: sup.stop())
     signal.signal(signal.SIGUSR1, lambda *_: sup.request_restart("tuner"))

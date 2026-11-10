@@ -11,6 +11,7 @@
     ["files", "Lists & files", "/files.html"],
     ["watch", "Watch", "/watch.html"],
     ["status", "Status", "/status.html"],
+    ["settings", "Settings", "/settings.html"],
   ];
 
   function el(tag, props, ...kids) {
