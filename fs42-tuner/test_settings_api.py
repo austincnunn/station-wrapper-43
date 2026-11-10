@@ -19,7 +19,7 @@ class SettingsApi(unittest.TestCase):
         shutil.rmtree(self.root)
 
     def start(self, **env):
-        self.srv = Server(self.root, env={"FS42_SETTINGS": self.path, "FS42_SYNC_TOKEN": "tok", "MEDIA_SERVER_API_KEY": "s3cret",
+        self.srv = Server(self.root, env={"FS42_SETTINGS": self.path, "FS42_SYNC_TOKEN": "tok", "MEDIA_SERVER_API_KEY": "s3cret",  # pragma: allowlist secret
                                           "FS42_COMPOSE_ENV": json.dumps({"SYNC_INTERVAL_MINUTES": "60"}), **env})
 
     def test_save_a_server_and_a_player_setting_and_refuse_bad_ones(self):
