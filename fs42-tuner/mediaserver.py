@@ -4,7 +4,7 @@ A library that Emby or Jellyfin manages has its metadata in the server's databas
 server has already matched every file to its show and episode, so one request for all its episodes and movies (with their file
 paths) answers "what is this file" for every video the channels play, without matching names again.
 
-Set MEDIA_SERVER_URL (http://192.168.1.3:8096) and MEDIA_SERVER_API_KEY (Emby: Dashboard > Advanced > API Keys; Jellyfin:
+Set MEDIA_SERVER_URL (http://192.168.1.20:8096) and MEDIA_SERVER_API_KEY (Emby: Dashboard > Advanced > API Keys; Jellyfin:
 Dashboard > API Keys). Either server works: the two speak the same API, apart from how the key is sent, and both ways are sent.
 The server sees the media at its own path (MEDIA_SERVER_MEDIA_ROOT, /media by default); a file is matched by its path below
 that, against its path below this container's media root.

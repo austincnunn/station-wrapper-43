@@ -16,6 +16,17 @@ Make your own TV channels out of your own videos. **Station Wrapper 43** runs [F
 - **Easy to start.** A *Getting started* card, a **Make me a channel now** button, and templates for a cartoon channel, a mainstream channel, a movie channel and a loop.
 - **Your media is never touched.** It is mounted read-only; a list is only links.
 
+### Added in this fork
+
+- **A player PC for a real TV (client mode).** The same image with `FS42_ROLE=client` turns any spare PC (amd64 or arm64) into a set-top box: it copies the server's schedule about once a minute and plays it with mpv straight to the screen (HDMI, VGA, or an adapter to a CRT), with no desktop. It shows the same thing as Emby or Jellyfin at the same moment. `FS42_SCREEN=crt` crops widescreen to fill a 4:3 set; the server's **Status** page lists every player and warns when one falls behind. See [Client Mode Player](https://github.com/austincnunn/station-wrapper-43/wiki/Client-Mode-Player).
+- **Pay-per-view channels.** A poster menu of a movie folder: page through with the remote, press Enter, and the movie plays from the start. Made on the Stations page; played by client-mode players (it is left out of the tuner's lineup).
+- **Guide details from Emby or Jellyfin.** Set `MEDIA_SERVER_URL` and `MEDIA_SERVER_API_KEY` and the guide gets each video's real title, episode, synopsis and poster. Without an `.nfo`, titles fall back to the folder and file name; Kodi `<musicvideo>` `.nfo` files are read too.
+- **A guide that reads like TV for music video channels.** Channels of short videos are listed in half-hour blocks named after the channel, with the song list in the description, instead of hundreds of three-minute entries. Loop and packed blocks list each video.
+- **Guide channel options**: picture shape (16:9 or 4:3) and text size.
+- **Live TV audio fix**: Emby no longer starts audio up to a minute late after tuning.
+- **Images for amd64 and arm64**, built against upstream FieldStation42's newest commit and only pushed after its schema tests and a smoke test pass.
+- **Extras**: a nightly backup script, the manual remote-player scripts, and a YouTube channel (YouTube's TV app in a container, cast to from a phone). See [extras/](extras/README.md).
+
 | | |
 |---|---|
 | ![The TV guide channel](docs/images/tv-guide.png) | ![A week on the calendar](docs/images/calendar.png) |
@@ -89,7 +100,7 @@ A small supervisor runs these and keeps them up (it restarts one that stops, tag
 ## Documentation
 
 - [QUICKSTART](QUICKSTART.md): the first ten minutes.
-- [Wiki](https://github.com/austincnunn/station-wrapper-43/wiki): step-by-step guides. Setting up a server, making channels, a second PC that plays the same broadcast on its own TV, weather and block channels, backups. Its scripts are in [extras/](extras/README.md).
+- [Wiki](https://github.com/austincnunn/station-wrapper-43/wiki): step-by-step guides. Setting up a server, making channels (including pay-per-view), a client-mode player PC that plays the same broadcast on its own TV, weather, block and YouTube channels, backups. Its scripts are in [extras/](extras/README.md).
 - [Reference](docs/REFERENCE.md): the volumes and settings, the login, every page, sources and antenna tuners, breaks and mid cards, the YouTube conversion, the generator, updating FieldStation42.
 - [Changelog](CHANGELOG.md), [Roadmap](ROADMAP.md), [Security](SECURITY.md), [Contributing](CONTRIBUTING.md), [Notices](NOTICE), [Releasing](docs/RELEASING.md).
 
