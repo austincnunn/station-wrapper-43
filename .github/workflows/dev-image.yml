@@ -10,6 +10,10 @@ name: dev-image
 # must pass the contract check and the station-schema test against the FieldStation42 it actually contains, and the
 # smoke test, which starts it and builds a schedule. Nothing is pushed if any fails: :latest stays the last good image.
 #
+# Each image is built for amd64 AND arm64, each on a runner of its own architecture (no emulation), and each is checked
+# and smoke-tested there. Only when both pass are the tags published, as one multi-arch tag: `docker compose pull` on any
+# box gets its own. FieldStation42's commit is fixed once up front, so both architectures carry the same one.
+#
 # Pushes to GitHub's container registry with the workflow's own token (no secret to set up).
 on:
   push:
@@ -28,8 +32,44 @@ env:
   IMAGE: station-wrapper-43
 
 jobs:
-  push:
+  prep:
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.p.outputs.image }}
+      tag: ${{ steps.p.outputs.tag }}
+      moving: ${{ steps.p.outputs.moving }}
+      sha: ${{ steps.p.outputs.sha }}
+      fs42: ${{ steps.p.outputs.fs42 }}
+      date: ${{ steps.p.outputs.date }}
+    steps:
+      - id: p
+        env:
+          FS42_REF: ${{ github.event.inputs.fs42_ref || 'main' }}
+        run: |
+          set -euo pipefail
+          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
+          branch="${{ github.ref_name }}"
+          # a branch or tag is resolved to its commit here, once; a commit is used as given
+          fs42="$(git ls-remote https://github.com/shane-mason/FieldStation42.git "$FS42_REF" | head -1 | cut -f1)"
+          {
+            echo "image=$REGISTRY/$(echo "${{ github.repository_owner }}" | tr A-Z a-z)/$IMAGE"
+            echo "sha=$sha"
+            echo "tag=$branch-$sha"
+            echo "moving=$([ "$branch" = main ] && echo latest || echo dev)"
+            echo "fs42=${fs42:-$FS42_REF}"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prep
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -39,30 +79,43 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Build, check, smoke-test, push
-        env:
-          FS42_REF: ${{ github.event.inputs.fs42_ref || 'main' }}
+      - name: Build, check, smoke-test, push (${{ matrix.arch }})
         run: |
           set -euo pipefail
-          image="$REGISTRY/$(echo "${{ github.repository_owner }}" | tr A-Z a-z)/$IMAGE"
-          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
-          branch="${{ github.ref_name }}"
-          moving="$([ "$branch" = main ] && echo latest || echo dev)"
-          docker build -t "$image:$moving" -t "$image:$branch-$sha" \
-            --build-arg FS42_REF="$FS42_REF" \
-            --build-arg BUILD_REF="$branch-$sha" --build-arg BUILD_SHA="$sha" \
-            --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
-          fs42="$(docker run --rm --entrypoint cat "$image:$moving" /opt/FS42_REF | cut -c1-7)"
-          echo "FieldStation42 in this image: $fs42 (asked for $FS42_REF)"
+          ref="${{ needs.prep.outputs.image }}:${{ needs.prep.outputs.tag }}-${{ matrix.arch }}"
+          docker build -t "$ref" \
+            --build-arg FS42_REF="${{ needs.prep.outputs.fs42 }}" \
+            --build-arg BUILD_REF="${{ needs.prep.outputs.tag }}" --build-arg BUILD_SHA="${{ needs.prep.outputs.sha }}" \
+            --build-arg BUILD_DATE="${{ needs.prep.outputs.date }}" .
+          fs42="$(docker run --rm --entrypoint cat "$ref" /opt/FS42_REF | cut -c1-7)"
+          echo "FieldStation42 in this image: $fs42"
           # what the wrapper relies on in FieldStation42, checked against the copy inside the image (scripts fed on
           # stdin: a bind mount would not resolve with a remote Docker daemon)
-          tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$image:$moving" -c \
+          tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$ref" -c \
             'mkdir /tmp/w && tar -xf - -C /tmp/w && cd /tmp/w &&
              python3 scripts/check-fs42-contract.py /app &&
              python3 scripts/test_build_channels.py FieldStationSchemaTest &&
              cd fs42-tuner && python3 test_stationform.py'
-          scripts/smoke-image.sh "$image:$moving"
-          docker run --rm aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 0 "$image:$moving" || true
-          docker push "$image:$moving"
-          docker push "$image:$branch-$sha"
-          echo "published $image:$moving and :$branch-$sha with FieldStation42 $fs42" >> "$GITHUB_STEP_SUMMARY"
+          scripts/smoke-image.sh "$ref"
+          docker run --rm aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 0 "$ref" || true
+          docker push "$ref"
+          echo "built and checked $ref with FieldStation42 $fs42" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: [prep, build]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish one tag for both architectures
+        run: |
+          set -euo pipefail
+          image="${{ needs.prep.outputs.image }}"
+          tag="${{ needs.prep.outputs.tag }}"
+          docker buildx imagetools create -t "$image:${{ needs.prep.outputs.moving }}" -t "$image:$tag" \
+            "$image:$tag-amd64" "$image:$tag-arm64"
+          docker buildx imagetools inspect "$image:$tag"
+          echo "published $image:${{ needs.prep.outputs.moving }} and :$tag (amd64, arm64)" >> "$GITHUB_STEP_SUMMARY"
