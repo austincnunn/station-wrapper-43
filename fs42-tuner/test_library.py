@@ -80,6 +80,16 @@ class ScanTest(unittest.TestCase):
         os.symlink(real, os.path.join(self.farm, "Comedy", "second name.mp4"))
         self.assertEqual(self.tags()["Comedy"]["duplicates"], 1)
 
+    def test_the_same_show_in_two_sibling_folders_is_not_a_duplicate(self):
+        # a block channel files a show under two blocks; each block is its own list
+        for block in ("Day", "Night"):
+            os.makedirs(os.path.join(self.farm, "Comedy", block))
+            os.symlink(os.path.join(self.archive, "tvseries", "Show B", "Season 01", "e0.mp4"),
+                       os.path.join(self.farm, "Comedy", block, "e0.mp4"))
+        self.assertEqual(self.tags()["Comedy"]["duplicates"], 0)
+        self.assertEqual(library._extra([("a", "x"), ("b", "x")]), 0)
+        self.assertEqual(library._extra([("a",), ("a",), ("a", "b")]), 2)
+
     def test_the_same_file_in_two_tags_is_not_a_duplicate(self):
         real = os.path.join(self.archive, "tvseries", "Show B", "Season 01", "e0.mp4")
         os.symlink(real, os.path.join(self.farm, "Mine", "also.mp4"))

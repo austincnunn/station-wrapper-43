@@ -2,8 +2,8 @@
 
 Each folder under it is a tag: FieldStation42 schedules by tag. This reports,
 per tag, how many videos it holds, where they came from, and two things worth a
-look: links whose target is gone ("dead") and the same file linked twice in one
-tag (FieldStation42 would schedule it twice). Nothing is written.
+look: links whose target is gone ("dead") and the same file linked twice where one
+list would play it twice (see _extra). Nothing is written.
 
 "Dead" is judged from where this runs. Links hold container paths, so a path
 this container doesn't mount reads as dead here even when FieldStation42's
@@ -34,6 +34,14 @@ def source_name(rel_dirs):
     return "/".join(rel_dirs[:2]) if rel_dirs else LOOSE
 
 
+def _extra(dirs):
+    """Copies of one file that one list would play twice: two in the same folder, or one inside the folder of another
+    (a list plays its subfolders too). The same show filed under two sibling folders (Day Watch/Babylon 5 and
+    Night Watch/Babylon 5, each its own list on a block channel) is on purpose and not counted."""
+    dirs = sorted(dirs, key=len)
+    return sum(any(d[:len(o)] == o for o in dirs[:i]) for i, d in enumerate(dirs))
+
+
 def scan_tag(tag_dir):
     videos = dead = 0
     sources, by_real = {}, {}
@@ -59,10 +67,10 @@ def scan_tag(tag_dir):
                 if not os.path.exists(e.path):
                     dead += 1
                     continue
-                by_real.setdefault(os.path.realpath(e.path), []).append(e.path)
+                by_real.setdefault(os.path.realpath(e.path), []).append(tuple(rel_dirs))
             else:
-                by_real.setdefault(e.path, []).append(e.path)
-    duplicates = sum(len(v) - 1 for v in by_real.values() if len(v) > 1)
+                by_real.setdefault(e.path, []).append(tuple(rel_dirs))
+    duplicates = sum(_extra(v) for v in by_real.values() if len(v) > 1)
     return {
         "videos": videos,
         "dead": dead,

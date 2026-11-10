@@ -10,6 +10,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   second), the stream showed 15 seconds of colour bars with a tone, and the next programme started late. It is now black and
   silent for exactly the gap. Every other "nothing to play" picture is black and silent too, off-air time uses a black clip
   (`assets/off-air.mp4`), and a client-mode player shows black instead of the "Please Stand By" card.
+- **Library card: no false duplicates, no dead links coming back.** The same show filed under two sibling folders of a list
+  (two blocks of a block channel) is no longer counted as a duplicate; only copies one list would play twice are. A followed
+  folder no longer links in videos that were deleted from the share (the pool keeps their old links), so dead links removed
+  before a catalog build stay gone.
 
 ### Added
 - **Intro cards and folders inside a list on the Stations page.** A video slot can have an intro card (a folder of clips,

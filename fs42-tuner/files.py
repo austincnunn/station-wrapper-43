@@ -772,6 +772,9 @@ class Files:
             if os.path.lexists(dest):
                 notes.append(f"{rel}: kept the file that is already there")
                 continue
+            if not os.path.exists(target):          # a pool link left behind by a deleted file: a dead link in the list
+                notes.append(f"{rel}: skipped, the video is gone")
+                continue
             try:
                 self._makedirs(tag_dir, os.path.dirname(rel))
                 os.symlink(target, dest)

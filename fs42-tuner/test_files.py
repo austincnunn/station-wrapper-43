@@ -202,6 +202,13 @@ class FollowTest(Base):
         self.assertEqual(self.f.refresh_follows()["added"], 0)                       # nothing new: nothing to do
         self.assertIsNone(self.f.follows()[0]["error"])
 
+    def test_a_link_to_a_deleted_video_is_not_followed_in(self):
+        # the pool keeps a link after its file is deleted; following it would put a dead link in the list every pass
+        self.f.add("Anime", [{"root": "media", "path": "anime/Show"}], follow=True)
+        os.symlink("/nowhere/gone.mp4", os.path.join(self.media, "anime", "Show", "Part1", "gone.mp4"))
+        self.assertEqual(self.f.refresh_follows()["added"], 0)
+        self.assertFalse(os.path.lexists(os.path.join(self.show, "gone.mp4")))
+
     def test_a_folder_added_without_following_is_a_snapshot(self):
         self.f.add("Anime", [{"root": "media", "path": "anime/Show"}])
         touch(os.path.join(self.media, "anime", "Show", "Part1", "e3.mp4"))
