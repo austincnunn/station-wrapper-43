@@ -32,6 +32,20 @@ class Variants(unittest.TestCase):
         self.assertTrue(arg(high, "-vf").startswith(f"scale={tuner.W}:{tuner.H}"))
         self.assertEqual(arg(tuner.NORMALIZE, "-b:v"), "4000k")          # the channel's own encoder is untouched
 
+    def test_a_vaapi_encoder_uploads_after_every_cpu_filter(self):
+        hw = tuner.encode_args({"vcodec": "h264_vaapi", "vaapi_device": "/dev/dri/renderD129"}, 1280, 720, 30)
+        self.assertEqual(arg(hw, "-vaapi_device"), "/dev/dri/renderD129")
+        self.assertEqual(arg(hw, "-c:v"), "h264_vaapi")
+        self.assertNotIn("-preset", hw)                                  # x264-only
+        self.assertNotIn("-sc_threshold", hw)
+        self.assertTrue(arg(hw, "-vf").endswith("format=yuv420p,format=nv12,hwupload"))
+        self.assertTrue(tuner.with_subtitles(hw, "subtitles=x.srt")[hw.index("-vf") + 1]
+                        .endswith("format=yuv420p,subtitles=x.srt,format=nv12,hwupload"))
+        sw = tuner.encode_args({}, 1280, 720, 30)
+        self.assertNotIn("-vaapi_device", sw)
+        self.assertEqual(arg(sw, "-preset"), "veryfast")
+        self.assertTrue(tuner.vf_add(arg(sw, "-vf"), "drawtext=x").endswith("format=yuv420p,drawtext=x"))
+
     def test_everyone_asking_the_same_rate_shares_one_copy(self):
         ch = tuner.CHANS["110"]
         a, b, c = tuner.variant(ch, 1500), tuner.variant(ch, 1500), tuner.variant(ch, 2500)

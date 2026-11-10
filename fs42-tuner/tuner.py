@@ -208,24 +208,52 @@ V = CONF.get("video", {})
 FPS = int(V.get("fps", 30))
 W, H = int(V.get("width", 1280)), int(V.get("height", 720))
 GOP = FPS * 2                       # keyframe every 2s -- also the join latency
-NORMALIZE = [
-    "-c:v", V.get("vcodec", "libx264"),
-    "-preset", V.get("preset", "veryfast"),
-    "-b:v", V.get("vbitrate", "4000k"),
-    "-maxrate", V.get("vbitrate", "4000k"),
-    "-bufsize", V.get("bufsize", "8000k"),
-    "-vf", f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
-           f"pad={W}:{H}:-1:-1:color=black,fps={FPS},format=yuv420p",
-    "-g", str(GOP), "-keyint_min", str(GOP), "-sc_threshold", "0",
-    "-c:a", "aac", "-b:a", V.get("abitrate", "192k"), "-ar", "48000", "-ac", "2",
-]
+
+
+def hw_tail(video):
+    """The end of the filter chain for a VAAPI encoder (video.vcodec h264_vaapi / hevc_vaapi): decoding and every filter stay
+    on the CPU, and the finished frame is handed to the GPU. "" for a software encoder."""
+    return ",format=nv12,hwupload" if str(video.get("vcodec", "")).endswith("_vaapi") else ""
+
+
+def picture_filter(w, h, fps, tail=""):
+    return f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:color=black,fps={fps},format=yuv420p{tail}"
+
+
+def vf_add(vf, f):
+    """`vf` with the CPU filter `f` (subtitles, a drawtext) added after the picture is made but before any GPU upload."""
+    tail = hw_tail({"vcodec": "h264_vaapi"})
+    if vf.endswith(tail):
+        return f"{vf[:-len(tail)]},{f}{tail}"
+    return f"{vf},{f}"
+
+
+def encode_args(video, w, h, fps):
+    """The tuner's encoder options. A VAAPI vcodec opens video.vaapi_device (default the first render node; ffmpeg takes this
+    global option anywhere on the line) and leaves out the x264-only options."""
+    vcodec = video.get("vcodec", "libx264")
+    tail = hw_tail(video)
+    out = ["-vaapi_device", video.get("vaapi_device", "/dev/dri/renderD128")] if tail else []
+    out += ["-c:v", vcodec]
+    if not tail:
+        out += ["-preset", video.get("preset", "veryfast")]
+    out += ["-b:v", video.get("vbitrate", "4000k"), "-maxrate", video.get("vbitrate", "4000k"), "-bufsize", video.get("bufsize", "8000k"),
+            "-vf", picture_filter(w, h, fps, tail), "-g", str(fps * 2), "-keyint_min", str(fps * 2)]
+    if not tail:
+        out += ["-sc_threshold", "0"]
+    return out + ["-c:a", "aac", "-b:a", video.get("abitrate", "192k"), "-ar", "48000", "-ac", "2"]
+
+
+NORMALIZE = encode_args(V, W, H, FPS)
+
+
 def variant_args(kbps):
     """The encoder options for a lower-rate copy of a channel (a player PC asking /auto/v<n>?kbps=N): 854x480 at 2000 kbps and
     under, else this tuner's own size, at that rate."""
     w, h = (854, 480) if kbps <= 2000 else (W, H)
     out = list(NORMALIZE)
     for k, v in (("-b:v", f"{kbps}k"), ("-maxrate", f"{kbps}k"), ("-bufsize", f"{kbps * 2}k"),
-                 ("-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:color=black,fps={FPS},format=yuv420p")):
+                 ("-vf", picture_filter(w, h, FPS, hw_tail(V)))):
         out[out.index(k) + 1] = v
     return out
 
@@ -308,7 +336,7 @@ def with_subtitles(enc, subs):
         return enc
     out = list(enc)
     i = out.index("-vf")
-    out[i + 1] = f"{out[i + 1]},{subs}"
+    out[i + 1] = vf_add(out[i + 1], subs)
     return out
 
 
@@ -331,7 +359,7 @@ def with_text(cmd, text):
         return cmd
     out = list(cmd)
     i = out.index("-vf")
-    out[i + 1] = f"{out[i + 1]},{_drawtext(text)}"
+    out[i + 1] = vf_add(out[i + 1], _drawtext(text))
     return out
 
 

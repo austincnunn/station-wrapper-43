@@ -32,7 +32,7 @@ Each channel keeps a rolling buffer of its last 3 seconds of output. A new viewe
 
 ### Segments
 
-Each plan entry is one ffmpeg run, every one normalised to the same encoder parameters (the failure mode of stitching mixed files into a TS stream is a glitch at every boundary), with timestamps carried on from the last segment. `-ss` goes before `-i` so a join mid-file is fast. Test patterns for a missing file, a bad file, an empty break or nothing scheduled are made the same way, with their reason drawn in the bottom right corner. Hardware encoding (`h264_vaapi`, `h264_nvenc`, `h264_qsv`) is a `vcodec` change in the video settings of the config.
+Each plan entry is one ffmpeg run, every one normalised to the same encoder parameters (the failure mode of stitching mixed files into a TS stream is a glitch at every boundary), with timestamps carried on from the last segment. `-ss` goes before `-i` so a join mid-file is fast. Test patterns for a missing file, a bad file, an empty break or nothing scheduled are made the same way, with their reason drawn in the bottom right corner. Hardware encoding: set `vcodec` to `h264_vaapi` in the video settings of the config, pass the GPU's render node into the container (`devices: [/dev/dri/renderD128]`) and set `vaapi_device` if it is another node. Frames are decoded and filtered (scale, pad, subtitles, text) on the CPU and uploaded to the GPU for the encode.
 
 ### Captions
 
