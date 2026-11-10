@@ -997,8 +997,10 @@ def _fs42_ref_full():
 
 SOURCES = iptv.Sources(os.environ.get("FS42_IPTV") or os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "sources.json"))
 SOURCES_LOCK = threading.Lock()
-# What player PCs in client mode copy from here (syncfeed.py). Off unless FS42_SYNC_TOKEN is set.
-FEED = syncfeed.Feed(os.environ.get("FS42_SYNC_TOKEN"), DB_PATH, CONFS_DIR, os.path.join(CATALOG_ROOT, "catalog"), SOURCES.path,
+# What player PCs in client mode copy from here (syncfeed.py), behind FS42_SYNC_TOKEN or a token made here once.
+SYNC_TOKEN, SYNC_TOKEN_FROM = syncfeed.load_token(os.environ.get("FS42_SYNC_TOKEN"),
+                                                  os.path.join(os.path.dirname(settings.PATH), "sync-token"))
+FEED = syncfeed.Feed(SYNC_TOKEN, DB_PATH, CONFS_DIR, os.path.join(CATALOG_ROOT, "catalog"), SOURCES.path,
                      versions={"wrapper": os.environ.get("FS42_WRAPPER_SHA") or "", "fieldstation42": (_fs42_ref_full() or "")},
                      player_settings=envsettings.player_overlay)
 
@@ -1012,7 +1014,9 @@ def settings_report():
         mine = envsettings.player_overlay(pl["name"])
         players.append({"name": pl["name"], "gone": pl["gone"], "age": pl["age"], "applied": pl.get("applied"),
                         "settings": envsettings.describe("client", mine, pl.get("env") or {})})
-    return {"machine": envsettings.machine(), "edit": EDIT_FILES, "sync_on": FEED.enabled,
+    machine = envsettings.machine()
+    machine["secrets"]["FS42_SYNC_TOKEN"] = FEED.enabled
+    return {"machine": machine, "edit": EDIT_FILES, "sync_on": FEED.enabled, "sync_token_from": SYNC_TOKEN_FROM,
             "settings": envsettings.describe("server", saved, envsettings.compose_env()),
             "running": {k: os.environ.get(k) for k in envsettings.keys("server")}, "players": players}
 EXTERNAL_CLASHES = []               # channels whose number was taken, from the last sync
@@ -2083,6 +2087,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"settings": settings.get_keeper(), "status": KEEPER.snapshot()})
         if p == "/api/settings":
             return self._json(settings_report())
+        if p == "/api/settings/sync-token":             # asked for on its own (a button), so it is in no other answer
+            if not EDIT_FILES:
+                return self._json({"error": "this is switched off (DASHBOARD_EDIT=0)"}, 403)
+            return self._json({"token": FEED.token, "from": SYNC_TOKEN_FROM})
 
         if p == "/api/titles":
             return self._json({"settings": settings.get_titles(), "edit": EDIT_FILES})

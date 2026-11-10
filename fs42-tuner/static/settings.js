@@ -57,6 +57,30 @@
     host.append(el("div", { className: "form-actions" }, btn));
   }
 
+  // The sync token a player puts in its .env (FS42_SYNC_TOKEN): fetched only when asked for, then shown and copied.
+  function token(r) {
+    const from = r.sync_token_from === "env" ? "set in this server's .env" : "made by this server";
+    const box = el("p", {}, el("span", { textContent: `To connect a player PC, put this server's sync token (${from}) in the player's .env as FS42_SYNC_TOKEN. ` }));
+    if (!r.edit) return box;
+    const out = el("input", { type: "text", readOnly: true, size: 48, hidden: true, ariaLabel: "Sync token line for the player's .env" });
+    const btn = el("button", { type: "button", className: "btn", textContent: "Show and copy the token" });
+    btn.addEventListener("click", async () => {
+      try {
+        out.value = `FS42_SYNC_TOKEN=${(await call("/api/settings/sync-token")).token}`;
+        out.hidden = false;
+        out.select();
+        // the clipboard API needs https; over plain http the old copy command still works on the selected text
+        const copied = navigator.clipboard ? await navigator.clipboard.writeText(out.value).then(() => true, () => false)
+          : document.execCommand("copy");
+        say(copied ? "Copied: paste it into the player's .env." : "It is selected: press Ctrl+C (⌘C on a Mac) to copy it.", copied ? "ok" : "");
+      } catch (e) {
+        say(e.message, "err");
+      }
+    });
+    box.append(btn, " ", out);
+    return box;
+  }
+
   function render(r) {
     const m = r.machine;
     const yes = (b) => (b ? "set" : "not set");
@@ -65,7 +89,7 @@
         ["Role", `${m.role} (FS42_ROLE in the compose file; a player PC runs the client compose file)`],
         ["Time zone", m.tz || "(the container's)"], ["Version", m.version || "?"],
         ["Login", m.login ? "on" : "OFF (DASHBOARD_LOGIN)"], ["Changes from the dashboard", m.edit ? "on" : "OFF (DASHBOARD_EDIT)"],
-        ["Secrets (in .env only)", Object.entries(m.secrets).map(([k, v]) => `${k} ${yes(v)}`).join(", ")],
+        ["Secrets (in .env; the sync token can be made here)", Object.entries(m.secrets).map(([k, v]) => `${k} ${yes(v)}`).join(", ")],
       ].map(([k, v]) => el("tr", {}, el("th", { textContent: k }), el("td", { textContent: v })))));
     if (!r.edit) say("Changing settings is switched off (DASHBOARD_EDIT=0): this page only shows them.");
 
@@ -76,9 +100,10 @@
     const pl = $("players");
     pl.replaceChildren(el("h2", { textContent: "Players" }));
     if (!r.sync_on) {
-      pl.append(el("p", { className: "dim", textContent: "No player PCs: client sync is off (set FS42_SYNC_TOKEN in this server's .env)." }));
+      pl.append(el("p", { className: "dim", textContent: "No player PCs: client sync is off (this server could not make its sync token; set FS42_SYNC_TOKEN in its .env)." }));
       return;
     }
+    pl.append(token(r));
     if (!r.players.length) pl.append(el("p", { className: "dim", textContent: "No player has checked in in the last day." }));
     for (const p of r.players) {
       const box = el("div", { className: "block" }, el("h3", { textContent: `${p.name}${p.gone ? " (not seen for a while)" : ""}` }));

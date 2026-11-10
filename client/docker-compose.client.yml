@@ -8,7 +8,8 @@
 #        //192.168.1.10/media /mnt/media cifs ro,credentials=/root/.smb-media,vers=3.0,_netdev,nofail 0 0
 #   2. Use the same time zone as the server (timedatectl set-timezone ...).
 #   3. Nothing else may be drawing on the screen: no desktop, no X autologin. mpv takes the screen itself.
-#   4. On the server, set FS42_SYNC_TOKEN (any long random text) and put the same text in this .env.
+#   4. Put the server's sync token in this .env: on the server's dashboard, Settings > Players > Show and copy the
+#      token (the server makes one itself; or set FS42_SYNC_TOKEN there to your own long random text).
 #
 # Update it the same way as the server, and keep both on the same version:  docker compose pull && docker compose up -d
 name: fs42-player

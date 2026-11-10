@@ -12,13 +12,15 @@ carries one hash per part, and the client fetches only the parts whose hash chan
   POST /sync/hello     the client says who it is, what it runs and what is wrong; the Status page lists it. The answer
                        is its settings from the Settings page: {"settings": {KEY: "value"}}
 
-Off unless FS42_SYNC_TOKEN is set. Every call needs "Authorization: Bearer <that token>". It only reads.
+Every call needs "Authorization: Bearer <the token>": FS42_SYNC_TOKEN when it is set, else one this server makes once
+and keeps beside settings.json (load_token); the Settings page shows it for copying into a player's .env. It only reads.
 """
 import gzip
 import hashlib
 import hmac
 import json
 import os
+import secrets
 import sqlite3
 import tempfile
 import threading
@@ -28,6 +30,29 @@ SKIP_DIRS = {".prefetch", ".tmdb_cache"}      # caches the server makes for itse
 CACHE_SECONDS = 30                            # how long a computed part is reused: a minute's polls by many clients cost one walk
 STALE_SECONDS = 300                           # a player not heard from for this long is reported as gone
 FORGET_SECONDS = 24 * 3600                    # ...and after this long it is dropped from the list
+
+
+def load_token(given, path):
+    """(token, "env" | "made") a player must send: FS42_SYNC_TOKEN when it is set, else one made here once and kept in
+    `path` (readable by its owner only). ("", None) when it can be neither read nor made: client sync is then off."""
+    if (given or "").strip():
+        return given.strip(), "env"
+    try:
+        with open(path) as f:
+            token = f.read().strip()
+    except FileNotFoundError:
+        token = ""
+    except OSError:
+        return "", None
+    if token:
+        return token, "made"
+    token = secrets.token_urlsafe(24)
+    try:
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+            f.write(token + "\n")
+    except OSError:
+        return "", None
+    return token, "made"
 
 
 def _h(data):
@@ -175,7 +200,7 @@ class Feed:
     def handle(self, method, path, query, headers, body, addr):
         """(status, [(header, value)], body bytes) for one /sync/ request."""
         if not self.enabled:
-            return 404, [], b"client sync is off on this server (set FS42_SYNC_TOKEN)"
+            return 404, [], b"client sync is off on this server (its token could not be made: set FS42_SYNC_TOKEN)"
         got = (headers.get("Authorization") or "").removeprefix("Bearer ").strip()
         if not hmac.compare_digest(got.encode(), self.token.encode()):
             return 403, [], b"wrong or missing sync token"

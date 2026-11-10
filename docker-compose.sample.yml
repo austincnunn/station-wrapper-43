@@ -42,8 +42,8 @@ services:
       SYNC_FULL_EVERY_HOURS: "24"
       PREFETCH_MAX_MB: "5400"            # at most this much of the /cache RAM disk
       # DASHBOARD_PASSWORD: ""           # or set it on the first visit; the management pages are behind a login
-      # FS42_SYNC_TOKEN: ""              # long random text: lets player PCs in client mode copy this server's schedule
-                                         # (client/docker-compose.client.yml; the same token goes there)
+      # FS42_SYNC_TOKEN: ""              # what player PCs in client mode must send to copy this server's schedule; left
+                                         # unset, the server makes one (Settings > Players shows it to copy)
 
 volumes:
   # ---- 1. THE CONTAINER'S OWN DATA: LOCAL DISK ONLY, never a NAS or SMB/NFS share ----------------

@@ -74,7 +74,7 @@ class LoginTest(unittest.TestCase):
 
     def test_every_api_call_needs_the_login(self):
         for path in ("/api/files/info", "/api/files/list?root=media", "/api/keeper", "/api/schedule?name=x",
-                     "/api/stations", "/api/stations/get?name=x"):
+                     "/api/stations", "/api/stations/get?name=x", "/api/settings/sync-token"):
             self.assertEqual(self.c.request("GET", path)[0], 401, path)
         for path in ("/api/files/create-tag", "/api/keeper/settings", "/api/stations/save",
                      "/api/stations/delete", "/api/stations/build"):

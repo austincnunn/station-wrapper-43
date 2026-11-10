@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from syncfeed import Feed
+from syncfeed import Feed, load_token
 
 AUTH = {"Authorization": "Bearer s3cret"}
 
@@ -98,6 +98,20 @@ class SyncFeed(unittest.TestCase):
         self.assertEqual((p["env"], p["applied"]), ({"FS42_GAMMA": "10"}, {"FS42_GAMMA": "10"}))
         other = self.feed.handle("POST", "/sync/hello", {}, AUTH, json.dumps({"name": "den"}).encode(), "10.0.0.6")
         self.assertEqual(json.loads(other[2]), {"settings": {}})
+
+
+
+class TokenTest(unittest.TestCase):
+    def test_the_env_token_wins_else_one_is_made_once_and_kept_private(self):
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "sync-token")
+        self.assertEqual(load_token(" mine ", path), ("mine", "env"))
+        self.assertFalse(os.path.exists(path))
+        made, how = load_token("", path)
+        self.assertEqual((how, len(made) >= 32), ("made", True))
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        self.assertEqual(load_token(None, path), (made, "made"))                   # the same one after a restart
+        self.assertEqual(load_token("", os.path.join(d, "no", "such", "dir", "t")), ("", None))   # cannot be made: sync off
 
 
 if __name__ == "__main__":

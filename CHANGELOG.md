@@ -21,6 +21,8 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   wins over the compose file's, and only the part that uses it is restarted. Each player PC (client mode) gets its screen,
   banner and sync settings from the same page on the server, within a minute. The role, the login switches, paths and
   secrets stay in the compose file; the page shows the role and whether each secret is set.
+- **No sync token to think up.** A server with no `FS42_SYNC_TOKEN` makes its own (kept in `config/sync-token`), so client
+  sync is always on behind a token; the Settings page's Players card shows it and copies it for a player's `.env`.
 
 - **Intro cards and folders inside a list on the Stations page.** A video slot can have an intro card (a folder of clips,
   one played as each hour of the slot starts: FieldStation42's `start_bump`), and its lists can be folders inside a list.

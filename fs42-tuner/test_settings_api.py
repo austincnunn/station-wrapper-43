@@ -50,11 +50,25 @@ class SettingsApi(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=10) as resp:
             self.assertEqual(json.load(resp), {"settings": {"FS42_GAMMA": "12"}})
 
+    def test_with_no_token_set_the_server_makes_one_and_shows_it_only_when_asked(self):
+        self.start(FS42_SYNC_TOKEN="")
+        code, r = self.srv.get("/api/settings")
+        self.assertEqual((r["sync_on"], r["sync_token_from"], r["machine"]["secrets"]["FS42_SYNC_TOKEN"]), (True, "made", True))
+        made = open(os.path.join(self.root, "sync-token")).read().strip()
+        self.assertNotIn(made, json.dumps(r))
+        code, t = self.srv.get("/api/settings/sync-token")
+        self.assertEqual((code, t), (200, {"token": made, "from": "made"}))
+        req = urllib.request.Request(self.srv.base + "/sync/hello", data=b'{"name": "crt"}', method="POST",
+                                     headers={"Authorization": f"Bearer {made}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            self.assertEqual(resp.status, 200)
+
     def test_nothing_changes_when_editing_is_off(self):
         self.start(DASHBOARD_EDIT="0")
         self.assertFalse(self.srv.get("/api/settings")[1]["edit"])
         self.assertEqual(self.srv.post("/api/settings", {"values": {"SYNC_INTERVAL_MINUTES": "30"}})[0], 403)
         self.assertEqual(self.srv.post("/api/settings/player", {"name": "crt", "values": {"FS42_GAMMA": "1"}})[0], 403)
+        self.assertEqual(self.srv.get("/api/settings/sync-token")[0], 403)
         self.assertFalse(os.path.exists(self.path))
 
 
