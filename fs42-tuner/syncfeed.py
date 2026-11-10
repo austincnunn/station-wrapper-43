@@ -95,33 +95,34 @@ class Feed:
         return json.dumps(out, sort_keys=True).encode()
 
     def manifest(self):
+        """Every link (and where it points), real file (size, mtime) and folder in the catalog. A link is never followed:
+        the catalog is tens of thousands of links into the media share, and looking at what each points to (os.walk does,
+        to tell folders from files) is a network round trip each, which made this take most of a minute."""
         links, files, dirs = {}, {}, []
         root = self.catalog_dir
-        for d, subdirs, names in os.walk(root):
-            rel_d = os.path.relpath(d, root)
-            if rel_d != ".":
-                dirs.append(rel_d)
-            keep = []
-            for s in subdirs:
-                p = os.path.join(d, s)
-                if s in SKIP_DIRS:
-                    continue
-                if os.path.islink(p):                  # a linked folder is a link, not somewhere to walk into
-                    links[os.path.relpath(p, root)] = os.readlink(p)
-                else:
-                    keep.append(s)
-            subdirs[:] = keep
-            for n in names:
-                p = os.path.join(d, n)
-                rel = os.path.relpath(p, root)
-                if os.path.islink(p):
-                    links[rel] = os.readlink(p)
-                else:
-                    try:
-                        st = os.stat(p)
-                    except OSError:
+        stack = [root]
+        while stack:
+            d = stack.pop()
+            if d != root:
+                dirs.append(os.path.relpath(d, root))
+            try:
+                entries = list(os.scandir(d))
+            except OSError:
+                continue
+            for e in entries:
+                rel = os.path.relpath(e.path, root)
+                try:
+                    if e.is_symlink():                  # a linked folder is a link too, not somewhere to walk into
+                        links[rel] = os.readlink(e.path)
+                    elif e.name in SKIP_DIRS:
                         continue
-                    files[rel] = [st.st_size, st.st_mtime_ns // 1_000_000_000]
+                    elif e.is_dir(follow_symlinks=False):
+                        stack.append(e.path)
+                    else:
+                        st = e.stat(follow_symlinks=False)
+                        files[rel] = [st.st_size, st.st_mtime_ns // 1_000_000_000]
+                except OSError:
+                    continue
         return {"links": links, "files": files, "dirs": sorted(dirs)}
 
     def _catalog(self):
