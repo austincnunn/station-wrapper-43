@@ -1,0 +1,78 @@
+name: image
+
+# Forgejo Actions on git.herbert.link (the runner is on alfred). Builds the ONE image for amd64 and arm64 (arm64 under
+# qemu emulation), checks and smoke-tests each, and publishes to Forgejo's own registry:
+#   main: git.herbert.link/austin/station-wrapper-43:latest and :main-<short-sha>
+#   dev:  ...:dev and :dev-<short-sha>
+# on every push to either, every Sunday (FieldStation42's newest commits arrive on their own), and on demand.
+# Nothing is pushed unless the contract check, the station-schema test and the smoke test pass for both.
+#
+# alfred's /etc/hosts points git.herbert.link at Caddy over the tailnet: pushes must not go through Cloudflare, which
+# refuses uploads over 100 MB (two layers are ~250 MB). GitHub (a push mirror of this repo) still builds ghcr.io's copy.
+on:
+  push:
+    branches: [dev, main]
+  schedule:
+    - cron: "0 9 * * 0"
+  workflow_dispatch:
+    inputs:
+      fs42_ref:
+        description: "FieldStation42 branch, tag or commit to build with"
+        default: main
+        required: false
+
+env:
+  IMAGE: git.herbert.link/austin/station-wrapper-43
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the tags and the FieldStation42 commit
+        env:
+          FS42_REF: ${{ github.event.inputs.fs42_ref || 'main' }}
+        run: |
+          set -euo pipefail
+          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
+          branch="${{ github.ref_name }}"
+          fs42="$(git ls-remote https://github.com/shane-mason/FieldStation42.git "$FS42_REF" | head -1 | cut -f1)"
+          {
+            echo "SHA=$sha"
+            echo "TAG=$branch-$sha"
+            echo "MOVING=$([ "$branch" = main ] && echo latest || echo dev)"
+            echo "FS42=${fs42:-$FS42_REF}"
+            echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_ENV"
+
+      - name: Let this Docker run arm64 (qemu)
+        run: docker run --privileged --rm tonistiigi/binfmt:qemu-v9.2.2 --install arm64
+
+      - name: Log in to the registry
+        run: echo "${{ secrets.REGISTRY_TOKEN || github.token }}" | docker login git.herbert.link -u austin --password-stdin
+
+      - name: Build, check, smoke-test, push (each architecture)
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            ref="$IMAGE:$TAG-$arch"
+            docker build --platform "linux/$arch" -t "$ref" \
+              --build-arg FS42_REF="$FS42" --build-arg BUILD_REF="$TAG" --build-arg BUILD_SHA="$SHA" \
+              --build-arg BUILD_DATE="$DATE" .
+            echo "FieldStation42 in the $arch image: $(docker run --rm --entrypoint cat "$ref" /opt/FS42_REF | cut -c1-7)"
+            tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$ref" -c \
+              'mkdir /tmp/w && tar -xf - -C /tmp/w && cd /tmp/w &&
+               python3 scripts/check-fs42-contract.py /app &&
+               python3 scripts/test_build_channels.py FieldStationSchemaTest &&
+               cd fs42-tuner && python3 test_stationform.py'
+            scripts/smoke-image.sh "$ref"
+          done
+          for arch in amd64 arm64; do docker push -q "$IMAGE:$TAG-$arch"; done
+
+      - name: Publish one tag for both architectures
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "$IMAGE:$MOVING" -t "$IMAGE:$TAG" "$IMAGE:$TAG-amd64" "$IMAGE:$TAG-arm64"
+          docker buildx imagetools inspect "$IMAGE:$TAG" | head -20
+          echo "published $IMAGE:$MOVING and :$TAG (amd64, arm64)"
