@@ -309,12 +309,27 @@ def media_path(rel):
     return rel if os.path.isabs(rel) else os.path.join(CATALOG_ROOT, rel)
 
 
-CONTINUOUS_TS = os.environ.get("CONTINUOUS_TS", "0").strip().lower() in ("1", "true", "yes", "on")
+# One clock for the whole channel: each piece (a clip, a song, a black gap) carries on the timestamps where the last left
+# off. When every piece started again at 0, time went backwards at each change, and a player reading one long stream
+# (Android TV's Media3, VLC) could freeze there. CONTINUOUS_TS=0 gives the old behaviour.
+CONTINUOUS_TS = os.environ.get("CONTINUOUS_TS", "1").strip().lower() in ("1", "true", "yes", "on")
+TS_MARGIN = 1.0                     # seconds left between pieces: ffmpeg may send a little ahead of the clock (-re's first burst)
 
 
 def _continuous(mux):
     """The mux options without the flag that marks each new ffmpeg as a break in the stream."""
     return [("+resend_headers" if m == "+resend_headers+initial_discontinuity" else m) for m in mux]
+
+
+def at_clock(cmd, offset):
+    """The same ffmpeg command with its output timestamps starting at `offset` seconds (the channel's clock), as one more
+    part of a continuous stream. The output's -f mpegts (MUX) is the last one on the line."""
+    out = [("+resend_headers" if m == "+resend_headers+initial_discontinuity" else m) for m in cmd]
+    if "-output_ts_offset" in out:
+        out[out.index("-output_ts_offset") + 1] = f"{offset:.3f}"
+        return out
+    i = max(i for i in range(len(out) - 1) if out[i] == "-f" and out[i + 1] == "mpegts")
+    return out[:i] + ["-output_ts_offset", f"{offset:.3f}"] + out[i:]
 
 
 def segment_cmd(path, seek, duration, is_stream, ts_offset=None, text=None, subs=None, ordered=False, input_opts=()):
@@ -385,7 +400,7 @@ def still_cmd(path, seconds, text=None):
                       "-t", f"{max(seconds, 1):.1f}"] + NORMALIZE + MUX + ["pipe:1"], text)
 
 
-def music_cmd(card_png, song, seek, duration, info, ts_offset=None):
+def music_cmd(card_png, song, seek, duration, info):
     """A song over its card (music.py): the bar fills and the time gone counts up as it plays. The bar is a strip cut from
     the card with a block of colour slid across it, so the fill never spills outside the bar."""
     bx, by, bw, bh = info["bar"]
@@ -406,8 +421,6 @@ def music_cmd(card_png, song, seek, duration, info, ts_offset=None):
            "-re", "-loop", "1", "-framerate", str(FPS), "-i", card_png,
            "-re", "-ss", f"{seek:.3f}", "-i", song,
            "-filter_complex", graph, "-map", "[v]", "-map", "1:a:0", "-t", f"{duration:.3f}"] + enc
-    if ts_offset is not None:
-        return cmd + ["-output_ts_offset", f"{ts_offset:.3f}"] + _continuous(MUX) + ["pipe:1"]
     return cmd + MUX + ["pipe:1"]
 
 
@@ -797,7 +810,6 @@ class Channel:
             print(f"[ch{self.number}] {why.lower()}: showing {name} for {cur.remaining:.0f}s", flush=True)
             self.now_playing = f"Test pattern: {why.lower()}"
             self._pipe(still_cmd(path, min(cur.remaining, 30), why))
-            self.clock += min(cur.remaining, 30)
             return
         if not entry.is_stream and music.is_audio(path):
             self._play_song(cur, path, name)
@@ -811,11 +823,10 @@ class Channel:
         try:
             subs = caption_filter(self.station, entry, path, local, cur.seek)
             inject = caption_injector(self.station, entry, path, cur.seek)
-            sent = self._pipe(segment_cmd(local, cur.seek, cur.remaining, entry.is_stream, self.clock if CONTINUOUS_TS else None,
+            sent = self._pipe(segment_cmd(local, cur.seek, cur.remaining, entry.is_stream,
                                           text=offair, subs=subs,
                                           ordered=inject is not None),
                               label=name, cached=pinned, inject=inject)
-            self.clock += cur.remaining
             if sent < 1024 and not entry.is_stream and not self.stop.is_set() and not self.reload.is_set():
                 # ffmpeg gave nothing for a file that is there: it can't be read. Say so, and don't spin on it.
                 print(f"[ch{self.number}] bad file (nothing came out of it): {path}", flush=True)
@@ -831,8 +842,7 @@ class Channel:
         card = os.path.join(tempfile.gettempdir(), f"music-card-{self.number}.png")
         info = music.card(card, path, display_name(self.station), self.number, up_next(cur), (W, H))
         print(f"[ch{self.number}] {cur.block_title} :: {self.now_playing} @{cur.seek:.0f}s for {cur.remaining:.0f}s (song)", flush=True)
-        sent = self._pipe(music_cmd(card, path, cur.seek, cur.remaining, info, self.clock if CONTINUOUS_TS else None), label=name)
-        self.clock += cur.remaining
+        sent = self._pipe(music_cmd(card, path, cur.seek, cur.remaining, info), label=name)
         if sent < 1024 and not self.stop.is_set() and not self.reload.is_set():
             print(f"[ch{self.number}] bad file (nothing came out of it): {path}", flush=True)
             self.now_playing = "Test pattern: bad file"
@@ -850,10 +860,9 @@ class Channel:
             return
         print(f"[ch{self.number}] {cur.block_title} :: {name} @{cur.seek:.0f}s for {cur.remaining:.0f}s (from Emby)", flush=True)
         try:
-            sent = self._pipe(segment_cmd(src["url"], src["seek"], cur.remaining, False, self.clock if CONTINUOUS_TS else None,
+            sent = self._pipe(segment_cmd(src["url"], src["seek"], cur.remaining, False,
                                           text=offair_reason(self.station, entry, cur.block_title), input_opts=src["opts"]),
                               label=name)
-            self.clock += cur.remaining
         finally:
             src["done"]()
         if sent < 1024 and not self.stop.is_set() and not self.reload.is_set():
@@ -922,8 +931,11 @@ class Channel:
                     pass
 
     def _pipe(self, cmd, label=None, cached=False, inject=None):
-        """Run one ffmpeg into the channel. Returns how many bytes came out of it."""
+        """Run one ffmpeg into the channel. Returns how many bytes came out of it. With CONTINUOUS_TS its timestamps carry
+        on from the channel's clock, which then moves on by the time it ran (paced at real time by -re)."""
         began = time.time()
+        if CONTINUOUS_TS:
+            cmd = at_clock(cmd, self.clock)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, bufsize=0)
         first = True
@@ -956,6 +968,7 @@ class Channel:
                     proc.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+            self.clock += time.time() - began + TS_MARGIN
         return sent
 
 

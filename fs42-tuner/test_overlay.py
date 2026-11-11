@@ -146,5 +146,31 @@ class PrimeTest(unittest.TestCase):
         self.assertIn(sub, ch.subs)
 
 
+
+class ClockTest(unittest.TestCase):
+    """CONTINUOUS_TS: every piece of a channel carries on the timestamps, so time never goes backwards at a change."""
+    def test_the_offset_goes_before_the_output_and_the_break_flag_goes(self):
+        cmd = tuner.at_clock(tuner.filler_cmd(3), 125.5)
+        i = cmd.index("-output_ts_offset")
+        self.assertEqual(cmd[i + 1], "125.500")
+        self.assertEqual(cmd[i + 2:i + 4], ["-f", "mpegts"])
+        self.assertNotIn("+resend_headers+initial_discontinuity", cmd)
+        self.assertEqual(tuner.at_clock(cmd, 9)[i + 1], "9.000")                  # once only
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_two_pieces_in_a_row_only_go_forward(self):
+        d = tempfile.mkdtemp()
+        ts = os.path.join(d, "two.ts")
+        with open(ts, "wb") as f:
+            for offset in (0, 3.0 + tuner.TS_MARGIN):                             # the second starts where the clock got to
+                f.write(subprocess.run(tuner.at_clock(tuner.filler_cmd(3), offset), capture_output=True, timeout=60).stdout)
+        pts = [float(x.strip(",")) for x in subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                                 "packet=pts_time", "-of", "csv=p=0", ts], capture_output=True, text=True).stdout.split()
+               if x.strip(",") not in ("", "N/A")]
+        self.assertGreater(len(pts), 20)
+        self.assertGreater(pts[-1], 5)                                             # the second piece is later, not at 0
+        self.assertTrue(all(b > a - 0.5 for a, b in zip(pts, pts[1:])), "time went backwards")      # B-frames aside
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Fixed
+- **Players froze at the change from one clip to the next.** Each clip, song or black gap is its own ffmpeg, and
+  each one started its timestamps again at 0, so time went backwards at every change; a player reading the channel as one
+  long stream (Android TV's Media3, VLC) could freeze there (most often on a music channel, which changes every few
+  minutes). Every piece now carries on the channel's clock (`CONTINUOUS_TS`, now on by default; `0` for the old way).
 - **No more colour bars and tone.** When a block's videos end a few seconds before its slot (breaks can't be filled to the
   second), the stream showed 15 seconds of colour bars with a tone, and the next programme started late. It is now black and
   silent for exactly the gap. Every other "nothing to play" picture is black and silent too, off-air time uses a black clip

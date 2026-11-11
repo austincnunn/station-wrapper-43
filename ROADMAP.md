@@ -71,8 +71,8 @@ Does TVHeadend want `tvg-chno` or the channel's name as the key? Both need tryin
 
 ## 2. Playback: the lag between clips
 
-- `CONTINUOUS_TS=1` removed the freezes in a test (26.6 s frozen over 70 s down to 0) but is **off by default** and
-  untried on real transitions. Try it on the real stations, then make it the default.
+- `CONTINUOUS_TS` is on by default (2026-11-11): every piece a channel plays (clip, song, black gap, card) carries on
+  the channel's clock in `_pipe`, so timestamps never go backwards (Media3 froze at changes before).
 - Start the next clip's ffmpeg a few seconds before the current one ends, so a slow seek on the share is spent before the cut.
 - Log the real gap at every transition (the tuner has the times) so there are numbers from the real setup.
 - The media share reads at about 5.6 MB/s (tried: `dd` and `ffprobe` timings). That alone makes seeks slow. Check the CIFS
