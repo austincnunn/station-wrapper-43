@@ -13,7 +13,7 @@ carries one hash per part, and the client fetches only the parts whose hash chan
                        is its settings from the Settings page: {"settings": {KEY: "value"}}
 
 Every call needs "Authorization: Bearer <the token>": FS42_SYNC_TOKEN when it is set, else one this server makes once
-and keeps beside settings.json (load_token); the Settings page shows it for copying into a player's .env. It only reads.
+and keeps beside the tuner's config (load_token); the Settings page shows it for copying into a player's .env. It only reads.
 """
 import gzip
 import hashlib

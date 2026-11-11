@@ -999,7 +999,7 @@ SOURCES = iptv.Sources(os.environ.get("FS42_IPTV") or os.path.join(os.path.dirna
 SOURCES_LOCK = threading.Lock()
 # What player PCs in client mode copy from here (syncfeed.py), behind FS42_SYNC_TOKEN or a token made here once.
 SYNC_TOKEN, SYNC_TOKEN_FROM = syncfeed.load_token(os.environ.get("FS42_SYNC_TOKEN"),
-                                                  os.path.join(os.path.dirname(settings.PATH), "sync-token"))
+                                                  os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "sync-token"))
 FEED = syncfeed.Feed(SYNC_TOKEN, DB_PATH, CONFS_DIR, os.path.join(CATALOG_ROOT, "catalog"), SOURCES.path,
                      versions={"wrapper": os.environ.get("FS42_WRAPPER_SHA") or "", "fieldstation42": (_fs42_ref_full() or "")},
                      player_settings=envsettings.player_overlay)
