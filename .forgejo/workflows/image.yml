@@ -49,7 +49,7 @@ jobs:
       - name: Let this Docker run arm64 (qemu)
         # Unraid doesn't mount binfmt_misc on the host, and a qemu registered without it doesn't take: mount it first
         run: |
-          docker run --privileged --rm --pid=host alpine:3 nsenter -t 1 -m -- sh -c \
+          docker run --privileged --rm --pid=host --platform linux/amd64 alpine:3 nsenter -t 1 -m -- sh -c \
             'mountpoint -q /proc/sys/fs/binfmt_misc || mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc'
           docker run --privileged --rm tonistiigi/binfmt:qemu-v9.2.2 --install arm64
           docker run --rm --platform linux/arm64 alpine:3 uname -m
