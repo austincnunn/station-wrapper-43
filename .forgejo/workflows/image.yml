@@ -1,11 +1,11 @@
 name: image
 
-# Forgejo Actions on git.herbert.link (the runner is on alfred). Builds the ONE image for amd64 and arm64 (arm64 under
-# qemu emulation), checks and smoke-tests each, and publishes to Forgejo's own registry:
+# Forgejo Actions on git.herbert.link (the runner is on alfred). Builds the image for amd64 only (arm64 under qemu took
+# ~25 min on alfred; GitHub's ghcr.io copy stays multi-arch), checks and smoke-tests it, and publishes to Forgejo's registry:
 #   main: git.herbert.link/austin/station-wrapper-43:latest and :main-<short-sha>
 #   dev:  ...:dev and :dev-<short-sha>
 # on every push to either, every Sunday (FieldStation42's newest commits arrive on their own), and on demand.
-# Nothing is pushed unless the contract check, the station-schema test and the smoke test pass for both.
+# Nothing is pushed unless the contract check, the station-schema test and the smoke test pass.
 #
 # alfred's /etc/hosts points git.herbert.link at Caddy over the tailnet: pushes must not go through Cloudflare, which
 # refuses uploads over 100 MB (two layers are ~250 MB). GitHub (a push mirror of this repo) still builds ghcr.io's copy.
@@ -46,41 +46,26 @@ jobs:
             echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_ENV"
 
-      - name: Let this Docker run arm64 (qemu)
-        # Unraid doesn't mount binfmt_misc on the host, and a qemu registered without it doesn't take: mount it first
-        run: |
-          docker run --privileged --rm --pid=host --platform linux/amd64 alpine:3 nsenter -t 1 -m -- sh -c \
-            'mountpoint -q /proc/sys/fs/binfmt_misc || mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc'
-          docker run --privileged --rm tonistiigi/binfmt:qemu-v9.2.2 --install arm64
-          docker run --rm --platform linux/arm64 alpine:3 uname -m
-
       - name: Log in to the registry
         # Forgejo's automatic token can't write packages: REGISTRY_TOKEN is a personal token with package read+write
         run: |
           [ -n "${{ secrets.REGISTRY_TOKEN }}" ] || { echo "set the repo secret REGISTRY_TOKEN (a token with package: read and write)"; exit 1; }
           echo "${{ secrets.REGISTRY_TOKEN }}" | docker login git.herbert.link -u austin --password-stdin
 
-      - name: Build, check, smoke-test, push (each architecture)
+      - name: Build, check, smoke-test, push
         run: |
           set -euo pipefail
-          for arch in amd64 arm64; do
-            ref="$IMAGE:$TAG-$arch"
-            docker build --platform "linux/$arch" -t "$ref" \
-              --build-arg FS42_REF="$FS42" --build-arg BUILD_REF="$TAG" --build-arg BUILD_SHA="$SHA" \
-              --build-arg BUILD_DATE="$DATE" .
-            echo "FieldStation42 in the $arch image: $(docker run --rm --entrypoint cat "$ref" /opt/FS42_REF | cut -c1-7)"
-            tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$ref" -c \
-              'mkdir /tmp/w && tar -xf - -C /tmp/w && cd /tmp/w &&
-               python3 scripts/check-fs42-contract.py /app &&
-               python3 scripts/test_build_channels.py FieldStationSchemaTest &&
-               cd fs42-tuner && python3 test_stationform.py'
-            scripts/smoke-image.sh "$ref"
-          done
-          for arch in amd64 arm64; do docker push -q "$IMAGE:$TAG-$arch"; done
-
-      - name: Publish one tag for both architectures
-        run: |
-          set -euo pipefail
-          docker buildx imagetools create -t "$IMAGE:$MOVING" -t "$IMAGE:$TAG" "$IMAGE:$TAG-amd64" "$IMAGE:$TAG-arm64"
-          docker buildx imagetools inspect "$IMAGE:$TAG" | head -20
-          echo "published $IMAGE:$MOVING and :$TAG (amd64, arm64)"
+          ref="$IMAGE:$TAG"
+          docker build -t "$ref" -t "$IMAGE:$MOVING" \
+            --build-arg FS42_REF="$FS42" --build-arg BUILD_REF="$TAG" --build-arg BUILD_SHA="$SHA" \
+            --build-arg BUILD_DATE="$DATE" .
+          echo "FieldStation42 in the image: $(docker run --rm --entrypoint cat "$ref" /opt/FS42_REF | cut -c1-7)"
+          tar -cf - scripts fs42-tuner | docker run --rm -i -e FS42_SRC=/app --entrypoint sh "$ref" -c \
+            'mkdir /tmp/w && tar -xf - -C /tmp/w && cd /tmp/w &&
+             python3 scripts/check-fs42-contract.py /app &&
+             python3 scripts/test_build_channels.py FieldStationSchemaTest &&
+             cd fs42-tuner && python3 test_stationform.py'
+          scripts/smoke-image.sh "$ref"
+          docker push -q "$ref"
+          docker push -q "$IMAGE:$MOVING"
+          echo "published $ref and :$MOVING (amd64)"
