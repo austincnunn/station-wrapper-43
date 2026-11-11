@@ -55,7 +55,10 @@ jobs:
           docker run --rm --platform linux/arm64 alpine:3 uname -m
 
       - name: Log in to the registry
-        run: echo "${{ github.token }}" | docker login git.herbert.link -u austin --password-stdin
+        # Forgejo's automatic token can't write packages: REGISTRY_TOKEN is a personal token with package read+write
+        run: |
+          [ -n "${{ secrets.REGISTRY_TOKEN }}" ] || { echo "set the repo secret REGISTRY_TOKEN (a token with package: read and write)"; exit 1; }
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login git.herbert.link -u austin --password-stdin
 
       - name: Build, check, smoke-test, push (each architecture)
         run: |
