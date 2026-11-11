@@ -39,8 +39,9 @@ ADVANCED_KEYS = ("date_overrides", "slot_overrides", "tag_overrides", "week_over
                  "clip_shows", "autobump", "off_air_autobump", "meta_hints", "fallback_tag", "schedule_offset")
 # what the form owns; everything else in an existing config is kept as it was
 OWNED = ("network_name", "channel_number", "network_type", "content_dir", "bump_dir", "commercial_dir",
-         "commercial_free", "schedule_increment", "day_templates", "shuffle_loop", "break_strategy", "wrapper_break_snap", "wrapper_pack_short", "wrapper_no_breaks", "wrapper_start_cards", "wrapper_end_cards", "wrapper_mid_cards", "wrapper_show_cards", "tag_overrides", "wrapper_logo", "wrapper_caption_track", "web_url", "wrapper_ppv") + DAYS
+         "commercial_free", "schedule_increment", "day_templates", "shuffle_loop", "break_strategy", "wrapper_break_snap", "wrapper_pack_short", "wrapper_no_breaks", "wrapper_start_cards", "wrapper_end_cards", "wrapper_mid_cards", "wrapper_show_cards", "tag_overrides", "wrapper_logo", "wrapper_caption_track", "web_url", "wrapper_ppv", "media_filter") + DAYS
 MAX_NAME = 100
+MEDIA_FILTER = "mixed"         # FieldStation42 catalogs videos AND songs from the lists (its default, "video", skips songs: music.py)
 PPV_THEMES = ("modern", "retro", "terminal")     # FieldStation42's PPV page (?variation=)
 PPV_PAGE = "http://localhost:4242/static/ppv/ppv.html"   # drawn by each player's own FieldStation42 (its port 4242)
 OFF_AIR_CLIP = os.environ.get("FS42_OFFAIR_CLIP", "/opt/assets/off-air.mp4")      # black and silent, shipped in the image (assets/)
@@ -370,9 +371,11 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
         conf["network_type"] = "loop"
         conf["content_dir"] = f"{CONTENT_DIR}/{form['loop']['list']}"
         conf["shuffle_loop"] = form["loop"]["shuffle"]
+        conf["media_filter"] = MEDIA_FILTER
         return conf
     conf["network_type"] = "standard"
     conf["content_dir"] = CONTENT_DIR
+    conf["media_filter"] = MEDIA_FILTER
     if form.get("midcards") is False:
         # the default cards are opt in: off, a break has none UNLESS its time (a calendar block) or its show names cards of
         # its own, which is an opt in for that video. The station's default folder is a name no choice can have, so the

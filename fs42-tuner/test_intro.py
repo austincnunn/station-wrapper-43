@@ -36,6 +36,7 @@ class Intro(unittest.TestCase):
         for d in sf.DAYS:
             self.assertEqual(json.dumps(out["day_templates"][out[d]], sort_keys=True),
                              json.dumps(conf["day_templates"][conf[d]], sort_keys=True), d)
+        self.assertEqual(out.pop("media_filter"), "mixed")              # a saved station takes songs as well as videos
         self.assertEqual({k: v for k, v in out.items() if k not in ("day_templates",) + sf.DAYS},
                          {k: v for k, v in conf.items() if k not in ("day_templates",) + sf.DAYS})
 
