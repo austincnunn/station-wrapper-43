@@ -116,6 +116,20 @@ def _clip(draw, text, font, width):
     return (text + "…") if text else ""
 
 
+def _lines(draw, text, font, width, most):
+    """text in at most `most` lines of `width` pixels, broken between words; the last one cut with an ellipsis."""
+    words, out = text.split(), []
+    while words and len(out) < most - 1:
+        n = len(words)
+        while n > 1 and draw.textlength(" ".join(words[:n]), font=font) > width:
+            n -= 1
+        if n == len(words):
+            break
+        out.append(" ".join(words[:n]))
+        words = words[n:]
+    return out + [_clip(draw, " ".join(words), font, width)] if words else out
+
+
 def _background(w, h):
     img = Image.new("RGB", (w, h))
     px = ImageDraw.Draw(img)
@@ -125,25 +139,35 @@ def _background(w, h):
     return img
 
 
+def safe_box(w, h):
+    """(left, top, right, bottom) of what every screen shows: the middle 4:3 of the picture (a 4:3 TV crops the sides of a
+    16:9 one) less 5% each side for an old TV's overscan."""
+    side = (w - min(w, h * 4 / 3)) / 2
+    mx, my = (w - 2 * side) * 0.05, h * 0.05
+    return int(side + mx), int(my), int(w - side - mx), int(h - my)
+
+
 def card(out, path, station="", number=None, up_next="", size=(1280, 720)):
-    """Draw the card for the song at `path` into `out` (a PNG). Returns {"bar": (x, y, w, h), "clock": (x, y, font size),
-    "total": seconds}: where the tuner fills the bar and writes the time gone, which change as the song plays."""
+    """Draw the card for the song at `path` into `out` (a PNG). Everything is inside safe_box, so a 4:3 TV loses nothing.
+    Returns {"bar": (x, y, w, h), "clock": (x, y, font size), "time": (y, font size), "total": seconds}: where the tuner
+    fills the bar, writes the time gone and the time of day (top middle), which change as the song plays."""
     w, h = size
     s = h / 720
     img = _background(w, h)
     d = ImageDraw.Draw(img)
     t = tags(path)
     total = duration(path)
-    m = int(56 * s)                                          # the margin
+    left, top, right, bottom = safe_box(w, h)
+    width = right - left
 
-    f_head = _font(FONT_BOLD, int(30 * s))
-    d.text((m, int(34 * s)), _clip(d, (station or "Music").upper(), f_head, w * 0.6), font=f_head, fill=ACCENT)
+    f_head = _font(FONT_BOLD, int(26 * s))
+    d.text((left, top), _clip(d, (station or "Music").upper(), f_head, width * 0.32), font=f_head, fill=ACCENT)
     if number is not None:
         ch = f"CH {number}"
-        d.text((w - m - d.textlength(ch, font=f_head), int(34 * s)), ch, font=f_head, fill=DIM)
+        d.text((right - d.textlength(ch, font=f_head), top), ch, font=f_head, fill=DIM)
 
-    side = int(380 * s)                                      # the cover
-    cx, cy = m, int(110 * s)
+    side = int(330 * s)                                      # the cover
+    cx, cy = left, top + int(72 * s)
     pic = cover(path)
     try:
         art = Image.open(pic).convert("RGB") if pic else None
@@ -151,41 +175,44 @@ def card(out, path, station="", number=None, up_next="", size=(1280, 720)):
         art = None
     shadow = Image.new("RGBA", (side + 24, side + 24), (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rectangle([12, 12, side + 12, side + 12], fill=(0, 0, 0, 170))
-    img.paste(shadow.filter(ImageFilter.GaussianBlur(10)), (cx - 6, cy - 2), shadow.filter(ImageFilter.GaussianBlur(10)))
+    blur = shadow.filter(ImageFilter.GaussianBlur(10))
+    img.paste(blur, (cx - 6, cy - 2), blur)
     if art is not None:
         img.paste(art.resize((side, side)), (cx, cy))
     else:                                                    # no picture: a plain square with a note on it
         d.rectangle([cx, cy, cx + side, cy + side], fill=(36, 44, 84))
         f_note = _font(FONT_BOLD, int(side * 0.5))
-        d.text((cx + side / 2, cy + side / 2), "♪", font=f_note, fill=DIM, anchor="mm")
+        d.text((cx + side / 2, cy + side / 2), "\u266a", font=f_note, fill=DIM, anchor="mm")
 
-    tx = cx + side + int(56 * s)                             # the words beside it
-    tw = w - tx - m
-    f_artist, f_title, f_album = _font(FONT_BOLD, int(54 * s)), _font(FONT_REGULAR, int(44 * s)), _font(FONT_REGULAR, int(30 * s))
-    y = cy + int(40 * s)
+    tx = cx + side + int(36 * s)                             # the words beside it
+    tw = right - tx
+    f_artist, f_title, f_album = _font(FONT_BOLD, int(40 * s)), _font(FONT_REGULAR, int(34 * s)), _font(FONT_REGULAR, int(24 * s))
+    y = cy + int(28 * s)
     d.text((tx, y), _clip(d, (t["artist"] or "").upper(), f_artist, tw), font=f_artist, fill=TEXT)
-    y += int(78 * s)
-    d.text((tx, y), _clip(d, t["title"], f_title, tw), font=f_title, fill=TEXT)
-    y += int(84 * s)
-    album = t["album"] + (f"  ({t['year']})" if t["year"] else "")
-    d.text((tx, y), _clip(d, album, f_album, tw), font=f_album, fill=DIM)
-    if t["genre"]:
-        d.text((tx, y + int(46 * s)), _clip(d, t["genre"], f_album, tw), font=f_album, fill=DIM)
+    y += int(58 * s)
+    for part in _lines(d, t["title"], f_title, tw, 2):     # a long name goes on two lines
+        d.text((tx, y), part, font=f_title, fill=TEXT)
+        y += int(44 * s)
+    y += int(18 * s)
+    d.text((tx, y), _clip(d, t["album"], f_album, tw), font=f_album, fill=DIM)
+    meta = "  ·  ".join(x for x in (t["year"], t["genre"]) if x)
+    if meta:
+        d.text((tx, y + int(36 * s)), _clip(d, meta, f_album, tw), font=f_album, fill=DIM)
 
-    f_next = _font(FONT_BOLD, int(28 * s))
-    ny = int(540 * s)
+    f_next = _font(FONT_BOLD, int(24 * s))
+    ny = bottom - int(96 * s)
     if up_next:
         label = "UP NEXT  "
-        d.text((m, ny), label, font=f_next, fill=ACCENT)
-        lx = m + d.textlength(label, font=f_next)
-        d.text((lx, ny), _clip(d, up_next, f_next, w - m - lx), font=f_next, fill=TEXT)
+        d.text((left, ny), label, font=f_next, fill=ACCENT)
+        lx = left + d.textlength(label, font=f_next)
+        d.text((lx, ny), _clip(d, up_next, f_next, right - lx), font=f_next, fill=TEXT)
 
-    bar = (m, int(640 * s), w - 2 * m, max(int(12 * s), 4))
+    bar = (left, bottom - max(int(12 * s), 4), width, max(int(12 * s), 4))
     d.rectangle([bar[0], bar[1], bar[0] + bar[2], bar[1] + bar[3]], fill=TRACK)
-    f_clock = int(26 * s)
+    f_clock = int(22 * s)
     if total:
         tot = clock(total)
         fc = _font(FONT_REGULAR, f_clock)
-        d.text((bar[0] + bar[2] - d.textlength(tot, font=fc), bar[1] - int(40 * s)), tot, font=fc, fill=DIM)
+        d.text((right - d.textlength(tot, font=fc), bar[1] - int(34 * s)), tot, font=fc, fill=DIM)
     img.save(out, "PNG")
-    return {"bar": bar, "clock": (bar[0], bar[1] - int(40 * s), f_clock), "total": total}
+    return {"bar": bar, "clock": (left, bar[1] - int(34 * s), f_clock), "time": (top + int(6 * s), int(26 * s)), "total": total}

@@ -48,6 +48,10 @@ class MusicTest(unittest.TestCase):
         self.assertTrue(music.is_audio("x/Y.FLAC") and not music.is_audio("x/y.mkv"))
         self.assertEqual(music._clean("1-03 Stand Back (Live).flac"), "Stand Back (Live)")
 
+    def test_the_safe_box_is_the_middle_4_3_less_overscan(self):
+        self.assertEqual(music.safe_box(1280, 720), (208, 36, 1072, 684))         # 4:3 is x 160..1120, then 5% each side
+        self.assertEqual(music.safe_box(960, 720), (48, 36, 912, 684))            # already 4:3: overscan only
+
     def test_the_cover_in_the_album_folder_is_found(self):
         d = album(self.root)
         song = os.path.join(d, "01 A.flac")
@@ -68,7 +72,9 @@ class MusicTest(unittest.TestCase):
         info = music.card(card, song, "Tunes", 116, "Next Band - Next Song", (tuner.W, tuner.H))
         self.assertEqual(Image.open(card).size, (tuner.W, tuner.H))
         bx, by, bw, bh = info["bar"]
-        self.assertTrue(0 < bx and bx + bw < tuner.W and 0 < by and by + bh < tuner.H)
+        left, top, right, bottom = music.safe_box(tuner.W, tuner.H)
+        self.assertTrue(left <= bx and bx + bw <= right and top <= by and by + bh <= bottom)       # inside the 4:3 safe box
+        self.assertGreaterEqual(info["clock"][0], left)
         out = subprocess.run(tuner.music_cmd(card, song, 2, 3, info), capture_output=True, timeout=120)
         self.assertEqual(out.returncode, 0, out.stderr.decode()[-600:])
         ts = os.path.join(self.root, "out.ts")

@@ -410,6 +410,10 @@ def music_cmd(card_png, song, seek, duration, info):
     gone = f"t+{seek:.3f}"
     clock = (f"drawtext=text='%{{eif\\:trunc(({gone})/60)\\:d}}\\:%{{eif\\:mod(trunc({gone})\\,60)\\:d\\:2}}'"
              f"{font}:fontsize={size}:fontcolor=0xAAB4CD:x={cx}:y={cy}")
+    ty, tsize = info.get("time", (None, None))
+    if ty is not None:                           # the time of day, top middle (the container's TZ), drawn as it goes
+        clock += (f",drawtext=text='%{{localtime\\:%-I}}\\:%{{localtime\\:%M %p}}'{font}:fontsize={tsize}:fontcolor=white:"
+                  f"x=(w-tw)/2:y={ty}")
     graph = (f"[0:v]fps={FPS},split[card][c2];[c2]crop={bw}:{bh}:{bx}:{by}[strip];"
              f"color=c=0xFFC400:s={bw}x{bh}:r={FPS}[fill];"
              f"[strip][fill]overlay=x='-w+w*min(1\\,({gone})/{total:.3f})':y=0:eval=frame:shortest=1[bar];"
