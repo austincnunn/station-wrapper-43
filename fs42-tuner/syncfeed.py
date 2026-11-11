@@ -27,6 +27,7 @@ import threading
 import time
 
 SKIP_DIRS = {".prefetch", ".tmdb_cache"}      # caches the server makes for itself
+SKIP_PATHS = {"media-links/Emby"}             # Emby placeholders (emby.py): a player streams those channels from the tuner
 CACHE_SECONDS = 30                            # how long a computed part is reused: a minute's polls by many clients cost one walk
 STALE_SECONDS = 300                           # a player not heard from for this long is reported as gone
 FORGET_SECONDS = 24 * 3600                    # ...and after this long it is dropped from the list
@@ -142,7 +143,7 @@ class Feed:
                 try:
                     if e.is_symlink():                  # a linked folder is a link too, not somewhere to walk into
                         links[rel] = os.readlink(e.path)
-                    elif e.name in SKIP_DIRS:
+                    elif e.name in SKIP_DIRS or rel in SKIP_PATHS:
                         continue
                     elif e.is_dir(follow_symlinks=False):
                         stack.append(e.path)

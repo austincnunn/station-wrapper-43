@@ -245,6 +245,29 @@ class StreamConfs(unittest.TestCase):
         playerconfs.write(d, [], "http://s", 1.0)
         self.assertEqual(json.load(open(os.path.join(d, "confs", "mine.json")))["station_conf"]["panscan"], 0.5)
 
+    def test_a_station_playing_emby_videos_streams_from_the_server(self):
+        d = tempfile.mkdtemp()
+        db = os.path.join(d, "fs42_fluid.db")
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE liquid_blocks (station TEXT, title TEXT, start_time TEXT, end_time TEXT, plan_json TEXT)")
+        now = datetime.now()
+        os.makedirs(os.path.join(d, "list"))
+        os.symlink("/app/catalog/media-links/Emby/Srv/TV/Show/Season 01/Show - S01E01 - A.mkv", os.path.join(d, "list", "a.mkv"))
+        for station, path in (("Friends", os.path.join(d, "list", "a.mkv")), ("Local", "/mnt/media/tv/x.mkv")):
+            con.execute("INSERT INTO liquid_blocks VALUES (?, ?, ?, ?, ?)", (station, "x", now.isoformat(),
+                        (now + timedelta(hours=1)).isoformat(), json.dumps([{"path": path, "content_type": "feature"}])))
+        con.commit()
+        con.close()
+        self.assertEqual(client.emby_stations(db), {"Friends"})
+        os.makedirs(os.path.join(d, "confs"))
+        for name, num in (("Friends", 120), ("Local", 121)):
+            json.dump({"station_conf": {"network_name": name, "channel_number": num, "network_type": "standard"}},
+                      open(os.path.join(d, "confs", f"{name}.json"), "w"))
+        playerconfs.write(d, [], "http://s", 1.0, from_server={"Friends"})
+        friends = json.load(open(os.path.join(d, "confs", "Friends.json")))["station_conf"]
+        self.assertEqual((friends["network_type"], friends["streams"][0]["url"], friends["panscan"]), ("streaming", "http://s/auto/v120", 1.0))
+        self.assertEqual(json.load(open(os.path.join(d, "confs", "Local.json")))["station_conf"]["network_type"], "standard")
+
 
 if __name__ == "__main__":
     import warnings

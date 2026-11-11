@@ -72,6 +72,7 @@ import files as filemgr
 import keeper as keepermod
 import guide_channel
 import diag
+import emby
 import iptv
 import legacy
 import prefetch
@@ -112,6 +113,10 @@ CHANNELS     = {str(k): v for k, v in CONF["channels"].items()}   # number -> st
 EDIT_FILES   = bool(CONF.get("edit", True)) and os.environ.get("DASHBOARD_EDIT", "1").lower() not in ("0", "false", "no", "off")
 FILES        = filemgr.Files(CONF.get("media_root", "/mnt/media"), os.path.join(CATALOG_ROOT, "catalog"),
                              follows_path=os.environ.get("FS42_FOLLOWS") or os.path.join(os.path.dirname(settings.PATH), "follows.json"))
+# Emby servers (emby.py): their chosen libraries are mirrored as placeholders into the pool's Emby folder, so the Files page
+# offers them like any media; the tuner reads the real video from the server when a placeholder airs.
+EMBY         = emby.Emby(os.environ.get("FS42_EMBY") or os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "emby.json"),
+                         os.environ.get("EMBY_MIRROR") or os.path.join(FILES.roots["pool"], emby.MIRROR_DIR))
 
 
 # the old schedule kept on air while a station is rebuilt (legacy.py) lives beside the other saved settings
@@ -311,7 +316,7 @@ def _continuous(mux):
     return [("+resend_headers" if m == "+resend_headers+initial_discontinuity" else m) for m in mux]
 
 
-def segment_cmd(path, seek, duration, is_stream, ts_offset=None, text=None, subs=None, ordered=False):
+def segment_cmd(path, seek, duration, is_stream, ts_offset=None, text=None, subs=None, ordered=False, input_opts=()):
     """ffmpeg for one plan entry. -ss before -i so the seek is fast, -t bounds
     it to the scheduled duration so a file that runs long can't push the
     channel off its own clock. -re paces output at realtime: without it ffmpeg
@@ -321,7 +326,7 @@ def segment_cmd(path, seek, duration, is_stream, ts_offset=None, text=None, subs
     if is_stream:
         cmd += ["-i", path]
     else:
-        cmd += ["-ss", f"{seek:.3f}", "-i", path, "-t", f"{duration:.3f}"]
+        cmd += list(input_opts) + ["-ss", f"{seek:.3f}", "-i", path, "-t", f"{duration:.3f}"]
     enc = with_subtitles(NORMALIZE, subs)
     if ordered:                                  # captions are put in frame by frame: the frames must be in the order they are shown
         enc = enc + ["-bf", "0"]
@@ -733,6 +738,10 @@ class Channel:
         entry = cur.entry
         path = entry.path if entry.is_stream else media_path(entry.path)
         name = os.path.basename(entry.path)
+        hit = None if entry.is_stream else EMBY.lookup(os.path.realpath(path))
+        if hit is not None:                         # a placeholder for a video on an Emby server
+            self._play_emby(cur, entry, name, hit)
+            return
         if not entry.is_stream and not os.path.exists(path):
             print(f"[ch{self.number}] missing media: {path}")
             self.now_playing = "Test pattern: no file"
@@ -768,6 +777,29 @@ class Channel:
         finally:
             if pinned:
                 PREFETCH.unpin(path)
+
+    def _play_emby(self, cur, entry, name, hit):
+        """Read the real video from its Emby server (emby.py), from the second the schedule is at."""
+        self.now_playing = cur.block_title
+        try:
+            src = EMBY.input_for(hit[0], hit[1], cur.seek)
+        except emby.EmbyError as e:
+            print(f"[ch{self.number}] emby: {e}", flush=True)
+            self.now_playing = "Test pattern: Emby server not reachable"
+            self._pipe(filler_cmd(min(max(cur.remaining, 1), 15), "EMBY SERVER NOT REACHABLE"))
+            return
+        print(f"[ch{self.number}] {cur.block_title} :: {name} @{cur.seek:.0f}s for {cur.remaining:.0f}s (from Emby)", flush=True)
+        try:
+            sent = self._pipe(segment_cmd(src["url"], src["seek"], cur.remaining, False, self.clock if CONTINUOUS_TS else None,
+                                          text=offair_reason(self.station, entry, cur.block_title), input_opts=src["opts"]),
+                              label=name)
+            self.clock += cur.remaining
+        finally:
+            src["done"]()
+        if sent < 1024 and not self.stop.is_set() and not self.reload.is_set():
+            print(f"[ch{self.number}] nothing came from Emby for {name}", flush=True)
+            self.now_playing = "Test pattern: Emby sent nothing"
+            self._pipe(filler_cmd(min(max(cur.remaining, 1), 10), f"EMBY SENT NOTHING: {name}"))
 
     def _run_guide(self, conf):
         """The guide channel: draw frames (guide_channel.py) into one ffmpeg with the music underneath, until the
@@ -1692,6 +1724,43 @@ class Handler(BaseHTTPRequestHandler):
         except iptv.SourceError as e:
             return self._json({"error": str(e)}, 400)
 
+    def _emby_api(self, path, body=None):
+        """/api/emby/*: Emby servers on the Sources page (emby.py). The Connect password is passed on once, never kept or logged."""
+        action = path[len("/api/emby/"):]
+        try:
+            if body is None:
+                if action == "status":
+                    return self._json({**EMBY.describe(), "edit": EDIT_FILES})
+                raise emby.EmbyError("no such call")
+            if not EDIT_FILES:
+                return self._json({"error": "changing sources is switched off (DASHBOARD_EDIT=0)"}, 403)
+            if action == "signin":
+                return self._json(EMBY.sign_in(body.get("name"), body.get("password")))
+            if action == "signout":
+                EMBY.sign_out()
+                return self._json(EMBY.describe())
+            if action == "servers":
+                return self._json(EMBY.refresh_servers())
+            if action == "libraries":
+                return self._json({"libraries": EMBY.libraries(body.get("id"))})
+            if action == "choose":
+                return self._json(EMBY.choose(body.get("id"), body.get("on"), body.get("libraries"), body.get("cap_kbps")))
+            if action == "sync":
+                if EMBY.status.get("syncing"):
+                    raise emby.EmbyError("already reading the servers")
+
+                def work():
+                    try:
+                        c = EMBY.sync()
+                        print(f"[emby] mirror: {c['made']} made, {c['kept']} unchanged, {c['removed']} removed", flush=True)
+                    except Exception as e:
+                        EMBY.status["error"] = str(e)[:500]
+                threading.Thread(target=work, daemon=True, name="emby-sync").start()
+                return self._json({"started": True})
+            raise emby.EmbyError("no such call")
+        except emby.EmbyError as e:
+            return self._json({"error": str(e)}, 400)
+
     def _stations_api(self, path, query=None, body=None):
         """/api/stations/* and /api/schedule: the Stations and Schedule pages."""
         action = path[len("/api/"):]
@@ -1814,6 +1883,9 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/iptv/"):
             body = self._json_body()
             return None if body is None else self._iptv_api(p, None, body)
+        if p.startswith("/api/emby/"):
+            body = self._json_body()
+            return None if body is None else self._emby_api(p, body)
         if p == "/api/system/speedtest":
             body = self._json_body()
             if body is None:
@@ -2099,6 +2171,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p.startswith("/api/iptv/"):
             return self._iptv_api(p)
+        if p.startswith("/api/emby/"):
+            return self._emby_api(p)
 
         if p == "/api/stations" or p.startswith("/api/stations/") or p in ("/api/schedule", "/api/schedule/block"):
             from urllib.parse import parse_qs
@@ -2352,6 +2426,8 @@ if __name__ == "__main__":
     GUIDE.extra_sources = external_guide_sources
     sync_external()                                              # the channels of the external IPTV sources, from what was last read
     threading.Thread(target=refresh_sources_loop, daemon=True, name="iptv-sources").start()
+    threading.Thread(target=EMBY.loop, daemon=True, name="emby-mirror",
+                     kwargs={"hours": float(os.environ.get("EMBY_SYNC_HOURS", "6"))}).start()
     threading.Thread(target=GUIDE.xmltv, daemon=True).start()   # warm it
 
     print(f"  FieldStation42: {len(CHANNELS)} channels"

@@ -18,3 +18,6 @@
 .chan-table input.num { width: 5em; }
 .chan-table tr.off td { opacity: 0.55; }
 .chan-table .logo { width: 2em; height: 1.4em; object-fit: contain; }
+#emby { margin-top: 1.5em; }
+#emby input[type=password] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 0.4em; padding: 0.45em 0.6em; font: inherit; }
+#emby input.num { width: 6em; }

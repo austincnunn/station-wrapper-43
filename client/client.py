@@ -319,6 +319,38 @@ def _hash_confs():
 
 
 # -- checks -----------------------------------------------------------------
+EMBY_MARK = "/media-links/Emby/"      # the server's Emby placeholders (emby.MIRROR_DIR in its pool): not synced, not videos
+
+
+def _real(p):
+    return os.path.realpath(p if os.path.isabs(p) else os.path.join(APP, p))
+
+
+def emby_stations(db_path, hours=48):
+    """The stations whose schedule in the next hours plays an Emby server's video: this player streams them from the
+    server's tuner (the placeholders are not copied here)."""
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        later = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + hours * 3600))
+        rows = con.execute("SELECT station, plan_json FROM liquid_blocks WHERE julianday(end_time) > julianday(?) "
+                           "AND julianday(start_time) < julianday(?)", (now, later)).fetchall()
+        con.close()
+    except sqlite3.Error:
+        return set()
+    out = set()
+    for station, plan in rows:
+        if station in out:
+            continue
+        try:
+            if any(isinstance(e, dict) and e.get("path") and not e.get("is_stream") and EMBY_MARK in _real(e["path"])
+                   for e in json.loads(plan)):
+                out.add(station)
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
 def media_problem(db_path, hours=6, sample=20):
     """None, or why the videos the schedule plays in the next hours can't be found here (the share is not mounted?)."""
     try:
@@ -340,7 +372,7 @@ def media_problem(db_path, hours=6, sample=20):
     if not paths:
         return None
     pick = random.sample(sorted(paths), min(sample, len(paths)))
-    missing = [p for p in pick if not os.path.exists(p if os.path.isabs(p) else os.path.join(APP, p))]
+    missing = [p for p in pick if not os.path.exists(_real(p)) and EMBY_MARK not in _real(p)]
     if len(missing) * 2 > len(pick):
         return (f"{len(missing)} of {len(pick)} videos in the coming schedule are missing here (like {missing[0]}): "
                 "is the media share mounted at /mnt/media, the same as on the server?")
@@ -401,9 +433,10 @@ def sync_once(server, scr, state):
         _atomic(os.path.join(RUNTIME, "server_sources.json"), server.get("/sync/sources")[2])
     if want["confs"] != have.get("confs"):
         apply_confs(json.loads(server.get("/sync/confs")[2]))
-    if want["confs"] != have.get("confs") or want["sources"] != have.get("sources"):
+    if any(want[k] != have.get(k) for k in ("confs", "sources", "db")):        # a new schedule can bring Emby videos
         with open(os.path.join(RUNTIME, "server_sources.json")) as f:
-            playerconfs.write(APP, json.load(f), server.base, scr["panscan"], scr["kbps"])
+            playerconfs.write(APP, json.load(f), server.base, scr["panscan"], scr["kbps"],
+                              from_server=emby_stations(os.path.join(RUNTIME, "fs42_fluid.db")))
     state.update(parts=dict(want), etag=headers.get("ETag"), versions=st.get("versions"), tz=st.get("tz"), screen=scr)
     return _hash_confs() != before
 

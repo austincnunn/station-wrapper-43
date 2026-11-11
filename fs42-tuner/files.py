@@ -31,6 +31,7 @@ MAX_LINKS = int(os.environ.get("FILES_MAX_LINKS", "200000"))      # one "add": i
 PEEK_SECONDS = 5.0              # most time one listing spends looking inside folders to find single movies
 HIDDEN = {"@eaDir", "#recycle", "$RECYCLE.BIN", "lost+found"}
 SOURCES = ("media", "pool")
+EMBY_DIR = "Emby"               # emby.MIRROR_DIR: Emby servers' placeholders, in the pool beside the share's folders
 
 
 class FileError(Exception):
@@ -249,7 +250,8 @@ class Files:
     def _pool_in_use(self):
         """The pool counts once it holds something: it is made by the sync job's first pass, and until then (or
         if that job is off) the folder can exist and be empty, which would hide all of your media."""
-        return bool(self._top_names(self.roots["pool"]))
+        # ponytail: the Emby mirror (emby.py) lives in the pool and doesn't count, so with no pool Emby isn't browsable
+        return bool([n for n in self._top_names(self.roots["pool"]) if n != EMBY_DIR])
 
     def _media_base(self):
         return self.roots["pool"] if self._pool_in_use() else self.roots["media"]

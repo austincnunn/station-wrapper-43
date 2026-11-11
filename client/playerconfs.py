@@ -5,7 +5,9 @@
    the server is removed here too.
 2. Guide stations play the server's own guide channel (show names and posters) from the server's tuner. A guide drawn 4:3
    is cropped to fill the screen when this player crops (panscan); otherwise it is shown whole.
-3. Every other station gets this player's panscan, unless its own config sets one.
+3. Stations that play videos from an Emby server (`from_server`: their files are placeholders here) play the server's
+   tuner instead, like the guide.
+4. Every other station gets this player's panscan, unless its own config sets one.
 """
 import glob
 import json
@@ -45,8 +47,9 @@ def plan(sources, taken_numbers, taken_names, panscan):
     return out
 
 
-def write(root, sources, tuner, panscan, kbps=None):
-    """Rewrite root/confs for this player. `sources` is the server's Sources page list."""
+def write(root, sources, tuner, panscan, kbps=None, from_server=()):
+    """Rewrite root/confs for this player. `sources` is the server's Sources page list; `from_server` the names of the
+    stations to stream from the server's tuner. ponytail: such a station stays streamed until the server's confs change."""
     confs = os.path.join(root, "confs")
     numbers, names = set(), set()
     for f in glob.glob(os.path.join(confs, "*.json")):
@@ -63,6 +66,9 @@ def write(root, sources, tuner, panscan, kbps=None):
         changed = False
         if sc.get("network_type") == "guide":
             conf["station_conf"] = sc = guide_stream(sc, tuner, panscan, kbps)
+            changed = True
+        elif sc["network_name"] in from_server and sc.get("network_type") != "streaming":
+            conf["station_conf"] = sc = {**guide_stream(sc, tuner, panscan, kbps), "panscan": panscan}
             changed = True
         if "panscan" not in sc:
             sc["panscan"], changed = panscan, True
