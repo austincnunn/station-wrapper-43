@@ -19,6 +19,8 @@ import re
 import threading
 import time
 
+import music
+
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts", ".mpg", ".mpeg", ".wmv", ".flv"}
 EPISODE_NAMES = True                # the episode's name is shown too ("Show: Episode", or apart in the guide); off: just the show's
 KEEP_FOUND = 3600
@@ -184,6 +186,11 @@ def from_path(video_path):
 
 def parts_for(video_path):
     """(title, episode name) for this video from its .nfo, else from its folders and file name (from_path)."""
+    if music.is_audio(video_path):                      # a song: "Artist - Song" from its tags (music.py)
+        try:
+            return music.line(video_path), None
+        except OSError:
+            return None, None
     if os.path.splitext(video_path)[1].lower() not in VIDEO_EXT:
         return None, None
     nfo = os.path.splitext(video_path)[0] + ".nfo"
@@ -231,6 +238,14 @@ _seen_details = {}                 # nfo path -> (when it expires, details)
 
 def details_for(video_path):
     """{"plot", "season", "episode", "aired", "year", "genres"} for this video from its .nfo (what the file has), or {}."""
+    if music.is_audio(video_path):                      # a song: its album, year and genre from its tags
+        t = music.tags(video_path)
+        out = {"plot": f"From {t['album']}" + (f" ({t['year']})" if t["year"] else "")} if t["album"] else {}
+        if t["year"]:
+            out["year"] = int(t["year"])
+        if t["genre"]:
+            out["genres"] = [t["genre"]]
+        return out
     if os.path.splitext(video_path)[1].lower() not in VIDEO_EXT:
         return {}
     nfo = os.path.splitext(video_path)[0] + ".nfo"

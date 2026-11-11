@@ -320,15 +320,16 @@ def _hash_confs():
 
 # -- checks -----------------------------------------------------------------
 EMBY_MARK = "/media-links/Emby/"      # the server's Emby placeholders (emby.MIRROR_DIR in its pool): not synced, not videos
+SONG_EXT = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".wav", ".wma"}   # the server draws their picture (music.py)
 
 
 def _real(p):
     return os.path.realpath(p if os.path.isabs(p) else os.path.join(APP, p))
 
 
-def emby_stations(db_path, hours=48):
-    """The stations whose schedule in the next hours plays an Emby server's video: this player streams them from the
-    server's tuner (the placeholders are not copied here)."""
+def server_stations(db_path, hours=48):
+    """The stations whose schedule in the next hours plays an Emby server's video (the placeholders are not copied here)
+    or a song (its card is drawn by the server's tuner): this player streams them from the server's tuner."""
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -343,7 +344,8 @@ def emby_stations(db_path, hours=48):
         if station in out:
             continue
         try:
-            if any(isinstance(e, dict) and e.get("path") and not e.get("is_stream") and EMBY_MARK in _real(e["path"])
+            if any(isinstance(e, dict) and e.get("path") and not e.get("is_stream")
+                   and (EMBY_MARK in _real(e["path"]) or os.path.splitext(e["path"])[1].lower() in SONG_EXT)
                    for e in json.loads(plan)):
                 out.add(station)
         except (ValueError, TypeError):
@@ -436,7 +438,7 @@ def sync_once(server, scr, state):
     if any(want[k] != have.get(k) for k in ("confs", "sources", "db")):        # a new schedule can bring Emby videos
         with open(os.path.join(RUNTIME, "server_sources.json")) as f:
             playerconfs.write(APP, json.load(f), server.base, scr["panscan"], scr["kbps"],
-                              from_server=emby_stations(os.path.join(RUNTIME, "fs42_fluid.db")))
+                              from_server=server_stations(os.path.join(RUNTIME, "fs42_fluid.db")))
     state.update(parts=dict(want), etag=headers.get("ETag"), versions=st.get("versions"), tz=st.get("tz"), screen=scr)
     return _hash_confs() != before
 

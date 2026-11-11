@@ -253,12 +253,13 @@ class StreamConfs(unittest.TestCase):
         now = datetime.now()
         os.makedirs(os.path.join(d, "list"))
         os.symlink("/app/catalog/media-links/Emby/Srv/TV/Show/Season 01/Show - S01E01 - A.mkv", os.path.join(d, "list", "a.mkv"))
-        for station, path in (("Friends", os.path.join(d, "list", "a.mkv")), ("Local", "/mnt/media/tv/x.mkv")):
+        for station, path in (("Friends", os.path.join(d, "list", "a.mkv")), ("Local", "/mnt/media/tv/x.mkv"),
+                              ("Tunes", "/mnt/media/music/Band/Album/01 Song.FLAC")):        # a song: the server draws its card
             con.execute("INSERT INTO liquid_blocks VALUES (?, ?, ?, ?, ?)", (station, "x", now.isoformat(),
                         (now + timedelta(hours=1)).isoformat(), json.dumps([{"path": path, "content_type": "feature"}])))
         con.commit()
         con.close()
-        self.assertEqual(client.emby_stations(db), {"Friends"})
+        self.assertEqual(client.server_stations(db), {"Friends", "Tunes"})
         os.makedirs(os.path.join(d, "confs"))
         for name, num in (("Friends", 120), ("Local", 121)):
             json.dump({"station_conf": {"network_name": name, "channel_number": num, "network_type": "standard"}},

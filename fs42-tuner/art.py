@@ -131,6 +131,10 @@ def _type(path):
 
 def get(video_path):
     """(path of the picture, content type) for what this video belongs to (its series, or itself if a movie), or None."""
+    import music                                         # here: music.py asks this module for covers inside files
+    if music.is_audio(video_path):                       # a song: its album's cover
+        pic = music.cover(video_path)
+        return (pic, _type(pic)) if pic else None
     kind, ident = _identity(video_path)
     key = _key(kind, ident)
     cached = os.path.join(CACHE, key + ".jpg")

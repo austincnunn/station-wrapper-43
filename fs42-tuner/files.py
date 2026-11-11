@@ -23,8 +23,10 @@ import threading
 import time
 import uuid
 
+import music
 
-VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"}
+
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"} | music.AUDIO_EXT     # what a list can play: videos and songs
 SIDECAR_EXT = {".nfo"}          # travels with its video: FieldStation42 reads titles from it
 MAX_ENTRIES = 3000              # one listing
 MAX_LINKS = int(os.environ.get("FILES_MAX_LINKS", "200000"))      # one "add": it runs in the background, so it can be big

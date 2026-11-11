@@ -85,6 +85,7 @@ import stationform
 import stations
 import stationsapi
 import art
+import music
 import channel_logo
 import mediaserver
 import ppv
@@ -382,6 +383,49 @@ def still_cmd(path, seconds, text=None):
                       "-loop", "1", "-framerate", str(FPS), "-i", path,
                       "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
                       "-t", f"{max(seconds, 1):.1f}"] + NORMALIZE + MUX + ["pipe:1"], text)
+
+
+def music_cmd(card_png, song, seek, duration, info, ts_offset=None):
+    """A song over its card (music.py): the bar fills and the time gone counts up as it plays. The bar is a strip cut from
+    the card with a block of colour slid across it, so the fill never spills outside the bar."""
+    bx, by, bw, bh = info["bar"]
+    cx, cy, size = info["clock"]
+    total = info.get("total") or (seek + duration)
+    font = f":fontfile={TEXT_FONT}" if os.path.isfile(TEXT_FONT) else ""
+    gone = f"t+{seek:.3f}"
+    clock = (f"drawtext=text='%{{eif\\:trunc(({gone})/60)\\:d}}\\:%{{eif\\:mod(trunc({gone})\\,60)\\:d\\:2}}'"
+             f"{font}:fontsize={size}:fontcolor=0xAAB4CD:x={cx}:y={cy}")
+    graph = (f"[0:v]fps={FPS},split[card][c2];[c2]crop={bw}:{bh}:{bx}:{by}[strip];"
+             f"color=c=0xFFC400:s={bw}x{bh}:r={FPS}[fill];"
+             f"[strip][fill]overlay=x='-w+w*min(1\\,({gone})/{total:.3f})':y=0:eval=frame:shortest=1[bar];"
+             f"[card][bar]overlay={bx}:{by}:shortest=1,{clock},{picture_filter(W, H, FPS, hw_tail(V))}[v]")
+    enc = list(NORMALIZE)
+    i = enc.index("-vf")
+    del enc[i:i + 2]                             # the picture is made in the graph above
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+           "-re", "-loop", "1", "-framerate", str(FPS), "-i", card_png,
+           "-re", "-ss", f"{seek:.3f}", "-i", song,
+           "-filter_complex", graph, "-map", "[v]", "-map", "1:a:0", "-t", f"{duration:.3f}"] + enc
+    if ts_offset is not None:
+        return cmd + ["-output_ts_offset", f"{ts_offset:.3f}"] + _continuous(MUX) + ["pipe:1"]
+    return cmd + MUX + ["pipe:1"]
+
+
+def up_next(cur):
+    """What plays after the entry `cur` is on, in one line ("Artist - Song" for a song), or "" when nothing is known."""
+    entries = cur.plan[cur.index + 1:]
+    if not any(e.content_type == "feature" for e in entries):
+        try:
+            entries = resolver.resolve(DB_PATH, cur.station, cur.block_end + timedelta(seconds=1)).plan
+        except (ScheduleGap, sqlite3.Error):
+            return ""
+    for e in entries:
+        if e.content_type == "feature" and not e.is_stream:
+            p = media_path(e.path)
+            if music.is_audio(p):
+                return music.line(p)
+            return titles.title_for(p) or os.path.splitext(os.path.basename(e.path))[0]
+    return ""
 
 
 _CAPTION_PREFS = {"at": 0.0, "track": {}}
@@ -755,6 +799,9 @@ class Channel:
             self._pipe(still_cmd(path, min(cur.remaining, 30), why))
             self.clock += min(cur.remaining, 30)
             return
+        if not entry.is_stream and music.is_audio(path):
+            self._play_song(cur, path, name)
+            return
         offair = offair_reason(self.station, entry, cur.block_title)
 
         self.now_playing = cur.block_title
@@ -777,6 +824,19 @@ class Channel:
         finally:
             if pinned:
                 PREFETCH.unpin(path)
+
+    def _play_song(self, cur, path, name):
+        """A song (an audio file in the schedule) over a card drawn for it: music.py."""
+        self.now_playing = music.line(path)
+        card = os.path.join(tempfile.gettempdir(), f"music-card-{self.number}.png")
+        info = music.card(card, path, display_name(self.station), self.number, up_next(cur), (W, H))
+        print(f"[ch{self.number}] {cur.block_title} :: {self.now_playing} @{cur.seek:.0f}s for {cur.remaining:.0f}s (song)", flush=True)
+        sent = self._pipe(music_cmd(card, path, cur.seek, cur.remaining, info, self.clock if CONTINUOUS_TS else None), label=name)
+        self.clock += cur.remaining
+        if sent < 1024 and not self.stop.is_set() and not self.reload.is_set():
+            print(f"[ch{self.number}] bad file (nothing came out of it): {path}", flush=True)
+            self.now_playing = "Test pattern: bad file"
+            self._pipe(filler_cmd(min(max(cur.remaining, 1), 10), f"BAD FILE: {name}"))
 
     def _play_emby(self, cur, entry, name, hit):
         """Read the real video from its Emby server (emby.py), from the second the schedule is at."""

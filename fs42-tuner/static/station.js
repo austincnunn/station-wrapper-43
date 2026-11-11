@@ -654,6 +654,9 @@
         ? [[0, 7, "overnight"], [7, 12, "weekend cartoons"], [12, 19, "movies and sports"], [19, 23, "prime time"], [23, 24, "late night"]]
         : [[0, 5, "overnight"], [5, 9, "morning show"], [9, 11, "daytime"], [11, 14, "mid-day talk shows"], [14, 15.5, "afternoon"],
            [15.5, 17.5, "cartoon block"], [17.5, 19, "early evening"], [19, 23, "prime time"], [23, 24, "late night"]]) },
+    { id: "music", label: "A music channel (like Music Choice): one list of songs all day, shuffled", increment: 30,
+      hint: "Put music (mp3, flac, m4a…) in the list, a whole artist or album folder at a time: each song plays over a card with its cover, its name, its album and what is up next.",
+      week: () => [[0, 24, "music"]] },
     { id: "loop", label: "A loop: one list repeating all day (shuffled)", loop: true },
   ];
   const clockText = (h) => `${String(Math.floor(h)).padStart(2, "0")}:${h % 1 ? "30" : "00"}`;

@@ -14,7 +14,9 @@ import os
 import threading
 import time
 
-VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"}
+import music
+
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"} | music.AUDIO_EXT     # what a list can play: videos and songs
 SKIP_TAGS = {"bump"}          # bump clips are interstitials, not a tag you schedule
 LOOSE = "(loose files)"
 CACHE_SECONDS = 120

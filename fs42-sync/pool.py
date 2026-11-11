@@ -27,7 +27,8 @@ import time
 # index entries.) Such a folder is simply listed again next time.
 RACY_NS = 3_000_000_000
 
-VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"}
+AUDIO_EXT = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".wav", ".wma"}   # songs: fs42-tuner/music.py
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"} | AUDIO_EXT                 # what a list can play
 SIDECAR_EXT = {".nfo"}
 # Folders NAS systems and operating systems drop into a share. Never media.
 JUNK_DIRS = {"@eaDir", "#recycle", "$RECYCLE.BIN", "System Volume Information", "lost+found", "__pycache__"}

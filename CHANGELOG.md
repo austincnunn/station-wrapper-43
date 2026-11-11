@@ -16,6 +16,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   before a catalog build stay gone.
 
 ### Added
+- **Music channels (like Music Choice).** Lists take songs (mp3, flac, m4a, ogg...) as well as videos, and a song
+  plays over a card drawn for it: the album cover, artist, song, album and year, what is up next, and a bar that fills
+  as it plays. A **music channel** template on the Stations page; the guide names each song; a player PC streams such a
+  station from the server.
 - **Settings page.** The compose-file settings people change (the pool sync, the farm, followed folders, the Library
   scan, the schedule keeper's timing, prefetch, the media server) can be changed on a new Settings page; a value set there
   wins over the compose file's, and only the part that uses it is restarted. Each player PC (client mode) gets its screen,

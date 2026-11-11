@@ -41,7 +41,7 @@ class PoolTest(unittest.TestCase):
         self.media = os.path.join(self.root, "media")
         self.pool = os.path.join(self.root, "pool")
         for f in ("tvseries/Show A/Season 1/e1.mp4", "tvseries/Show A/Season 1/e1.nfo",
-                  "tvseries/Show A/tvshow.nfo", "movies/Film/Film.mkv", "bump/b.mp4"):
+                  "tvseries/Show A/tvshow.nfo", "movies/Film/Film.mkv", "bump/b.mp4", "music/Band/Album/01 Song.flac"):
             touch(os.path.join(self.media, f))
         touch(os.path.join(self.media, "tvseries/Show A/poster.jpg"))        # not media
         touch(os.path.join(self.media, "tvseries/Show A/notes.txt"))
@@ -60,12 +60,12 @@ class PoolTest(unittest.TestCase):
     def test_each_video_and_nfo_is_linked_by_the_path_this_process_sees(self):
         stats = self.scan()
         self.assertEqual(listing(self.pool), [
-            "bump/b.mp4", "movies/Film/Film.mkv", "tvseries/Show A/Season 1/e1.mp4",
-            "tvseries/Show A/Season 1/e1.nfo", "tvseries/Show A/tvshow.nfo"])
+            "bump/b.mp4", "movies/Film/Film.mkv", "music/Band/Album/01 Song.flac", "tvseries/Show A/Season 1/e1.mp4",
+            "tvseries/Show A/Season 1/e1.nfo", "tvseries/Show A/tvshow.nfo"])                # a song too: music.py
         link = os.path.join(self.pool, "tvseries/Show A/Season 1/e1.mp4")
         self.assertTrue(os.path.islink(link))
         self.assertEqual(os.readlink(link), f"{self.media}/tvseries/Show A/Season 1/e1.mp4")
-        self.assertEqual(stats["links_added"], 5)
+        self.assertEqual(stats["links_added"], 6)
 
     def test_images_text_junk_hidden_and_top_level_files_are_left_out(self):
         self.scan()
@@ -136,7 +136,7 @@ class PoolTest(unittest.TestCase):
         self.scan(include=["movies"])
         self.assertEqual(listing(self.pool), ["movies/Film/Film.mkv"])
         shutil.rmtree(self.pool)
-        self.scan(exclude=["bump", "movies"])
+        self.scan(exclude=["bump", "movies", "music"])
         self.assertEqual(sorted({p.split("/")[0] for p in listing(self.pool)}), ["tvseries"])
 
     def test_changing_the_filter_does_not_reuse_the_old_folder_lists(self):

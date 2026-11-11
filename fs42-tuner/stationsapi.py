@@ -16,11 +16,12 @@ import guide_channel
 import ppv
 import legacy
 import resolver
+import music
 import schedules
 import stationform as sf
 import stations as stationlib
 
-VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"}
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v"} | music.AUDIO_EXT     # what a list can play: videos and songs
 LOW = timedelta(hours=24)               # warn when less than this much schedule is left
 MAX_DAYS = 30
 MAX_BLOCKS = 500
