@@ -76,6 +76,12 @@ class EmbyTest(unittest.TestCase):
         self.assertEqual(os.stat(self.conf).st_mode & 0o777, 0o600)
         self.assertNotIn("akey", json.dumps(e.describe()))         # no keys or tokens on the page
 
+    def test_json_is_read_whatever_it_is_labelled(self):
+        self.assertEqual(emby.parse(b'{"AccessToken": "t"}', "text/html"), {"AccessToken": "t"})
+        self.assertEqual(emby.parse(b" [1]", ""), [1])
+        self.assertEqual(emby.parse(b"\xff\xd8jpeg", "image/jpeg"), b"\xff\xd8jpeg")
+        self.assertEqual(emby.parse(b"<xml/>", "application/xml"), b"<xml/>")
+
     def test_names(self):
         self.assertEqual(emby.item_rel(EP, "S/L"), "S/L/The Simpsons/Season 04/The Simpsons - S04E01 - Kamp Krusty.mkv")
         self.assertEqual(emby.item_rel(MOVIE, "S/L"), "S/L/Twister (1996)/Twister (1996).mkv")

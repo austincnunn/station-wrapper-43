@@ -126,14 +126,23 @@ def make_placeholder(path, seconds, chapters=(), ffmpeg="ffmpeg"):
                 pass
 
 
+def parse(body, ctype=""):
+    """JSON when the body is JSON, whatever the server labels it (Emby Connect doesn't always say json); else the bytes."""
+    if body and ("json" in ctype or body.lstrip()[:1] in (b"{", b"[")):
+        try:
+            return json.loads(body)
+        except ValueError:
+            pass
+    return body
+
+
 def _http(method, url, headers=None, data=None, timeout=20):
     """(status, parsed JSON or raw bytes). Raises EmbyError for network trouble, with the address's host only."""
-    req = urllib.request.Request(url, data=data, method=method, headers={"User-Agent": APP, **(headers or {})})
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"User-Agent": APP, "Accept": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - http(s) addresses only, checked by callers
-            body = r.read(64 * 1024 * 1024)
-            ctype = r.headers.get("Content-Type", "")
-            return r.status, (json.loads(body) if "json" in ctype and body else body)
+            return r.status, parse(r.read(64 * 1024 * 1024), r.headers.get("Content-Type", ""))
     except urllib.error.HTTPError as e:
         return e.code, None
     except (urllib.error.URLError, OSError, ValueError) as e:
@@ -180,9 +189,11 @@ class Emby:
         body = urllib.parse.urlencode({"nameOrEmail": name.strip(), "rawpw": password}).encode()
         code, got = self.http("POST", f"{CONNECT}/user/authenticate", {"X-Application": APP,
                               "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"}, body)
-        if code in (400, 401, 403) or not isinstance(got, dict):
-            raise EmbyError("Emby Connect did not accept that name and password" if code in (400, 401, 403)
-                            else f"Emby Connect answered {code}")
+        if code in (400, 401, 403, 404):                     # 404: no such user (Connect's own answer)
+            raise EmbyError("Emby Connect did not accept that name and password")
+        if not isinstance(got, dict):
+            raise EmbyError(f"Emby Connect answered {code} with something that isn't JSON "
+                            f"({len(got or b'')} bytes starting {bytes(got or b'')[:1]!r})")
         token = got.get("AccessToken") or got.get("ConnectAccessToken")
         user = got.get("User") or {}
         uid = user.get("Id") or got.get("ConnectUserId")
