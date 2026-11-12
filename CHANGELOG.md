@@ -50,6 +50,8 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 - **The Schedule page opened on an error.** It opened on the first station, usually the guide channel, which has no
   schedule ("Nothing is scheduled for this station yet"). A guide or a pay-per-view menu is no longer in its list.
 - **The player's banner said a guide's or camera's name twice** ("100 TV Guide TV Guide").
+- **The guide channel's dashboard tile could come up empty in the Cable box style.** At the tile's small size a short
+  programme's box was narrower than its two bevelled edges, and the picture was not drawn at all.
 - **Players froze at the change from one clip to the next.** Each clip, song or black gap is its own ffmpeg, and
   each one started its timestamps again at 0, so time went backwards at every change; a player reading the channel as one
   long stream (Android TV's Media3, VLC) could freeze there (most often on a music channel, which changes every few

@@ -139,6 +139,9 @@ class NarrowCellsTest(unittest.TestCase):
             g = gc.Guide(gc.options({"messages": ["x"]}), (1280, 720), rows_fn=rows, now=lambda: NOW)
             for t in (0, 3.3, 9.0):
                 self.assertEqual(len(g.frame(t)), 1280 * 720 * 3, f"{minutes} min")
+            # the bevelled style at the dashboard tile's size: a cell narrower than its two edges used to raise
+            box = gc.Guide(gc.options({"wrapper_guide": {"theme": "cable-box"}}), (480, 360), rows_fn=rows, now=lambda: NOW)
+            self.assertEqual(len(box.frame(0)), 480 * 360 * 3, f"cable-box, {minutes} min")
 
     def test_a_frame_that_cannot_be_drawn_never_takes_the_video_away(self):
         class Boom:

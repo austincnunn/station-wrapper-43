@@ -406,7 +406,7 @@ class Guide:
                 dim = th.get("cell_now_dim" if live else "cell_dim", th["dim"])
                 if th.get("bevel"):
                     # a raised box: light top and left edge, dark bottom and right edge, the fill inside
-                    e = max(2, self.row_h // 30)
+                    e = max(1, min(max(2, self.row_h // 30), (box[2] - box[0]) // 2))    # never more than a narrow cell can take
                     d.rectangle(box, fill=edge)
                     d.rectangle([box[0], box[1], box[2] - e, box[3] - e], fill=th["bevel"])
                     d.rectangle([box[0] + e, box[1] + e, box[2] - e, box[3] - e], fill=fill)
