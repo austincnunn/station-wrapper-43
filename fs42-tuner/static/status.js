@@ -43,11 +43,14 @@
       ["CPU / memory", `load ${r.cpu.load1} on ${r.cpu.count} cores; ${r.memory ? r.memory.available_mb + " of " + r.memory.total_mb + " MB free" : "?"}`],
       ["Disk free", Object.entries(r.disk).map(([k, d]) => `${k} ${d.free_mb == null ? "?" : d.free_mb + " MB"}`).join(", ")],
     ]));
-    const pl = $("players");                            // player PCs in client mode (only when FS42_SYNC_TOKEN is set)
+    const pl = $("players");                            // player PCs in client mode, and the FS42 TV apps
     pl.hidden = !r.players;
     if (r.players) {
       pl.replaceChildren(el("h2", { textContent: "Players" }));
-      pl.append(r.players.length ? table(r.players.map((p) => [p.name, `${p.gone ? "NOT SEEN" : "seen"} ${dur(p.age)} ago from ${p.addr}` +
+      pl.append(r.players.length ? table(r.players.map((p) => p.kind === "app"
+        ? [p.name, `FS42 TV app on ${p.platform}` + (p.watching ? `, watching ${p.channel}` : `, last watched ${p.channel} ${dur(p.age)} ago`) +
+          ` from ${p.addr}`]
+        : [p.name, `${p.gone ? "NOT SEEN" : "seen"} ${dur(p.age)} ago from ${p.addr}` +
         (p.channel ? `, on ${p.channel}` : "") + (p.screen ? `, ${p.screen} screen` : "") + (p.mismatch ? ", DIFFERENT VERSION" : "") +
         (p.errors && p.errors.length ? `, ${p.errors.length} problem(s)` : "")]))
         : el("p", { className: "dim", textContent: "No player has checked in yet." }));

@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import tempfile
@@ -232,3 +233,61 @@ class Feed:
         except (OSError, sqlite3.Error, ValueError) as e:
             return 500, [], f"sync: {e}".encode()
         return 404, [], b""
+
+
+# -- TV apps -----------------------------------------------------------------
+APP_UA = re.compile(r"^FS42TV/([\w.-]{1,16}) \(([^;()]{1,32}); ([^()]{0,64})\)")
+
+
+class AppPlayers:
+    """The FS42 TV apps (Android TV, Apple TV) seen watching a channel. They are not client-mode players (they don't sync,
+    they only stream /auto/v<n>), so they say who they are in their User-Agent instead:
+        FS42TV/0.1 (Android TV; Living Room TV)
+    The Status page lists them under Players with the client-mode boxes."""
+
+    def __init__(self, clock=time.time):
+        self.clock = clock
+        self._lock = threading.Lock()
+        self._apps = {}                                # (name, addr) -> {..., "streams": open streams}
+
+    @staticmethod
+    def parse(user_agent):
+        """(version, platform, name) from an FS42 TV User-Agent, or None for anything else (Emby, a browser, VLC)."""
+        m = APP_UA.match(user_agent or "")
+        return (m.group(1), m.group(2).strip(), m.group(3).strip()) if m else None
+
+    def joined(self, user_agent, addr, channel):
+        """A stream started. The key to pass to left(), or None when it isn't one of the apps."""
+        got = self.parse(user_agent)
+        if got is None:
+            return None
+        version, platform, name = got
+        key = (name or addr, addr)
+        with self._lock:
+            a = self._apps.setdefault(key, {"streams": 0})
+            a.update(name=key[0], addr=addr, platform=platform, version=version, channel=str(channel), seen=self.clock(),
+                     kind="app")
+            a["streams"] += 1                          # the Apple TV app opens the next channel before closing the old one
+        return key
+
+    def left(self, key):
+        if key is None:
+            return
+        with self._lock:
+            a = self._apps.get(key)
+            if a:
+                a["streams"] = max(0, a["streams"] - 1)
+                a["seen"] = self.clock()
+
+    def players(self):
+        now = self.clock()
+        with self._lock:
+            for k in [k for k, a in self._apps.items() if not a["streams"] and now - a["seen"] > FORGET_SECONDS]:
+                del self._apps[k]
+            out = []
+            for a in sorted(self._apps.values(), key=lambda a: a["name"]):
+                watching = a["streams"] > 0
+                out.append({k: v for k, v in a.items() if k != "streams"} | {"watching": watching,
+                           "age": 0 if watching else round(now - a["seen"])})
+            return out
+

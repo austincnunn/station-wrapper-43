@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from syncfeed import Feed, load_token
+from syncfeed import AppPlayers, Feed, load_token
 
 AUTH = {"Authorization": "Bearer s3cret"}
 
@@ -113,6 +113,32 @@ class TokenTest(unittest.TestCase):
         self.assertEqual(load_token(None, path), (made, "made"))                   # the same one after a restart
         self.assertEqual(load_token("", os.path.join(d, "no", "such", "dir", "t")), ("", None))   # cannot be made: sync off
 
+
+
+class TvApps(unittest.TestCase):
+    def test_the_apps_user_agent_is_read_and_nothing_else_counts(self):
+        self.assertEqual(AppPlayers.parse("FS42TV/0.1 (Android TV; Living Room TV)"), ("0.1", "Android TV", "Living Room TV"))
+        self.assertEqual(AppPlayers.parse("FS42TV/0.2 (Apple TV; )"), ("0.2", "Apple TV", ""))
+        for ua in (None, "", "Emby Server/4.10", "VLC/3.0.21 LibVLC/3.0.21", "Mozilla/5.0 (X11; Linux x86_64)"):
+            self.assertIsNone(AppPlayers.parse(ua))
+
+    def test_watching_then_left_then_forgotten(self):
+        now = [1000.0]
+        apps = AppPlayers(clock=lambda: now[0])
+        self.assertIsNone(apps.joined("Emby Server/4.10", "192.168.1.3", "101"))
+        k1 = apps.joined("FS42TV/0.1 (Apple TV; Den)", "192.168.1.40", "101")
+        k2 = apps.joined("FS42TV/0.1 (Apple TV; Den)", "192.168.1.40", "102")    # next channel opens before the old one closes
+        apps.left(k1)
+        [p] = apps.players()
+        self.assertEqual((p["name"], p["platform"], p["channel"], p["watching"], p["kind"]), ("Den", "Apple TV", "102", True, "app"))
+        apps.left(k2)
+        now[0] += 120
+        [p] = apps.players()
+        self.assertEqual((p["watching"], p["age"]), (False, 120))
+        now[0] += 24 * 3600
+        self.assertEqual(apps.players(), [])
+        unnamed = apps.joined("FS42TV/0.1 (Android TV; )", "192.168.1.50", "103")
+        self.assertEqual(unnamed, ("192.168.1.50", "192.168.1.50"))               # no device name: the address stands in
 
 if __name__ == "__main__":
     unittest.main()

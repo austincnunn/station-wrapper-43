@@ -1109,6 +1109,7 @@ SOURCES_LOCK = threading.Lock()
 # What player PCs in client mode copy from here (syncfeed.py), behind FS42_SYNC_TOKEN or a token made here once.
 SYNC_TOKEN, SYNC_TOKEN_FROM = syncfeed.load_token(os.environ.get("FS42_SYNC_TOKEN"),
                                                   os.path.join(os.path.dirname(os.environ.get("FS42_TUNER_CONF", "/config/tuner/config.json")), "sync-token"))
+APPS = syncfeed.AppPlayers()        # the FS42 TV apps watching (their User-Agent says so), for the Status page
 FEED = syncfeed.Feed(SYNC_TOKEN, DB_PATH, CONFS_DIR, os.path.join(CATALOG_ROOT, "catalog"), SOURCES.path,
                      versions={"wrapper": os.environ.get("FS42_WRAPPER_SHA") or "", "fieldstation42": (_fs42_ref_full() or "")},
                      player_settings=envsettings.player_overlay)
@@ -1460,7 +1461,8 @@ def status_report(recent=60):
         "advertise": {"configured": ADVERTISE, "used_for_clients": "the address each client itself used" if ADVERTISE.split("//")[-1].startswith(("localhost", "127.0.0.1")) else ADVERTISE},
         "recent": diag.RING.recent(recent),
         "recent_problems": diag.RING.recent(15, problems_only=True),
-        "players": FEED.players() if FEED.enabled else None,
+        # client-mode boxes (when sync is on) and the FS42 TV apps; None hides the Players panel
+        "players": ((FEED.players() if FEED.enabled else []) + APPS.players()) if FEED.enabled or APPS.players() else None,
     }
     report["checks"] = diag.checks(report)
     return report
@@ -2370,13 +2372,17 @@ class Handler(BaseHTTPRequestHandler):
         self._bytes(text.encode("utf-8"), "text/vtt; charset=utf-8")
 
     def _stream(self, num):
-        if num in CHANS:
-            kbps = stream_kbps(parse_qs(urlparse(self.path).query))
-            return self._stream_fs42(CHANS[num] if kbps is None else variant(CHANS[num], kbps))
-        up = upstream_map().get(num)
-        if up is not None:
-            return self._stream_passthrough(num, up)
-        self.send_error(404)
+        app = APPS.joined(self.headers.get("User-Agent"), self.client_address[0], num) if (num in CHANS or num in upstream_map()) else None
+        try:
+            if num in CHANS:
+                kbps = stream_kbps(parse_qs(urlparse(self.path).query))
+                return self._stream_fs42(CHANS[num] if kbps is None else variant(CHANS[num], kbps))
+            up = upstream_map().get(num)
+            if up is not None:
+                return self._stream_passthrough(num, up)
+            self.send_error(404)
+        finally:
+            APPS.left(app)                            # the stream is over (it ended, or the app tuned away)
 
     def _stream_fs42(self, chan):
         if not VIEWERS.acquire(blocking=False):
