@@ -17,6 +17,7 @@
 #                                    a player always uses /mnt/media)
 #   FS42_SHARE=//nas/media or nas:/export     FS42_SHARE_USER= (empty: guest)     FS42_SHARE_PASS=
 #   FS42_SERVER=http://<server>:5004  FS42_SYNC_TOKEN=  FS42_SCREEN=hd|crt  FS42_PLAYER_NAME=     (client only)
+#   FS42_WEATHER=y|n  WEATHER_LOCATION=<a ZIP code, or City, State>     (server on an ordinary PC only: see below)
 #   FS42_AUTO_UPDATE=no|daily|weekly  FS42_GO=y
 # Installing from a copy of the project somewhere else:
 #   FS42_RAW=<where docker-compose.yml is downloaded from>   FS42_IMAGE=<registry/name of the image, without the tag>
@@ -205,6 +206,16 @@ EOF
       need FS42_MEDIA_ROOT "Mount the share at" /mnt/media
       mp=$FS42_MEDIA_ROOT
     fi
+    # The weather channel's hidden browser (ws4channels) is built for amd64 only, so an ARM machine is not asked.
+    if grep -qs '^WEATHER_CHANNEL=1' "$FS42_DIR/.env"; then
+      FS42_WEATHER=n                          # already on: the dashboard's Settings page has its place
+    elif case $(uname -m) in x86_64 | amd64) true ;; *) false ;; esac; then
+      choose FS42_WEATHER "Add a Weather channel? A WeatherStar 4000 forecast for a place in the United States; it takes about one CPU core and 1 GB of memory all day" n y n
+      [ "$FS42_WEATHER" = n ] || need WEATHER_LOCATION "Where? A ZIP code, or City, State"
+    else
+      [ "${FS42_WEATHER-n}" = n ] || warn "no Weather channel on this machine: it needs an ordinary PC (amd64), and this is $(uname -m)"
+      FS42_WEATHER=n
+    fi
   else
     ask FS42_DIR "Folder for the compose file and the copied schedule (a local disk, not a share)" "$HOME/fs42-player"
     need FS42_SERVER "The server's address, as http://<server>:5004"
@@ -240,6 +251,7 @@ EOF
   command -v docker > /dev/null || echo "  - install Docker"
   [ -z "$share_new" ] || echo "  - mount $FS42_SHARE at $mp, read-only, with a line in /etc/fstab"
   echo "  - download the compose file, write .env, start the container"
+  [ "${FS42_WEATHER-n}" = n ] || echo "  - add a Weather channel for $WEATHER_LOCATION (two more small containers)"
   [ "$FS42_AUTO_UPDATE" = no ] || echo "  - install new versions by itself, $FS42_AUTO_UPDATE"
   ask FS42_GO "Go ahead? (y/n)" y
   case $FS42_GO in y* | Y*) ;; *) die "stopped: nothing was changed" ;; esac
@@ -259,6 +271,10 @@ EOF
   if [ "$FS42_ROLE" = server ]; then
     compose=docker-compose.yml
     [ -z "${FS42_MEDIA_ROOT-}" ] || setenv FS42_MEDIA_ROOT "$FS42_MEDIA_ROOT"
+    if [ "$FS42_WEATHER" = y ]; then
+      setenv WEATHER_CHANNEL 1                # the compose file starts ws4kp and ws4channels; the first start adds the channel
+      setenv WEATHER_LOCATION "$WEATHER_LOCATION"
+    fi
   else
     compose=client/docker-compose.client.yml
     setenv FS42_SERVER "$FS42_SERVER"
@@ -290,6 +306,7 @@ EOF
   if [ "$FS42_ROLE" = server ]; then
     ip=$(hostname -I 2> /dev/null | awk '{ print $1 }')
     say "Done. The dashboard: http://${ip:-<this machine>}:5004 (the first visit sets its password)"
+    [ "$FS42_WEATHER" = n ] || echo "  Weather comes on air in a minute or two (channel 3, or the next free number). Its place: the Settings page."
   else
     say "Done. The TV should come on within a minute or two; the server's Status page lists this player."
     echo "  It must use the server's time zone (this machine: $(timedatectl show -p Timezone --value 2> /dev/null || cat /etc/timezone 2> /dev/null || echo unknown))."

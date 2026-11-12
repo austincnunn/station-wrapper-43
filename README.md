@@ -57,7 +57,7 @@ On a Linux machine, one line sets up a server or a client-mode player PC:
 curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | bash
 ```
 
-It asks a few questions, shows what it will do, and then installs Docker if it is missing, can mount your media share (SMB or NFS, read-only, at every boot), writes `.env`, and starts the container. It can also set a timer that checks for a new version daily or weekly and installs it. It is safe to run again, and every answer can be given in the environment instead (the list, and what it changes on the machine, is in the [reference](docs/REFERENCE.md#the-installer)).
+It asks a few questions, shows what it will do, and then installs Docker if it is missing, can mount your media share (SMB or NFS, read-only, at every boot), writes `.env`, and starts the container. On an ordinary PC it offers the weather channel and asks for your ZIP code. It can also set a timer that checks for a new version daily or weekly and installs it. It is safe to run again, and every answer can be given in the environment instead (the list, and what it changes on the machine, is in the [reference](docs/REFERENCE.md#the-installer)).
 
 Want a weather channel too? Put `WEATHER_CHANNEL=1` in `.env` and run `docker compose up -d` again: two more small containers start and a Weather channel appears (channel 3, or the next free number). Type your ZIP code on the dashboard's **Settings** page and it shows your forecast. It is off by default because it needs an amd64 (ordinary PC) machine, not a Raspberry Pi, takes about one CPU core and 1 GB of memory all day, and covers the United States only.
 
