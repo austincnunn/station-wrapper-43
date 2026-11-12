@@ -6,6 +6,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **Emby servers by their address.** Beside Emby Connect, the Sources page now adds an Emby server the way it adds a
+  Jellyfin one: pick Emby or Jellyfin, type its address, a user name and password (passed on once, never saved). For an
+  Emby server that isn't on Connect, or one you'd rather reach on its LAN address. An Emby server that is on your Connect
+  account too keeps its one entry, its libraries and its folder, and is reached on the address you gave from then on.
 - **An installer.** `curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | bash`
   sets up a server or a client-mode player PC on a Linux machine: it installs Docker if it is missing, can mount the
   media share (SMB or NFS, read-only, with an `/etc/fstab` line and Docker made to start after it), writes `.env`,

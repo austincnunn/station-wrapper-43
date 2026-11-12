@@ -1,4 +1,4 @@
-// The Emby and Jellyfin panel on the Sources page: sign in with Emby Connect or add a Jellyfin server by its address,
+// The Emby and Jellyfin panel on the Sources page: sign in with Emby Connect or add an Emby or Jellyfin server by its address,
 // then choose servers and libraries (emby.py, /api/emby/*).
 // Chosen libraries show up on the Files page under Emby/<server>/<library>, to be put in lists like any media.
 (function () {
@@ -21,7 +21,7 @@
 
   function render() {
     box.replaceChildren(el("h2", { textContent: "Emby and Jellyfin servers" }),
-      el("p", { className: "dim", textContent: "Sign in with Emby Connect, or add a Jellyfin server by its address, then tick the servers and libraries to use. Their shows and movies appear on the Files page under Emby/<server>/<library>: put them in lists and on channels like your own media. Nothing is read from a server until a channel plays one of its videos." }),
+      el("p", { className: "dim", textContent: "Sign in with Emby Connect, or add an Emby or Jellyfin server by its address, then tick the servers and libraries to use. Their shows and movies appear on the Files page under Emby/<server>/<library>: put them in lists and on channels like your own media. Nothing is read from a server until a channel plays one of its videos." }),
       el("p", { id: "emby-msg", className: "msg", role: "status" }));
     if (!data.signed_in) {
       const name = el("input", { type: "text", autocomplete: "username", placeholder: "Emby Connect name or email", disabled: !data.edit });
@@ -40,7 +40,7 @@
       });
       box.append(form, el("p", { className: "dim", textContent: "The password is only passed on to Emby Connect; it is never saved." }));
     }
-    box.append(jellyfinForm());
+    box.append(addForm());
     const st = data.status || {};
     const c = st.counts || {};
     box.append(el("p", { className: "dim" }, data.signed_in ? `Signed in to Emby Connect as ${data.account}. ` : "",
@@ -57,17 +57,19 @@
     for (const s of data.servers) box.append(server(s));
   }
 
-  function jellyfinForm() {
-    const url = el("input", { type: "text", placeholder: "Jellyfin address, like http://192.168.1.20:8096", disabled: !data.edit });
-    const name = el("input", { type: "text", autocomplete: "off", placeholder: "Jellyfin user name", disabled: !data.edit });
+  function addForm() {
+    const kind = el("select", { disabled: !data.edit, ariaLabel: "Kind of server" },
+      el("option", { value: "emby", textContent: "Emby" }), el("option", { value: "jellyfin", textContent: "Jellyfin" }));
+    const url = el("input", { type: "text", placeholder: "address, like http://192.168.1.20:8096", disabled: !data.edit });
+    const name = el("input", { type: "text", autocomplete: "off", placeholder: "user name on that server", disabled: !data.edit });
     const pw = el("input", { type: "password", autocomplete: "off", placeholder: "password", disabled: !data.edit });
-    const form = el("form", { className: "row" }, url, name, pw,
-      el("button", { type: "submit", className: "btn", textContent: "Add a Jellyfin server", disabled: !data.edit }));
+    const form = el("form", { className: "row" }, kind, url, name, pw,
+      el("button", { type: "submit", className: "btn", textContent: "Add a server by its address", disabled: !data.edit }));
     form.addEventListener("submit", (ev) => {
       ev.preventDefault();
       run(async () => {
-        say("Signing in to Jellyfin…");
-        data = await call("/api/emby/jellyfin", { url: url.value, name: name.value, password: pw.value });
+        say(`Signing in to ${kind.value === "jellyfin" ? "Jellyfin" : "Emby"}…`);
+        data = await call("/api/emby/add", { kind: kind.value, url: url.value, name: name.value, password: pw.value });
         pw.value = "";
         render();
         say("Added. Choose its libraries, then press “Read the servers now”. The password was passed on once and not saved.", "ok");
@@ -77,12 +79,12 @@
   }
 
   function server(s) {
-    const jf = s.kind === "jellyfin";
+    const jf = s.direct;                   // added by its address: its own sign-in, its cap always counts, removable
     const c = el("div", { className: "source" + (s.on ? "" : " off") });
     const on = el("input", { type: "checkbox", checked: s.on, disabled: !data.edit || s.gone });
     on.addEventListener("change", () => run(async () => { data = await call("/api/emby/choose", { id: s.id, on: on.checked }); render(); }));
     c.append(el("h2", {}, el("label", {}, on, " ", el("span", { textContent: s.name })),
-      el("span", { className: "kind", textContent: jf ? "Jellyfin" : s.remote === true ? "over the internet" : s.remote === false ? "on the LAN" : "not reached yet" }),
+      el("span", { className: "kind", textContent: jf ? (s.kind === "jellyfin" ? "Jellyfin" : "Emby, by address") : s.remote === true ? "over the internet" : s.remote === false ? "on the LAN" : "not reached yet" }),
       s.gone ? el("span", { className: "kind", textContent: "no longer on the account" }) : ""));
     if (s.error) c.append(el("p", { className: "state err", textContent: s.error }));
     const cap = el("input", { type: "number", min: 0, max: 100000, step: 500, value: s.cap_kbps ?? 6000, disabled: !data.edit, className: "num" });

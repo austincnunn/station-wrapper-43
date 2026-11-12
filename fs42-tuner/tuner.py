@@ -1868,8 +1868,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(EMBY.describe())
             if action == "servers":
                 return self._json(EMBY.refresh_servers())
-            if action == "jellyfin":                # a Jellyfin server by its address; its password is passed on once too
-                return self._json(EMBY.add_jellyfin(body.get("url"), body.get("name"), body.get("password")))
+            if action == "add":                     # an Emby or Jellyfin server by its address; its password is passed on once too
+                return self._json(EMBY.add_server(body.get("kind"), body.get("url"), body.get("name"), body.get("password")))
             if action == "remove":
                 return self._json(EMBY.remove(body.get("id")))
             if action == "libraries":

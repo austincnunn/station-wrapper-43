@@ -174,10 +174,10 @@ class EmbyTest(unittest.TestCase):
 
         e = emby.Emby(self.conf, self.mirror, http=jf)
         with self.assertRaises(emby.EmbyError):
-            e.add_jellyfin("192.168.7.7:8096", "austin", "wrong")
+            e.add_server("jellyfin", "192.168.7.7:8096", "austin", "wrong")
         with self.assertRaises(emby.EmbyError):
-            e.add_jellyfin("http://169.254.169.254", "austin", "jfpass")
-        got = e.add_jellyfin("192.168.7.7:8096/", "austin", "jfpass")["servers"]
+            e.add_server("jellyfin", "http://169.254.169.254", "austin", "jfpass")
+        got = e.add_server("jellyfin", "192.168.7.7:8096/", "austin", "jfpass")["servers"]
         self.assertEqual([(s["id"], s["name"], s["kind"], s["cap_kbps"]) for s in got], [("jf-abc123", "Den", "jellyfin", 0)])
         with open(self.conf) as f:
             self.assertNotIn("jfpass", f.read())
@@ -196,10 +196,66 @@ class EmbyTest(unittest.TestCase):
         self.assertEqual((jelly["token"], jelly.get("gone")), ("jtok", False))
         with self.assertRaises(emby.EmbyError) as stale:              # a refused token asks for the server to be added again
             e._api("jf-abc123", "/Users/ju1/Items")
-        self.assertIn("add this Jellyfin server again", str(stale.exception))
+        self.assertIn("add this server again", str(stale.exception))
         with self.assertRaises(emby.EmbyError):
-            e.remove("sys1")                                          # only Jellyfin servers are removed by hand
+            e.remove("sys1")                                          # only servers added by address are removed by hand
         self.assertEqual([s["id"] for s in e.remove("jf-abc123")["servers"]], ["sys1"])
+
+    def test_an_emby_server_is_added_by_address_and_one_on_connect_keeps_its_entry(self):
+        def em(method, url, headers=None, data=None, timeout=20):
+            u = urllib.parse.urlsplit(url)
+            if u.hostname != "192.168.7.8":
+                return FakeEmby([])(method, url, headers, data, timeout)
+            self.assertTrue(u.path.startswith("/emby/"))               # Emby: always under /emby
+            if u.path == "/emby/Users/AuthenticateByName":
+                self.assertIn("X-Emby-Authorization", headers)
+                if json.loads(data)["Pw"] != "empass":
+                    return 401, None
+                return 200, {"AccessToken": "etok", "ServerId": "sys1", "User": {"Id": "eu1"}}
+            if u.path == "/emby/System/Info/Public":
+                return 200, {"ServerName": "Basement"}
+            self.assertEqual(headers["X-Emby-Token"], "etok")
+            if u.path == "/emby/Users/eu1/Views":
+                return 200, {"Items": [{"Id": "el1", "Name": "TV", "CollectionType": "tvshows"}]}
+            return 401, None
+
+        e = emby.Emby(self.conf, self.mirror, http=em)
+        with self.assertRaises(emby.EmbyError):
+            e.add_server("emby", "192.168.7.8:8096", "austin", "wrong")
+        with self.assertRaises(emby.EmbyError):
+            e.add_server("plex", "192.168.7.8:8096", "austin", "empass")
+        got = e.add_server("emby", "http://192.168.7.8:8096/emby/", "austin", "empass")["servers"]
+        self.assertEqual([(s["id"], s["name"], s["kind"], s["direct"], s["cap_kbps"]) for s in got],
+                         [("sys1", "Basement", "emby", True, 0)])
+        with open(self.conf) as f:
+            self.assertNotIn("empass", f.read())
+        self.assertEqual(e.libraries("sys1")[0]["name"], "TV")
+        play = e.input_for("sys1", "m1", 30)
+        self.assertEqual(play["url"].split("?")[0], "http://192.168.7.8:8096/emby/Videos/m1/stream")
+
+        # the same server is on the Emby Connect account too: one entry, still reached on the address given
+        e.sign_in("austin", "secret")
+        e.choose("sys1", libraries=["el1"])
+        e.add_server("emby", "192.168.7.8:8096", "austin", "empass")
+        servers = e.describe()["servers"]
+        self.assertEqual([(s["id"], s["direct"], s["libraries"], s["gone"]) for s in servers], [("sys1", True, ["el1"], False)])
+        e.sign_out()
+        self.assertEqual(e.state["servers"]["sys1"]["token"], "etok")      # its own sign-in outlives Connect's
+        self.assertEqual(e.input_for("sys1", "m1", 0)["url"].split("/emby")[0], "http://192.168.7.8:8096")
+        self.assertEqual(e.remove("sys1")["servers"], [])
+
+    def test_a_connect_server_added_by_address_starts_with_the_original_file(self):
+        e, _ = self.make([])
+        self.assertEqual(e.state["servers"]["sys1"]["cap_kbps"], emby.REMOTE_CAP_KBPS)
+
+        def em(method, url, headers=None, data=None, timeout=20):
+            if "AuthenticateByName" in url:
+                return 200, {"AccessToken": "etok", "ServerId": "sys1", "User": {"Id": "eu1"}}
+            return 404, None
+        e.http = em
+        e.add_server("emby", "192.168.9.9:8096", "austin", "pw")
+        s = e.describe()["servers"][0]
+        self.assertEqual((s["name"], s["cap_kbps"], s["on"], s["libraries"]), ("Friend's Emby", 0, True, ["lib1"]))
 
     def test_cap_checks(self):
         e, _ = self.make([])

@@ -18,10 +18,13 @@ holds the tokens the sign-in gives.
 A server reached on its LAN address plays the original file (no work for Emby). One reached only on its internet
 address is asked to make H.264 at its cap_kbps instead (that server's CPU; 0 = the original file there too).
 
-A Jellyfin server has no Connect: it is added by its address with a name and password of its own (add_jellyfin), which
-are passed on once for a token. It then sits in the same list ("kind": "jellyfin") and is mirrored and played the same
-way. Jellyfin has no /emby prefix, wants the token in the Authorization header, and always honours its cap_kbps (0, the
-start, reads the original file) because nothing says whether its address is on the LAN.
+A server can also be added by its address with a user name and password of its own (add_server): any Jellyfin server,
+and an Emby server that isn't on Connect (or is, but should be reached on an address of your choosing). The password is
+passed on once for a token. It then sits in the same list ("direct": true; "kind": "jellyfin" or "emby") and is mirrored
+and played the same way. An Emby server already on the Connect list keeps its entry (its choices and folder) and is
+reached on the given address from then on. Jellyfin has no /emby prefix and wants the token in the Authorization header.
+A server added by address always honours its cap_kbps (0, the start, reads the original file) because nothing says
+whether its address is on the LAN.
 """
 import hashlib
 import json
@@ -208,40 +211,54 @@ class Emby:
     def _base(s):
         return s["reach"] + ("" if s.get("kind") == "jellyfin" else "/emby")
 
-    # ---- Jellyfin (no Connect: one server at a time, by its address) ----
-    def add_jellyfin(self, url, name, password):
+    @staticmethod
+    def _direct(s):
+        """Added by its address with a sign-in of its own (not through Emby Connect)."""
+        return bool(s.get("direct")) or s.get("kind") == "jellyfin"
+
+    # ---- a server by its address (any Jellyfin; an Emby without Connect): no Connect, one server at a time ----
+    def add_server(self, kind, url, name, password):
+        if kind not in ("emby", "jellyfin"):
+            raise EmbyError("a server is Emby or Jellyfin")
+        label = "Jellyfin" if kind == "jellyfin" else "Emby"
+        prefix = "" if kind == "jellyfin" else "/emby"
         url = url.strip().rstrip("/") if isinstance(url, str) else ""
         if url and "://" not in url:
             url = "http://" + url
+        if url.lower().endswith("/emby"):                   # an Emby address copied from its dashboard
+            url = url[:-5]
         if not _safe_server_url(url):
-            raise EmbyError("type the Jellyfin server's address, like http://192.168.1.20:8096")
+            raise EmbyError(f"type the {label} server's address, like http://192.168.1.20:8096")
         if not name or not isinstance(name, str) or not isinstance(password, str):
-            raise EmbyError("type a Jellyfin user name and its password")
-        code, got = self.http("POST", f"{url}/Users/AuthenticateByName",
-                              {"Authorization": self._auth_header(), "Content-Type": "application/json"},
+            raise EmbyError(f"type a {label} user name and its password")
+        auth = {"Authorization": self._auth_header()} if kind == "jellyfin" else {"X-Emby-Authorization": self._auth_header()}
+        code, got = self.http("POST", f"{url}{prefix}/Users/AuthenticateByName", {**auth, "Content-Type": "application/json"},
                               json.dumps({"Username": name.strip(), "Pw": password}).encode())
         if code in (400, 401, 403):
-            raise EmbyError("that Jellyfin server did not accept the name and password")
+            raise EmbyError(f"that {label} server did not accept the name and password")
         tok = CTRL.sub("", str(got.get("AccessToken") or "")) if isinstance(got, dict) else ""
         uid = (got.get("User") or {}).get("Id") if isinstance(got, dict) else None
         if code != 200 or not tok or not uid:
-            raise EmbyError(f"{urllib.parse.urlsplit(url).hostname} answered {code}: is that a Jellyfin server's address?")
-        code, info = self.http("GET", f"{url}/System/Info/Public", timeout=8)
+            raise EmbyError(f"{urllib.parse.urlsplit(url).hostname} answered {code}: is that a {label} server's address?")
+        code, info = self.http("GET", f"{url}{prefix}/System/Info/Public", timeout=8)
         info = info if code == 200 and isinstance(info, dict) else {}
-        sid = "jf-" + re.sub(r"[^A-Za-z0-9]", "", str(got.get("ServerId") or info.get("Id") or uuid.uuid4().hex))[:40]
+        raw = re.sub(r"[^A-Za-z0-9]", "", str(got.get("ServerId") or info.get("Id") or uuid.uuid4().hex))[:40]
+        sid = "jf-" + raw if kind == "jellyfin" else raw    # an Emby server on the Connect list keeps its entry
         with self.lock:
             cur = self.state["servers"].setdefault(sid, {"on": True, "libraries": [], "cap_kbps": 0})
-            cur.update({"kind": "jellyfin", "name": info.get("ServerName") or urllib.parse.urlsplit(url).hostname,
-                        "url": url, "reach": url, "remote": True, "user_id": str(uid), "token": tok, "gone": False,
-                        "error": None})
+            if not self._direct(cur):
+                cur["cap_kbps"] = 0                         # from now on the cap always counts: start with the original file
+            cur.update({"kind": kind, "direct": True, "url": url, "reach": url, "remote": True, "user_id": str(uid),
+                        "token": tok, "gone": False, "error": None})
+            cur["name"] = cur.get("name") or info.get("ServerName") or urllib.parse.urlsplit(url).hostname
             self._save()
         return self.describe()
 
     def remove(self, sid):
-        """Take a Jellyfin server off the list. Its placeholders go at the next sync."""
+        """Take a server added by its address off the list. Its placeholders go at the next sync."""
         with self.lock:
-            if (self.state["servers"].get(sid) or {}).get("kind") != "jellyfin":
-                raise EmbyError("no such Jellyfin server")
+            if not self._direct(self.state["servers"].get(sid) or {}):
+                raise EmbyError("no such server added by its address")
             del self.state["servers"][sid]
             self._save()
         return self.describe()
@@ -274,7 +291,7 @@ class Emby:
         with self.lock:
             self.state["connect"] = None
             for s in self.state["servers"].values():
-                if s.get("kind") != "jellyfin":              # a Jellyfin server has a sign-in of its own
+                if not self._direct(s):                     # a server added by address has a sign-in of its own
                     s.pop("token", None)
                     s.pop("access_key", None)
             self._save()
@@ -301,7 +318,7 @@ class Emby:
                             "local": (s.get("LocalAddress") or "").rstrip("/"), "access_key": s.get("AccessKey")})
                 cur["gone"] = False
             for sid, cur in servers.items():
-                if cur.get("kind") != "jellyfin" and sid not in {str(s.get("SystemId")) for s in got}:
+                if not self._direct(cur) and sid not in {str(s.get("SystemId")) for s in got}:
                     cur["gone"] = True                       # no longer on the account: kept (with its choices), not played
             self._save()
         return self.describe()
@@ -309,11 +326,11 @@ class Emby:
     def _reach(self, sid):
         """Exchange the access key for this server's own token, on the first address that answers (LAN first)."""
         s = self.state["servers"][sid]
-        if s.get("kind") == "jellyfin":                      # its password was never kept, so there is nothing to retry with
+        if self._direct(s):                                  # its password was never kept, so there is nothing to retry with
             with self.lock:
-                s["error"] = "signed out: add this Jellyfin server again"
+                s["error"] = "signed out: add this server again"
                 self._save()
-            raise EmbyError(f"{s.get('name', sid)}: add this Jellyfin server again (it no longer accepts the sign-in)")
+            raise EmbyError(f"{s.get('name', sid)}: add this server again (it no longer accepts the sign-in)")
         if not s.get("access_key") or not self.state.get("connect"):
             raise EmbyError(f"{s.get('name', sid)}: sign in with Emby Connect again")
         why = "no address"
@@ -393,7 +410,7 @@ class Emby:
                     "servers": [{"id": sid, "name": s.get("name"), "on": s.get("on", False), "libraries": s.get("libraries", []),
                                  "cap_kbps": s.get("cap_kbps"), "remote": s.get("remote"), "error": s.get("error"),
                                  "gone": s.get("gone", False), "folder": clean_name(s.get("name"), sid),
-                                 "kind": s.get("kind", "emby")}
+                                 "kind": s.get("kind", "emby"), "direct": self._direct(s)}
                                 for sid, s in sorted(self.state["servers"].items(), key=lambda kv: str(kv[1].get("name")).lower())]}
 
     # ---- the mirror ----
