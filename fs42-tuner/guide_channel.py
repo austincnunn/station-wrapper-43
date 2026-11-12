@@ -32,6 +32,8 @@ AUDIO_EXT = {".mp3", ".flac", ".ogg", ".oga", ".m4a", ".aac", ".wav", ".opus", "
 DEFAULT_MESSAGES = ["Welcome to the Channel Guide"]
 FONT_REGULAR = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "DejaVuSans.ttf"]
 FONT_BOLD = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "DejaVuSans-Bold.ttf"]
+FONT_MONO = ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "DejaVuSansMono.ttf"]
+FONT_MONO_BOLD = ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", "DejaVuSansMono-Bold.ttf"]
 
 THEMES = {
     "modern-blue": {
@@ -75,8 +77,20 @@ THEMES["sunset"] = {
     "text": (255, 255, 255), "dim": (240, 190, 210), "now_line": (255, 215, 90), "ticker": (36, 8, 52),
     "ticker_text": (255, 220, 170),
 }
+THEMES["cable-box"] = {      # the FS42 TV apps' 90s cable-box info bar: bevelled grey boxes, a lavender bar, monospace type
+    "bg_top": (16, 16, 24), "bg_bottom": (30, 30, 40),
+    "header": (43, 43, 43), "ruler": (58, 58, 58),
+    "row_a": (255, 255, 255, 10), "row_b": (255, 255, 255, 3),
+    "cell": (201, 201, 201), "cell_edge": (58, 58, 58), "cell_now": (180, 176, 242), "cell_now_edge": (58, 58, 58),
+    "text": (232, 232, 232), "dim": (165, 165, 175), "now_line": (80, 255, 80), "ticker": (180, 176, 242),
+    "ticker_text": (30, 30, 200),
+    # optional keys (the other themes leave them out): a programme's own text colours, the clock's, raised boxes, the type
+    "cell_text": (42, 42, 42), "cell_dim": (85, 85, 95), "cell_now_text": (30, 30, 200), "cell_now_dim": (60, 56, 140),
+    "clock": (80, 255, 80), "bevel": (242, 242, 242), "mono": True,
+}
 DEFAULT_THEME = "modern-blue"
-THEME_NAMES = {"modern-blue": "Modern blue", "midnight": "Midnight", "classic-prevue": "Classic cable", "emerald": "Emerald", "sunset": "Sunset"}
+THEME_NAMES = {"modern-blue": "Modern blue", "midnight": "Midnight", "classic-prevue": "Classic cable", "emerald": "Emerald", "sunset": "Sunset",
+               "cable-box": "Cable box"}
 # the picture's shape: a 4:3 guide is drawn in the middle of the channel's widescreen picture, which the tuner fills out with
 # black bars at the sides (the bars are what a 4:3 TV crops off, or what a widescreen TV shows around a 4:3 programme)
 ASPECTS = ("16:9", "4:3")
@@ -296,14 +310,16 @@ class Guide:
         self.row_h = max(24, int(H * 0.09 * s))
         self.label_w = min(int(H * 0.30 * s), W // 3)       # by the height, as the type is: a 4:3 guide has the same room for names
         self.view_h = H - self.header_h - self.ruler_h - self.ticker_h
-        self.f_title = _font(FONT_BOLD, int(H * 0.055 * s))
-        self.f_clock = _font(FONT_REGULAR, int(H * 0.04 * s))
-        self.f_num = _font(FONT_BOLD, int(self.row_h * 0.36))
-        self.f_name = _font(FONT_REGULAR, int(self.row_h * 0.24))
-        self.f_cell = _font(FONT_BOLD, int(self.row_h * 0.30))
-        self.f_time = _font(FONT_REGULAR, int(self.row_h * 0.22))
-        self.f_ruler = _font(FONT_BOLD, int(self.ruler_h * 0.5))
-        self.f_ticker = _font(FONT_REGULAR, int(self.ticker_h * 0.5))
+        mono = self.theme.get("mono")
+        bold, regular = (FONT_MONO_BOLD, FONT_MONO_BOLD) if mono else (FONT_BOLD, FONT_REGULAR)
+        self.f_title = _font(bold, int(H * 0.055 * s))
+        self.f_clock = _font(bold if mono else regular, int(H * 0.04 * s))
+        self.f_num = _font(bold, int(self.row_h * 0.36))
+        self.f_name = _font(regular, int(self.row_h * 0.24))
+        self.f_cell = _font(bold, int(self.row_h * 0.30))
+        self.f_time = _font(FONT_MONO if mono else regular, int(self.row_h * 0.22))
+        self.f_ruler = _font(bold, int(self.ruler_h * 0.5))
+        self.f_ticker = _font(regular, int(self.ticker_h * 0.5))
         self.bg = self._background()
         self.ticker = self._ticker_strip()
         self._board_key, self._board, self._ruler, self._t0 = None, None, None, None
@@ -355,31 +371,40 @@ class Guide:
                     continue
                 live = it["start"] <= now < it["end"]
                 box = [x0 + 2, y + 4, x1 - 2, y + self.row_h - 4]
-                # a programme that carries on past an edge of the grid (it started before the left edge, or runs on past the right
-                # one) has a square end on that side; one that starts or ends inside the grid keeps its rounded corners
-                round_left, round_right = it["start"] >= t0, it["end"] <= t1
-                radius = max(0, min(int(self.row_h * 0.14), (box[2] - box[0]) // 2 - 1))     # never more than the cell can take
-                d.rounded_rectangle(box, radius=radius, fill=th["cell_now" if live else "cell"],
-                                    outline=th["cell_now_edge" if live else "cell_edge"], width=1,
-                                    corners=(round_left, round_right, round_right, round_left))
+                fill, edge = th["cell_now" if live else "cell"], th["cell_now_edge" if live else "cell_edge"]
+                text = th.get("cell_now_text" if live else "cell_text", th["text"])
+                dim = th.get("cell_now_dim" if live else "cell_dim", th["dim"])
+                if th.get("bevel"):
+                    # a raised box: light top and left edge, dark bottom and right edge, the fill inside
+                    e = max(2, self.row_h // 30)
+                    d.rectangle(box, fill=edge)
+                    d.rectangle([box[0], box[1], box[2] - e, box[3] - e], fill=th["bevel"])
+                    d.rectangle([box[0] + e, box[1] + e, box[2] - e, box[3] - e], fill=fill)
+                else:
+                    # a programme that carries on past an edge of the grid (it started before the left edge, or runs on past the
+                    # right one) has a square end on that side; one that starts or ends inside the grid keeps its rounded corners
+                    round_left, round_right = it["start"] >= t0, it["end"] <= t1
+                    radius = max(0, min(int(self.row_h * 0.14), (box[2] - box[0]) // 2 - 1))     # never more than the cell can take
+                    d.rounded_rectangle(box, radius=radius, fill=fill, outline=edge, width=1,
+                                        corners=(round_left, round_right, round_right, round_left))
                 pad = int(self.row_h * 0.14)
                 room = x1 - x0 - 2 * pad
                 # the show's name, big; a name too long for its slot moves along the cell and is not cut off
-                self._line(d, marquees, ("◂ " if it["start"] < t0 else "") + it["title"], self.f_cell, th["text"], x0 + pad, y + int(self.row_h * 0.12), room)
+                self._line(d, marquees, ("◂ " if it["start"] < t0 else "") + it["title"], self.f_cell, text, x0 + pad, y + int(self.row_h * 0.12), room)
                 # then the time and, on the same line and in the same small type, the episode's name (which moves too when it is long)
                 sy = y + int(self.row_h * 0.58)
                 span = f"{it['start']:%-I:%M} – {it['end']:%-I:%M %p}"
                 span_w = int(d.textlength(span, font=self.f_time))
                 if span_w > room or not it.get("sub"):
-                    d.text((x0 + pad, sy), _clip(d, span, self.f_time, room), font=self.f_time, fill=th["dim"])
+                    d.text((x0 + pad, sy), _clip(d, span, self.f_time, room), font=self.f_time, fill=dim)
                 else:
-                    d.text((x0 + pad, sy), span, font=self.f_time, fill=th["dim"])
+                    d.text((x0 + pad, sy), span, font=self.f_time, fill=dim)
                     sep = "  ·  "
                     ex = x0 + pad + span_w
-                    d.text((ex, sy), sep, font=self.f_time, fill=th["dim"])
+                    d.text((ex, sy), sep, font=self.f_time, fill=dim)
                     ex += int(d.textlength(sep, font=self.f_time))
                     if x1 - pad - ex >= 40:
-                        self._line(d, marquees, it["sub"], self.f_time, th["dim"], ex, sy, x1 - pad - ex)
+                        self._line(d, marquees, it["sub"], self.f_time, dim, ex, sy, x1 - pad - ex)
         ruler = Image.new("RGBA", (W, self.ruler_h), th["ruler"] + (255,))
         rd = ImageDraw.Draw(ruler)
         t, label_end = t0, 0
@@ -486,7 +511,7 @@ class Guide:
             cw = int(hd.textlength(clock, font=self.f_clock))
             if cw <= room:
                 break
-        hd.text((W - cw - margin, int(self.header_h * 0.3)), clock, font=self.f_clock, fill=self.theme["dim"])
+        hd.text((W - cw - margin, int(self.header_h * 0.3)), clock, font=self.f_clock, fill=self.theme.get("clock", self.theme["dim"]))
         hd.text((margin, int(self.header_h * 0.18)), _clip(hd, self.opts["title"], self.f_title, W - cw - 3 * margin),
                 font=self.f_title, fill=self.theme["text"])
         img.alpha_composite(hdr, (0, 0))

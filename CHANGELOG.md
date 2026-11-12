@@ -5,6 +5,11 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 
 ## [Unreleased]
 
+### Added
+- **A "Cable box" style for the guide channel.** The look of the FS42 TV apps' channel bar: bevelled grey boxes, the
+  programme on now in lavender with blue type, a green clock and time line, monospace type. Pick it under Style on the
+  guide's edit page.
+
 ### Changed
 - **Nothing to set up before the first start.** Download `docker-compose.yml`, run `docker compose up -d`, open the
   dashboard. No `.env`, no `setup-dirs.sh`: config and catalog default to `./data` and media to `./media` beside the compose
