@@ -114,6 +114,18 @@ class OneMediaViewTest(Base):
         self.assertEqual(self.f.info()["media_source"], "media")
         self.assertEqual(self.names(self.f.list("media", "")), ["anime", "movies"])
 
+    def test_an_emby_mirror_alone_does_not_hide_your_own_media(self):
+        os.makedirs(os.path.join(self.catalog, "media-links", "Emby", "Home", "TV"))
+        self.assertEqual(self.f.info()["media_source"], "media")
+        self.assertEqual(self.names(self.f.list("media", "")), ["anime", "movies"])
+
+    def test_with_no_media_of_your_own_the_emby_mirror_is_what_is_shown(self):
+        os.makedirs(os.path.join(self.catalog, "media-links", "Emby", "Home", "TV"))
+        for name in os.listdir(self.media):                                        # an Emby- or Jellyfin-only install
+            shutil.rmtree(os.path.join(self.media, name))
+        self.assertEqual(self.f.info()["media_source"], "pool")
+        self.assertEqual(self.names(self.f.list("media", "")), ["Emby"])
+
     def test_with_a_pool_the_pool_is_what_is_shown_and_it_is_just_called_media(self):
         self.pool()
         info = self.f.info()

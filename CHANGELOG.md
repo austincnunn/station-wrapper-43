@@ -60,6 +60,9 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
 
 ### Fixed
+- **An install with only Emby or Jellyfin videos can browse them.** With no videos of your own, the Files page showed
+  an empty media folder and the `Emby` folder was out of reach. It is now shown whenever there is no media of your own
+  for it to hide. (Beside your own media it still needs the pool: `SYNC_ENABLED=1`.)
 - **"Getting started" showed on a working setup when you were not logged in.** The page took "log in first" for "no
   stations yet".
 - **The Schedule page opened on an error.** It opened on the first station, usually the guide channel, which has no

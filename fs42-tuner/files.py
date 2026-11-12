@@ -252,8 +252,11 @@ class Files:
     def _pool_in_use(self):
         """The pool counts once it holds something: it is made by the sync job's first pass, and until then (or
         if that job is off) the folder can exist and be empty, which would hide all of your media."""
-        # ponytail: the Emby mirror (emby.py) lives in the pool and doesn't count, so with no pool Emby isn't browsable
-        return bool([n for n in self._top_names(self.roots["pool"]) if n != EMBY_DIR])
+        names = self._top_names(self.roots["pool"])
+        # The Emby mirror (emby.py) lives in the pool. Alone it doesn't count while there is media of your own, which
+        # the pool's view would hide; with none (an install that only uses Emby or Jellyfin) it is all there is to show.
+        # ponytail: your own media + Emby with the sync job off: Emby isn't browsable until SYNC_ENABLED=1 makes a pool
+        return any(n != EMBY_DIR for n in names) or (bool(names) and not self._top_names(self.roots["media"]))
 
     def _media_base(self):
         return self.roots["pool"] if self._pool_in_use() else self.roots["media"]
