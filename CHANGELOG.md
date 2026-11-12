@@ -27,6 +27,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   before a catalog build stay gone.
 
 ### Added
+- **A weather channel with one switch.** `WEATHER_CHANNEL=1` in `.env` starts two small containers (WeatherStar 4000+
+  and ws4channels) and adds their stream as a channel (3, or the next free number), on a new install or an old one. Its
+  place is one setting on the Settings page (a ZIP code, or City, State; United States); changing it needs no restart.
+  Off by default: ws4channels exists for amd64 only, and its hidden browser takes about a CPU core all day.
 - **A prompt for AI agents** (`docs/AGENT-PROMPT.md`): paste it into Claude Code or a similar agent after setup and it plans a
   lineup from your library, waits for your yes, then builds the channels through the dashboard.
 - **Music channels (like Music Choice).** Lists take songs (mp3, flac, m4a, ogg...) as well as videos, and a song

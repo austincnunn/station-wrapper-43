@@ -122,6 +122,18 @@ SYNC_REBUILD_HOUR=4              # local time; it updates once a day, within SYN
 
 It updates only the affected stations' catalogs, and leaves their schedules alone. A failed update is retried on the next pass, and the first run only records a baseline (existing tags are not "changed"). A whole *folder* linked into a tag is noticed when the link itself changes, not when new files appear inside it: press Update videos on that station by hand.
 
+## The weather channel
+
+Off by default. Put `WEATHER_CHANNEL=1` in `.env` (beside the compose file, where Docker Compose reads it) and run `docker compose up -d`. The compose file then runs two more containers beside the main one: `ws4kp` ([WeatherStar 4000+](https://github.com/netbymatt/ws4kp), the forecast page) and `ws4channels` ([rice9797/ws4channels](https://github.com/rice9797/ws4channels), a hidden browser that turns a page into a stream). The next start adds that stream as a source called **Weather**, on channel 3 or the next free number, whether the install is new or already has stations. It is added once: delete it on the Sources page and it stays gone (delete `config/.weather-channel-done` to have it added again).
+
+- **The place** is one setting, **Settings → Weather channel**: a ZIP code, or `City, State`. Until it is set the channel shows a card saying so. Saving it restarts nothing: `ws4channels` is pointed at this server's own `/weather` page, which shows the forecast for the saved place and looks again every 30 seconds.
+- **United States only.** The forecasts come from the National Weather Service.
+- **What it costs.** The hidden browser runs all day, watched or not: about half to one CPU core and 500 MB to 1 GB of memory.
+- **amd64 only.** `ws4channels` is published for amd64 alone. On an ARM machine (a Raspberry Pi) it cannot start, which is the main reason this is off by default.
+- **Switching it off again:** take `WEATHER_CHANNEL=1` out of `.env`, run `docker compose up -d --remove-orphans` (or `docker rm -f station-wrapper-43-ws4channels station-wrapper-43-ws4kp`), and delete the Weather source on the Sources page.
+- **Who can see the place.** `/weather` and `/weather/where` are open like the player and the guide (the hidden browser has no login), so anyone who can reach port 5004 can read the place you typed. Neither weather container publishes a port.
+- A different look (which forecast screens, widescreen, your own music): run your own `ws4channels` with a permalink instead; the wiki's Weather Channel page shows how.
+
 ## Known limitations
 
 - **Desktop browsers only.** The portal uses [mpegts.js](https://github.com/xqq/mpegts.js) over MSE for lowest-latency live playback. Safari has no reliable MSE support for raw MPEG-TS, so iPhone/iPad/Apple TV can't play it. Adding phone/TV support means adding an HLS output alongside the MPEG-TS fanout (segmenting, playlists, per-viewer HTTP polling) -- real additional work, not a config flag, and isn't built.
@@ -150,6 +162,8 @@ Almost nothing needs setting: the defaults work, and what you would change is in
 | `FS42_LOCAL_ROOT` | `./data` | The local folder holding `config/` and `catalog/` | variable |
 | `FS42_MEDIA_ROOT` | `./media` | Your media (read-only in the container) | variable |
 | `FS42_CONFIG_ROOT`, `FS42_CATALOG_ROOT` | beside `FS42_LOCAL_ROOT` | Put config or catalog somewhere else (local disk only) | variable |
+| `WEATHER_CHANNEL` | off | `1` starts the weather channel's two containers and adds the channel | variable (`.env`) |
+| `WEATHER_LOCATION` | empty | The weather channel's place: a ZIP code, or City, State (United States) | dashboard: Settings, or variable |
 | `FS42_ALLOW_NETWORK_CATALOG` | off | Only for a catalog on a share you have tested symlinks on | variable |
 | `TZ` | host's | The container's time zone: schedules are in local time | variable |
 

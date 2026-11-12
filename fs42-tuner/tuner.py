@@ -61,7 +61,7 @@ import uuid
 from collections import deque
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 from xml.sax.saxutils import escape
 
 import auth as authmod
@@ -1221,6 +1221,41 @@ def external_guide_sources():
     return out
 
 
+# ---- the weather channel -----------------------------------------------------------------------------------
+# The compose file runs two more containers: ws4kp (the WeatherStar 4000+ page) and ws4channels (a hidden browser
+# that turns a page into a stream, which firstrun.py adds as a source). ws4channels reads its place only when it
+# starts and we cannot restart another container, so it is pointed at THIS page instead: it shows ws4kp for the
+# place set on the Settings page, and looks again every 30 seconds, so a change needs no restart of anything.
+WEATHER_PAGE = os.environ.get("WEATHER_PAGE_URL", "http://ws4kp:8080").rstrip("/")
+
+
+def weather_location():
+    saved = envsettings.overlay("server").get("WEATHER_LOCATION")          # read live: the Settings page just wrote it
+    return (saved or envsettings.compose_env().get("WEATHER_LOCATION") or "").strip()
+
+
+def weather_url(where):
+    """ws4kp for a place, in kiosk mode (only the forecast, filling the picture). "" when no place is set."""
+    if not where:
+        return ""
+    return WEATHER_PAGE + "/?" + urlencode({"latLonQuery": where, "kiosk": "true", "viewMode": "standard"})
+
+
+def weather_page():
+    url = weather_url(weather_location())
+    body = (f'<iframe src="{escape(url, {chr(34): "&quot;"})}" allow="autoplay"></iframe>' if url else
+            "<div><h1>Weather Channel</h1><p>No place is set yet.</p>"
+            "<p>Open the dashboard, go to <b>Settings</b>, and type a ZIP code under <b>Weather channel</b>.</p></div>")
+    return f"""<!doctype html><meta charset="utf-8"><title>Weather</title>
+<style>html,body{{margin:0;height:100%;background:#102080;color:#fff;font:28px/1.5 sans-serif;overflow:hidden}}
+iframe{{border:0;width:100%;height:100%;display:block}}
+div{{height:100%;display:flex;flex-direction:column;justify-content:center;text-align:center;padding:0 8%;box-sizing:border-box}}
+h1{{color:#ff0;margin:0 0 .5em}}p{{margin:.3em 0}}</style>
+{body}
+<script>const now={json.dumps(url)};setInterval(()=>fetch("/weather/where").then(r=>r.json()).then(j=>{{if(j.url!==now)location.reload()}}).catch(()=>{{}}),30000)</script>
+""".encode()
+
+
 def refresh_source(source_id):
     """Look at a source's channels again. A source that can't be read keeps the channels it had, with the reason."""
     src = SOURCES.get(source_id)
@@ -2105,6 +2140,11 @@ class Handler(BaseHTTPRequestHandler):
                 "LineupURL": f"{self._base()}/lineup.json",
                 "TunerCount": total,
             })
+
+        if p == "/weather":                                       # what the weather channel's browser shows (see weather_page)
+            return self._bytes(weather_page(), "text/html; charset=utf-8")
+        if p == "/weather/where":
+            return self._json({"url": weather_url(weather_location())})
 
         if p == "/lineup_status.json":
             return self._json({"ScanInProgress": 0, "ScanPossible": 0,

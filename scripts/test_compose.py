@@ -87,11 +87,22 @@ class ComposeRenderTest(unittest.TestCase):
 
     def test_it_is_one_service_with_one_image(self):
         config = self.cfg()
-        self.assertEqual(list(config["services"]), ["station-wrapper-43"])
+        self.assertEqual(sorted(config["services"]), ["station-wrapper-43", "ws4channels", "ws4kp"])   # the two weather ones are extras
         svc = config["services"]["station-wrapper-43"]
         self.assertEqual(svc["image"], "ghcr.io/austincnunn/station-wrapper-43:latest")
         self.assertEqual(svc["container_name"], "station-wrapper-43")
         self.assertNotIn("build", svc)      # a lone compose file must start: with build: a missing image is BUILT, not pulled
+
+    def test_the_weather_channel_is_two_unpublished_containers_off_until_asked_for(self):
+        off, on = self.cfg()["services"], self.cfg(WEATHER_CHANNEL="1")["services"]
+        for name in ("ws4kp", "ws4channels"):
+            self.assertNotIn("ports", on[name])                     # only the wrapper talks to them
+            self.assertNotIn("build", on[name])
+            self.assertEqual((off[name]["scale"], on[name].get("scale", 1)), (0, 1))   # off: an ARM machine can't run ws4channels
+        self.assertEqual(on["ws4channels"]["environment"]["PERMALINK_URL"], "http://station-wrapper-43:5004/weather")
+        env = off["station-wrapper-43"]["environment"]
+        self.assertEqual((env["WEATHER_CHANNEL"], env["WEATHER_LOCATION"]), ("0", ""))
+        self.assertEqual(on["station-wrapper-43"]["environment"]["WEATHER_CHANNEL"], "1")    # so firstrun adds the channel
 
     def test_both_the_console_and_the_dashboard_are_published(self):
         ports = {int(p["target"]): p for p in self.cfg()["services"]["station-wrapper-43"]["ports"]}

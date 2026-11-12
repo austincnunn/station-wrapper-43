@@ -435,6 +435,9 @@ class ConfigTest(unittest.TestCase):
             self.assertNotIn("firstrun", self.names({"FIRSTRUN_TEST_STATION": off, "FIRSTRUN_GUIDE_STATION": off}, True), off)
             self.assertIn("firstrun", self.names({"FIRSTRUN_TEST_STATION": off}, True), off)         # the guide still needs it
             self.assertIn("firstrun", self.names({"FIRSTRUN_GUIDE_STATION": off}, True), off)
+        both_off = {"FIRSTRUN_TEST_STATION": "0", "FIRSTRUN_GUIDE_STATION": "0"}
+        self.assertIn("firstrun", self.names({**both_off, "WEATHER_CHANNEL": "1"}, True))      # it also adds the weather channel
+        self.assertNotIn("firstrun", self.names({**both_off, "WEATHER_CHANNEL": "0"}, True))
         job = [s for s in sv.services_from_env({}, exists=lambda p: True) if s.name == "firstrun"][0]
         self.assertFalse(job.core)                       # never essential: it finishes, and a failure must not stop the container
         self.assertIn("/opt/wrapper/firstrun.py", job.argv)

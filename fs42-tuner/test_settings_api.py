@@ -50,6 +50,24 @@ class SettingsApi(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=10) as resp:
             self.assertEqual(json.load(resp), {"settings": {"FS42_GAMMA": "12"}})
 
+    def test_the_weather_page_follows_the_place_saved_on_the_settings_page_without_a_restart(self):
+        self.start()
+        page = urllib.request.urlopen(self.srv.base + "/weather", timeout=10).read().decode()
+        self.assertIn("No place is set yet", page)
+        self.assertNotIn("<iframe", page)
+        self.assertEqual(self.srv.get("/weather/where"), (200, {"url": ""}))
+        self.assertEqual(self.srv.post("/api/settings", {"values": {"WEATHER_LOCATION": "Orlando, FL"}})[0], 200)
+        want = "http://ws4kp:8080/?latLonQuery=Orlando%2C+FL&kiosk=true&viewMode=standard"
+        self.assertEqual(self.srv.get("/weather/where"), (200, {"url": want}))
+        page = urllib.request.urlopen(self.srv.base + "/weather", timeout=10).read().decode()
+        self.assertIn(f'<iframe src="{want.replace("&", "&amp;")}"', page)
+        self.assertIn("/weather/where", page)                                # the page looks again by itself
+        self.assertEqual(self.srv.post("/api/settings", {"values": {"WEATHER_LOCATION": '"><script>'}})[0], 400)
+
+    def test_the_weather_place_can_start_from_the_compose_file(self):
+        self.start(FS42_COMPOSE_ENV=json.dumps({"WEATHER_LOCATION": "20001"}))
+        self.assertIn("latLonQuery=20001&", self.srv.get("/weather/where")[1]["url"])
+
     def test_with_no_token_set_the_server_makes_one_and_shows_it_only_when_asked(self):
         self.start(FS42_SYNC_TOKEN="")
         code, r = self.srv.get("/api/settings")

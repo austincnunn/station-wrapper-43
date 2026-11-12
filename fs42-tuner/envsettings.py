@@ -58,6 +58,10 @@ REGISTRY = [
        ("text", r"(https?://[^\s\0]{1,200})?"), "", ["tuner"], note="Its API key stays in the compose file (.env)."),
     _s("MEDIA_SERVER_MEDIA_ROOT", "Media server", "Where the media server sees the media", ("text", r"(/[^\n\0]{0,200})?"), "/media", ["tuner"]),
     _s("MEDIA_SERVER_REFRESH_HOURS", "Media server", "Ask it again every (hours)", ("int", 1, 168), "6", ["tuner"]),
+    # read each time the weather page is asked for (tuner.weather_page), so changing it restarts nothing
+    _s("WEATHER_LOCATION", "Weather channel", "Where: a ZIP code, or City, State (United States only)",
+       ("text", r"[A-Za-z0-9 ,.'\-]{0,80}"), "", [],
+       note="The weather channel shows this place's forecast within a minute of saving. Empty: it asks for a place."),
     # a player (client mode): set on the server, used by the player
     _s("FS42_SCREEN", "Screen", "Screen", ("choice", ["crt", "hd"]), "hd", ["client", "player"], "client",
        "crt: 4:3, widescreen cropped, lighter streams. hd: 16:9, the whole picture."),

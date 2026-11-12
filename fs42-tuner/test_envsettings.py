@@ -39,6 +39,15 @@ class EnvSettingsTest(unittest.TestCase):
                 es.save(bad)
         self.assertFalse(os.path.exists(settings.PATH))
 
+    def test_the_weather_place_is_a_zip_or_a_town_and_never_markup(self):
+        for ok in ("20001", "Orlando, FL", "Coeur d'Alene, ID", "St. Louis, MO", "Winston-Salem, NC"):
+            self.assertEqual(es.clean("WEATHER_LOCATION", ok), ok)
+        self.assertIsNone(es.clean("WEATHER_LOCATION", "  "))        # empty: the channel asks for a place
+        for bad in ('x"><script>', "a&kiosk=false", "http://evil.example/", "x" * 81, "line\nbreak"):
+            with self.assertRaises(es.SettingsError):
+                es.clean("WEATHER_LOCATION", bad)
+        self.assertEqual(es.BY_KEY["WEATHER_LOCATION"]["restarts"], [])    # read live: saving restarts nothing
+
     def test_a_player_has_its_own_settings_and_checks_them(self):
         es.save_player("crt", {"FS42_SCREEN": "crt", "FS42_GAMMA": "12", "FS42_PANSCAN": 0.5})
         self.assertEqual(es.player_overlay("crt"), {"FS42_SCREEN": "crt", "FS42_GAMMA": "12", "FS42_PANSCAN": "0.5"})

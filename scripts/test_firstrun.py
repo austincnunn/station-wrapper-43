@@ -4,6 +4,7 @@ import io
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -47,6 +48,12 @@ class FirstRunTest(unittest.TestCase):
         FakeConsole.stations_now, FakeConsole.log, FakeConsole.unreachable = {}, [], False
         self.saved = (bc.Console, bc.add_first_day, bc.CONTAINER_CATALOG, firstrun.FLAG, firstrun.make_clip,
                       firstrun.WAIT_SECONDS, os.environ.get("FIRSTRUN_TEST_STATION"))
+        self.real_weather = firstrun.add_weather_source
+        self.weather_calls = []
+        self.weather_there = True                           # is the ws4channels container beside us?
+        firstrun.add_weather_source = lambda: (self.weather_calls.append(1), self.weather_there)[1]
+        self.real_flag, firstrun.WEATHER_FLAG = firstrun.WEATHER_FLAG, os.path.join(self.config, ".weather-channel-done")
+        os.environ.pop("WEATHER_CHANNEL", None)
         bc.Console = FakeConsole
         bc.CONTAINER_CATALOG = self.catalog
         firstrun.FLAG = os.path.join(self.config, ".test-station-done")
@@ -58,6 +65,8 @@ class FirstRunTest(unittest.TestCase):
     def tearDown(self):
         (bc.Console, bc.add_first_day, bc.CONTAINER_CATALOG, firstrun.FLAG, firstrun.make_clip,
          firstrun.WAIT_SECONDS, env) = self.saved
+        firstrun.add_weather_source, firstrun.WEATHER_FLAG = self.real_weather, self.real_flag
+        os.environ.pop("WEATHER_CHANNEL", None)
         if env is None:
             os.environ.pop("FIRSTRUN_TEST_STATION", None)
         else:
@@ -124,6 +133,74 @@ class FirstRunTest(unittest.TestCase):
         self.assertEqual((code, FakeConsole.log, self.clips), (0, [], []))
         self.assertIn("already has 1 station", out)
         self.assertTrue(os.path.exists(firstrun.FLAG))      # and it never asks again, even if they delete theirs
+
+    def test_the_weather_channel_is_off_unless_asked_for(self):
+        code, out = self.run_it()
+        self.assertEqual((code, self.weather_calls), (0, []))
+        self.assertNotIn("eather", out)
+        self.assertIn("Test Pattern", FakeConsole.stations_now)
+
+    def test_switching_the_weather_channel_on_adds_it_once_on_a_new_install_or_an_old_one(self):
+        os.environ["WEATHER_CHANNEL"] = "1"
+        self.run_it()                                       # a new install: the two stations, then the weather channel
+        self.assertEqual(len(self.weather_calls), 1)
+        self.assertTrue(os.path.exists(firstrun.WEATHER_FLAG))
+        self.run_it()
+        self.assertEqual(len(self.weather_calls), 1)        # once: deleted on the Sources page, it stays deleted
+        os.remove(firstrun.WEATHER_FLAG)
+        FakeConsole.stations_now = {"Mine": {"network_name": "Mine", "channel_number": 5}}
+        self.run_it()                                       # years later, with their own stations: asking for it is enough
+        self.assertEqual(len(self.weather_calls), 2)
+        os.environ["FIRSTRUN_TEST_STATION"] = "0"
+        os.environ["FIRSTRUN_GUIDE_STATION"] = "0"
+        os.remove(firstrun.WEATHER_FLAG)
+        try:
+            self.run_it()                                   # and it does not need the first-start stations switched on
+        finally:
+            os.environ.pop("FIRSTRUN_GUIDE_STATION", None)
+        self.assertEqual(len(self.weather_calls), 3)
+
+    def test_with_no_weather_container_yet_it_tries_again_next_start(self):
+        os.environ["WEATHER_CHANNEL"] = "1"                 # set in the wrapper's environment but not where compose reads it
+        self.weather_there = False
+        self.run_it()
+        self.assertFalse(os.path.exists(firstrun.WEATHER_FLAG))
+        self.weather_there = True
+        self.run_it()
+        self.assertEqual(len(self.weather_calls), 2)
+        self.assertTrue(os.path.exists(firstrun.WEATHER_FLAG))
+
+    def test_the_weather_source_is_added_once_and_only_beside_its_container(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fs42-tuner"))
+        import iptv
+        saved = (iptv.PATH, firstrun.WEATHER_STREAM, bc.restart_tuner, os.environ.get("FS42_TUNER_DIR"))
+        restarts = []
+        iptv.PATH = os.path.join(self.config, "sources.json")
+        bc.restart_tuner = lambda container: restarts.append(container)
+        os.environ["FS42_TUNER_DIR"] = os.path.dirname(iptv.__file__)
+        try:
+            firstrun.WEATHER_STREAM = "http://no-such-container.invalid:9798/stream/stream.m3u8"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertFalse(self.real_weather())                   # a compose file without it: no dead channel
+            self.assertIn("no weather channel yet", out.getvalue())
+            self.assertFalse(os.path.exists(iptv.PATH))
+            firstrun.WEATHER_STREAM = "http://localhost:9798/stream/stream.m3u8"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertTrue(self.real_weather())
+            self.assertIn("Settings page", out.getvalue())
+            [src] = iptv.Sources().all()
+            self.assertEqual((src["type"], src["name"], src["base"], src["mode"], [c["url"] for c in src["channels"]]),
+                             ("stream", "Weather", 3, "convert", [firstrun.WEATHER_STREAM]))
+            self.assertEqual([c["number"] for c in iptv.Sources().plan(taken=("1", "2"))[0]], ["3"])
+            self.assertEqual(restarts, [None])                          # the tuner is told to read its sources again
+            self.assertTrue(self.real_weather())                        # already there: fine, and never a second copy
+            self.assertEqual(len(iptv.Sources().all()), 1)
+        finally:
+            iptv.PATH, firstrun.WEATHER_STREAM, bc.restart_tuner, tuner_dir = saved
+            if tuner_dir is None:
+                os.environ.pop("FS42_TUNER_DIR", None)
+            else:
+                os.environ["FS42_TUNER_DIR"] = tuner_dir
 
     def test_it_can_be_switched_off(self):
         os.environ["FIRSTRUN_TEST_STATION"] = "0"

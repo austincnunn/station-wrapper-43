@@ -10,15 +10,22 @@ It runs once. It does nothing if the install already has stations of its own (an
 touched), and once it has run (or declined to), /config/.test-station-done stops it ever running again, so a
 station you delete stays deleted. FIRSTRUN_TEST_STATION=0 and FIRSTRUN_GUIDE_STATION=0 turn each off.
 
+Separately, WEATHER_CHANNEL=1 (off by default) adds "Weather" from channel 3: the stream of the ws4channels container
+the compose file then runs beside this one, as a source (the Sources page lists it; the place is set on the Settings
+page). That too happens once (/config/.weather-channel-done), on a new install or an old one, and only when that
+container is there.
+
 Exit 0: done or not needed. 1: the console was not up in time (the supervisor tries again).
 78: something is wrong that retrying will not fix (the message says what).
 """
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 
 import build_channels as bc
 
@@ -28,7 +35,11 @@ GUIDE_NAME = "Channel Guide"
 GUIDE_NUMBER = 1                 # not 0: Jellyfin and some other IPTV clients ignore channel 0
 CLIP = "test-pattern.mp4"
 CLIP_SECONDS = int(os.environ.get("FIRSTRUN_CLIP_SECONDS", "60"))     # how long the looped test card is
+WEATHER_NAME = "Weather"
+WEATHER_NUMBER = 3
+WEATHER_STREAM = os.environ.get("WEATHER_STREAM_URL", "http://ws4channels:9798/stream/stream.m3u8")
 FLAG = os.path.join(bc.CONTAINER_CONFIG, ".test-station-done")
+WEATHER_FLAG = os.path.join(bc.CONTAINER_CONFIG, ".weather-channel-done")
 WAIT_SECONDS = 180
 DAYS = 7                    # a day of schedule is only what is left of today; nothing here extends it later
 
@@ -69,19 +80,20 @@ def render_clip(path):
     os.replace(tmp, path)
 
 
-def mark_done():
+def mark_done(flag=None, text="The test station was made, or the install already had stations. Delete this file to allow it again.\n"):
+    flag = flag or FLAG
     try:
-        with open(FLAG, "w") as f:
-            f.write("The test station was made, or the install already had stations. Delete this file to allow it again.\n")
+        with open(flag, "w") as f:
+            f.write(text)
         if os.geteuid() == 0:           # the config folder is yours: give the file to whoever owns the folder
             ref = os.stat(bc.CONTAINER_CONFIG)
-            os.chown(FLAG, ref.st_uid, ref.st_gid)
+            os.chown(flag, ref.st_uid, ref.st_gid)
     except OSError as e:
-        say(f"could not write {FLAG}: {e}")
+        say(f"could not write {flag}: {e}")
 
 
-def _on(var):
-    return os.environ.get(var, "1").lower() not in ("0", "false", "no", "off")
+def _on(var, default="1"):
+    return os.environ.get(var, default).lower() not in ("0", "false", "no", "off")
 
 
 def guide_conf():
@@ -91,10 +103,52 @@ def guide_conf():
             "wrapper_guide": {"title": "Channel Guide", "hours": 3, "theme": "modern-blue", "music": ""}}
 
 
+def add_weather_source():
+    """The weather channel as a source, from channel 3 up. True when the source is there afterwards (new or not),
+    False when there is no ws4channels container to play."""
+    host = urllib.parse.urlsplit(WEATHER_STREAM).hostname
+    try:
+        socket.getaddrinfo(host, None)
+    except OSError:
+        say(f"no weather channel yet: there is no '{host}' container beside this one (WEATHER_CHANNEL=1 belongs in .env, "
+            "where the compose file reads it)")
+        return False
+    sys.path.insert(0, os.environ.get("FS42_TUNER_DIR", "/opt/tuner"))
+    import iptv
+    sources = iptv.Sources()
+    if any(s.get("url") == WEATHER_STREAM for s in sources.all()):
+        return True
+    src = sources.save({"type": "stream", "url": WEATHER_STREAM, "name": WEATHER_NAME, "mode": "convert", "base": WEATHER_NUMBER})
+    sources.set_channels(src["id"], iptv.fetch_channels(src), None)
+    bc.restart_tuner(None)                                            # the tuner reads its sources when it starts
+    say(f"the {WEATHER_NAME} channel is on air (channel {WEATHER_NUMBER}, or the next free number). Set its place on the "
+        "Settings page; remove it on the Sources page.")
+    return True
+
+
+def weather():
+    """WEATHER_CHANNEL=1 adds the weather channel, once: on a new install or years later, whatever stations there are
+    (switching it on is the asking). Its own flag, so a source deleted on the Sources page stays deleted."""
+    if not _on("WEATHER_CHANNEL", "0") or os.path.exists(WEATHER_FLAG):
+        return
+    try:
+        if add_weather_source():
+            mark_done(WEATHER_FLAG, "The weather channel was added. Delete this file to allow it again.\n")
+    except Exception as e:
+        say(f"could not add the weather channel: {e}")
+
+
 def main(argv=None):
+    code = stations()
+    weather()               # after the stations: it restarts the tuner, which should find them made
+    return code
+
+
+def stations():
     test_on, guide_on = _on("FIRSTRUN_TEST_STATION"), _on("FIRSTRUN_GUIDE_STATION")
     if not test_on and not guide_on:
-        say("the first-start stations are switched off (FIRSTRUN_TEST_STATION=0, FIRSTRUN_GUIDE_STATION=0)")
+        if not _on("WEATHER_CHANNEL", "0"):
+            say("the first-start stations are switched off (FIRSTRUN_TEST_STATION=0, FIRSTRUN_GUIDE_STATION=0)")
         return 0
     if os.path.exists(FLAG):
         return 0

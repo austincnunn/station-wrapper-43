@@ -78,7 +78,8 @@ def services_from_env(env=None, exists=os.path.exists):
                            env={"FS42_TUNER_CONF": config}, core=True))
     # One-shot, on every start: puts a test station and the guide channel on a brand new install (see
     # scripts/firstrun.py). It exits at once when it has already run, or when the install has stations.
-    if any(env.get(v, "1").lower() not in ("0", "false", "no", "off") for v in ("FIRSTRUN_TEST_STATION", "FIRSTRUN_GUIDE_STATION")):
+    if any(env.get(v, "1").lower() not in ("0", "false", "no", "off") for v in ("FIRSTRUN_TEST_STATION", "FIRSTRUN_GUIDE_STATION")) \
+            or env.get("WEATHER_CHANNEL", "0").lower() not in ("0", "false", "no", "off", ""):      # it also adds the weather channel
         out.append(Service("firstrun", ["python3", "-u", "/opt/wrapper/firstrun.py"], cwd="/opt/wrapper"))
     if env.get("FARM_ENABLED", "1").lower() not in ("0", "false", "no", "off"):     # on unless switched off
         out.append(Service("farm", ["/opt/farm/run.sh"]))

@@ -13,6 +13,7 @@ Make your own TV channels out of your own videos. **Station Wrapper 43** runs [F
 - **A scrolling TV guide channel** drawn live, with every channel and what is on.
 - **One lineup for everything.** Your channels, an antenna tuner, a playlist and a camera in one HDHomeRun-style lineup and one guide, with synopsis, pictures and channel logos.
 - **An HDHomeRun's guide for Jellyfin.** Jellyfin cannot read an HDHomeRun's schedule itself. The container reads SiliconDust's guide for the antenna and serves it as XMLTV (listings, logos, episode details), so Jellyfin needs no Schedules Direct account. It is SiliconDust's own service, so how far ahead it lists depends on their answer for your device (a unit without their DVR subscription usually gets a short window), and it covers over-the-air in the US and Canada.
+- **A weather channel with one switch.** A 1990s WeatherStar 4000 forecast with the music ([WeatherStar 4000+](https://github.com/netbymatt/ws4kp) drawn by [ws4channels](https://github.com/rice9797/ws4channels)). `WEATHER_CHANNEL=1` in `.env` adds it; type a ZIP code on the Settings page, change it any time, and the channel follows within a minute. United States forecasts, amd64 machines.
 - **Easy to start.** A *Getting started* card, a **Make me a channel now** button, and templates for a cartoon channel, a mainstream channel, a movie channel and a loop. Or hand the job to an AI agent with [this prompt](docs/AGENT-PROMPT.md).
 - **Your media is never touched.** It is mounted read-only; a list is only links.
 
@@ -47,6 +48,8 @@ FS42_MEDIA_ROOT=/mnt/media
 ```
 
 Every other setting is optional and listed in [.env.example](.env.example); most can be changed on the dashboard's Settings page instead.
+
+Want a weather channel too? Put `WEATHER_CHANNEL=1` in `.env` and run `docker compose up -d` again: two more small containers start and a Weather channel appears (channel 3, or the next free number). Type your ZIP code on the dashboard's **Settings** page and it shows your forecast. It is off by default because it needs an amd64 (ordinary PC) machine, not a Raspberry Pi, takes about one CPU core and 1 GB of memory all day, and covers the United States only.
 
 Prefer to write the compose file yourself, with only some media folders mounted? [docker-compose.sample.yml](docker-compose.sample.yml) is a complete one.
 
