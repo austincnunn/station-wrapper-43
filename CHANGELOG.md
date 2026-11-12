@@ -9,7 +9,8 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 - **An installer.** `curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | bash`
   sets up a server or a client-mode player PC on a Linux machine: it installs Docker if it is missing, can mount the
   media share (SMB or NFS, read-only, with an `/etc/fstab` line and Docker made to start after it), writes `.env`,
-  starts the container, and checks a player's sync token against the server. On an amd64 server it offers the weather
+  starts the container, and checks a player's sync token against the server. It asks whether the videos
+  come from an Emby or Jellyfin server and, if all of them do, skips the videos folder and the share. On an amd64 server it offers the weather
   channel and asks for the ZIP code (an ARM machine is not asked: the weather containers are amd64 only). It asks whether to install new versions by
   itself (a systemd timer, daily or weekly at 04:30; a machine that was off catches up when switched on). Safe to run
   again; any answer already in the environment is not asked for.

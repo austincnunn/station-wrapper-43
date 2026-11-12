@@ -13,6 +13,7 @@
 #
 # Unattended: an answer that is already in the environment is not asked for.
 #   FS42_ROLE=server|client          FS42_DIR=<folder for the compose file and data>
+#   FS42_EMBY=y|n  FS42_OWN_VIDEOS=y|n   videos from an Emby or Jellyfin server; and videos of your own as well (server)
 #   FS42_MEDIA=local|smb|nfs         FS42_MEDIA_ROOT=<videos folder, or where to mount the share> (server only;
 #                                    a player always uses /mnt/media)
 #   FS42_SHARE=//nas/media or nas:/export     FS42_SHARE_USER= (empty: guest)     FS42_SHARE_PASS=
@@ -198,13 +199,24 @@ EOF
   choose FS42_ROLE "What is this machine? server = builds the channels, client = a player PC on a TV, playing a server's" server server client
   if [ "$FS42_ROLE" = server ]; then
     ask FS42_DIR "Folder for the compose file and the container's data (a local disk, not a share)" "$HOME/station-wrapper-43"
-    choose FS42_MEDIA "Where are your videos? local = on this machine, smb = a Windows or NAS share, nfs = an NFS share" local local smb nfs
-    if [ "$FS42_MEDIA" = local ]; then
-      ask FS42_MEDIA_ROOT "The folder with your videos (empty: a new 'media' folder beside the compose file)" ""
-      [ -z "$FS42_MEDIA_ROOT" ] || [ -d "$FS42_MEDIA_ROOT" ] || warn "$FS42_MEDIA_ROOT is not there yet"
+    # An Emby or Jellyfin server's videos are streamed from it, through placeholders the server makes: nothing to mount.
+    choose FS42_EMBY "Do you have an Emby or Jellyfin server whose shows and movies you want on your channels?" n y n
+    if [ "$FS42_EMBY" = y ]; then
+      choose FS42_OWN_VIDEOS "Do you also have videos that are not in Emby or Jellyfin (on this machine, or a NAS share)?" n y n
     else
-      need FS42_MEDIA_ROOT "Mount the share at" /mnt/media
-      mp=$FS42_MEDIA_ROOT
+      FS42_OWN_VIDEOS=y
+    fi
+    if [ "$FS42_OWN_VIDEOS" = n ]; then
+      FS42_MEDIA=local FS42_MEDIA_ROOT=""     # no videos of its own: the empty 'media' folder beside the compose file
+    else
+      choose FS42_MEDIA "Where are your videos? local = on this machine, smb = a Windows or NAS share, nfs = an NFS share" local local smb nfs
+      if [ "$FS42_MEDIA" = local ]; then
+        ask FS42_MEDIA_ROOT "The folder with your videos (empty: a new 'media' folder beside the compose file)" ""
+        [ -z "$FS42_MEDIA_ROOT" ] || [ -d "$FS42_MEDIA_ROOT" ] || warn "$FS42_MEDIA_ROOT is not there yet"
+      else
+        need FS42_MEDIA_ROOT "Mount the share at" /mnt/media
+        mp=$FS42_MEDIA_ROOT
+      fi
     fi
     # The weather channel's hidden browser (ws4channels) is built for amd64 only, so an ARM machine is not asked.
     if grep -qs '^WEATHER_CHANNEL=1' "$FS42_DIR/.env"; then
@@ -226,7 +238,7 @@ EOF
     # The schedule names every video by its path on the server, /mnt/media/...: a player needs the same share there.
     mp=/mnt/media
     if mountpoint -q $mp; then FS42_MEDIA=${FS42_MEDIA:-local}; fi
-    choose FS42_MEDIA "The server's media must be at $mp here too. local = it already is, smb / nfs = mount that share there" smb local smb nfs
+    choose FS42_MEDIA "The server's media must be at $mp here too. local = it already is (or the server only has Emby or Jellyfin videos), smb / nfs = mount that share there" smb local smb nfs
     [ "$FS42_MEDIA" != local ] || mp=""
   fi
   case $mp in *[[:space:]]*) die "a mount point can't have a space in it: $mp" ;; esac
@@ -251,6 +263,7 @@ EOF
   command -v docker > /dev/null || echo "  - install Docker"
   [ -z "$share_new" ] || echo "  - mount $FS42_SHARE at $mp, read-only, with a line in /etc/fstab"
   echo "  - download the compose file, write .env, start the container"
+  [ "${FS42_EMBY-n}" = n ] || echo "  - Emby or Jellyfin: you add the server on the dashboard afterwards (the last lines say where)"
   [ "${FS42_WEATHER-n}" = n ] || echo "  - add a Weather channel for $WEATHER_LOCATION (two more small containers)"
   [ "$FS42_AUTO_UPDATE" = no ] || echo "  - install new versions by itself, $FS42_AUTO_UPDATE"
   ask FS42_GO "Go ahead? (y/n)" y
@@ -271,6 +284,8 @@ EOF
   if [ "$FS42_ROLE" = server ]; then
     compose=docker-compose.yml
     [ -z "${FS42_MEDIA_ROOT-}" ] || setenv FS42_MEDIA_ROOT "$FS42_MEDIA_ROOT"
+    # Beside videos of your own, the Emby folder only shows on the Files page once the pool of links is on.
+    [ "$FS42_EMBY$FS42_OWN_VIDEOS" != yy ] || setenv SYNC_ENABLED 1
     if [ "$FS42_WEATHER" = y ]; then
       setenv WEATHER_CHANNEL 1                # the compose file starts ws4kp and ws4channels; the first start adds the channel
       setenv WEATHER_LOCATION "$WEATHER_LOCATION"
@@ -306,6 +321,11 @@ EOF
   if [ "$FS42_ROLE" = server ]; then
     ip=$(hostname -I 2> /dev/null | awk '{ print $1 }')
     say "Done. The dashboard: http://${ip:-<this machine>}:5004 (the first visit sets its password)"
+    if [ "$FS42_EMBY" = y ]; then
+      echo "  Next, your Emby or Jellyfin server: http://${ip:-<this machine>}:5004/iptv.html, under 'Emby and Jellyfin servers'."
+      echo "    Sign in with Emby Connect, or add a Jellyfin server by its address. Choose libraries, then 'Read the servers now'."
+      echo "    Its shows and movies are then on the Files page, in the Emby folder."
+    fi
     [ "$FS42_WEATHER" = n ] || echo "  Weather comes on air in a minute or two (channel 3, or the next free number). Its place: the Settings page."
   else
     say "Done. The TV should come on within a minute or two; the server's Status page lists this player."
