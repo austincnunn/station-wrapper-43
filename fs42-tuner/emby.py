@@ -17,6 +17,11 @@ holds the tokens the sign-in gives.
 
 A server reached on its LAN address plays the original file (no work for Emby). One reached only on its internet
 address is asked to make H.264 at its cap_kbps instead (that server's CPU; 0 = the original file there too).
+
+A Jellyfin server has no Connect: it is added by its address with a name and password of its own (add_jellyfin), which
+are passed on once for a token. It then sits in the same list ("kind": "jellyfin") and is mirrored and played the same
+way. Jellyfin has no /emby prefix, wants the token in the Authorization header, and always honours its cap_kbps (0, the
+start, reads the original file) because nothing says whether its address is on the LAN.
 """
 import hashlib
 import json
@@ -193,6 +198,54 @@ class Emby:
         return (f'MediaBrowser Client="Station Wrapper 43", Device="FieldStation42 tuner", '
                 f'DeviceId="{self.state["device_id"]}", Version="1.0"')
 
+    def _headers(self, s, tok):
+        """The request headers that carry a server's token."""
+        if s.get("kind") == "jellyfin":
+            return {"Authorization": f'{self._auth_header()}, Token="{tok}"'}
+        return {"X-Emby-Token": tok, "X-Emby-Authorization": self._auth_header()}
+
+    @staticmethod
+    def _base(s):
+        return s["reach"] + ("" if s.get("kind") == "jellyfin" else "/emby")
+
+    # ---- Jellyfin (no Connect: one server at a time, by its address) ----
+    def add_jellyfin(self, url, name, password):
+        url = url.strip().rstrip("/") if isinstance(url, str) else ""
+        if url and "://" not in url:
+            url = "http://" + url
+        if not _safe_server_url(url):
+            raise EmbyError("type the Jellyfin server's address, like http://192.168.1.20:8096")
+        if not name or not isinstance(name, str) or not isinstance(password, str):
+            raise EmbyError("type a Jellyfin user name and its password")
+        code, got = self.http("POST", f"{url}/Users/AuthenticateByName",
+                              {"Authorization": self._auth_header(), "Content-Type": "application/json"},
+                              json.dumps({"Username": name.strip(), "Pw": password}).encode())
+        if code in (400, 401, 403):
+            raise EmbyError("that Jellyfin server did not accept the name and password")
+        tok = CTRL.sub("", str(got.get("AccessToken") or "")) if isinstance(got, dict) else ""
+        uid = (got.get("User") or {}).get("Id") if isinstance(got, dict) else None
+        if code != 200 or not tok or not uid:
+            raise EmbyError(f"{urllib.parse.urlsplit(url).hostname} answered {code}: is that a Jellyfin server's address?")
+        code, info = self.http("GET", f"{url}/System/Info/Public", timeout=8)
+        info = info if code == 200 and isinstance(info, dict) else {}
+        sid = "jf-" + re.sub(r"[^A-Za-z0-9]", "", str(got.get("ServerId") or info.get("Id") or uuid.uuid4().hex))[:40]
+        with self.lock:
+            cur = self.state["servers"].setdefault(sid, {"on": True, "libraries": [], "cap_kbps": 0})
+            cur.update({"kind": "jellyfin", "name": info.get("ServerName") or urllib.parse.urlsplit(url).hostname,
+                        "url": url, "reach": url, "remote": True, "user_id": str(uid), "token": tok, "gone": False,
+                        "error": None})
+            self._save()
+        return self.describe()
+
+    def remove(self, sid):
+        """Take a Jellyfin server off the list. Its placeholders go at the next sync."""
+        with self.lock:
+            if (self.state["servers"].get(sid) or {}).get("kind") != "jellyfin":
+                raise EmbyError("no such Jellyfin server")
+            del self.state["servers"][sid]
+            self._save()
+        return self.describe()
+
     # ---- Emby Connect ----
     def sign_in(self, name, password):
         if not name or not password or not isinstance(name, str) or not isinstance(password, str):
@@ -221,8 +274,9 @@ class Emby:
         with self.lock:
             self.state["connect"] = None
             for s in self.state["servers"].values():
-                s.pop("token", None)
-                s.pop("access_key", None)
+                if s.get("kind") != "jellyfin":              # a Jellyfin server has a sign-in of its own
+                    s.pop("token", None)
+                    s.pop("access_key", None)
             self._save()
 
     def refresh_servers(self):
@@ -247,7 +301,7 @@ class Emby:
                             "local": (s.get("LocalAddress") or "").rstrip("/"), "access_key": s.get("AccessKey")})
                 cur["gone"] = False
             for sid, cur in servers.items():
-                if sid not in {str(s.get("SystemId")) for s in got}:
+                if cur.get("kind") != "jellyfin" and sid not in {str(s.get("SystemId")) for s in got}:
                     cur["gone"] = True                       # no longer on the account: kept (with its choices), not played
             self._save()
         return self.describe()
@@ -255,6 +309,11 @@ class Emby:
     def _reach(self, sid):
         """Exchange the access key for this server's own token, on the first address that answers (LAN first)."""
         s = self.state["servers"][sid]
+        if s.get("kind") == "jellyfin":                      # its password was never kept, so there is nothing to retry with
+            with self.lock:
+                s["error"] = "signed out: add this Jellyfin server again"
+                self._save()
+            raise EmbyError(f"{s.get('name', sid)}: add this Jellyfin server again (it no longer accepts the sign-in)")
         if not s.get("access_key") or not self.state.get("connect"):
             raise EmbyError(f"{s.get('name', sid)}: sign in with Emby Connect again")
         why = "no address"
@@ -286,8 +345,8 @@ class Emby:
         for attempt in (1, 2):
             if not s.get("token") or attempt == 2:            # none yet, or it went stale: exchange (again)
                 s = self._reach(sid)
-            url = f"{s['reach']}/emby{path}" + ("?" + urllib.parse.urlencode(params) if params else "")
-            code, got = self.http("GET", url, {"X-Emby-Token": s["token"], "X-Emby-Authorization": self._auth_header()})
+            url = f"{self._base(s)}{path}" + ("?" + urllib.parse.urlencode(params) if params else "")
+            code, got = self.http("GET", url, self._headers(s, s["token"]))
             if code != 401:
                 break
         if code != 200:
@@ -333,7 +392,8 @@ class Emby:
             return {"signed_in": bool(conn), "account": conn and conn.get("name"), "status": dict(self.status),
                     "servers": [{"id": sid, "name": s.get("name"), "on": s.get("on", False), "libraries": s.get("libraries", []),
                                  "cap_kbps": s.get("cap_kbps"), "remote": s.get("remote"), "error": s.get("error"),
-                                 "gone": s.get("gone", False), "folder": clean_name(s.get("name"), sid)}
+                                 "gone": s.get("gone", False), "folder": clean_name(s.get("name"), sid),
+                                 "kind": s.get("kind", "emby")}
                                 for sid, s in sorted(self.state["servers"].items(), key=lambda kv: str(kv[1].get("name")).lower())]}
 
     # ---- the mirror ----
@@ -438,8 +498,8 @@ class Emby:
             return
         s = self.state["servers"][sid]
         try:
-            code, got = self.http("GET", f"{s['reach']}/emby/Items/{owner}/Images/Primary?maxWidth=400&format=jpg",
-                                  {"X-Emby-Token": s["token"]})
+            code, got = self.http("GET", f"{self._base(s)}/Items/{owner}/Images/Primary?maxWidth=400&format=jpg",
+                                  self._headers(s, s["token"]))
         except EmbyError:
             return
         if code == 200 and isinstance(got, bytes) and got[:2] == b"\xff\xd8":
@@ -493,14 +553,14 @@ class Emby:
         if not s.get("token"):
             s = self._reach(sid)
         tok = CTRL.sub("", str(s["token"]))
-        headers = f"X-Emby-Token: {tok}\r\nX-Emby-Authorization: {self._auth_header()}\r\n"
+        headers = "".join(f"{k}: {v}\r\n" for k, v in self._headers(s, tok).items())
         opts = ["-headers", headers, "-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
                 "-rw_timeout", "15000000"]
-        base, dev = s["reach"], urllib.parse.quote(str(self.state["device_id"]), safe="")
+        base, dev = self._base(s), urllib.parse.quote(str(self.state["device_id"]), safe="")
         safe_item = urllib.parse.quote(str(item_id), safe="")
         cap = (s.get("cap_kbps") or 0) if s.get("remote") else 0      # on the LAN: always the original file
         if not cap:
-            return {"opts": opts, "url": f"{base}/emby/Videos/{safe_item}/stream?static=true&DeviceId={dev}", "seek": seek,
+            return {"opts": opts, "url": f"{base}/Videos/{safe_item}/stream?static=true&DeviceId={dev}", "seek": seek,
                     "done": lambda: None}
         session = uuid.uuid4().hex
         q = urllib.parse.urlencode({"VideoCodec": "h264", "AudioCodec": "aac", "VideoBitrate": cap * 1000,
@@ -509,8 +569,8 @@ class Emby:
 
         def done():                                  # tell the server to stop making it now, not when it notices
             try:
-                self.http("DELETE", f"{base}/emby/Videos/ActiveEncodings?DeviceId={dev}&PlaySessionId={session}",
-                          {"X-Emby-Token": tok}, timeout=5)
+                self.http("DELETE", f"{base}/Videos/ActiveEncodings?DeviceId={dev}&PlaySessionId={session}",
+                          self._headers(s, tok), timeout=5)
             except EmbyError:
                 pass
-        return {"opts": opts, "url": f"{base}/emby/Videos/{safe_item}/stream.ts?{q}", "seek": 0.0, "done": done}
+        return {"opts": opts, "url": f"{base}/Videos/{safe_item}/stream.ts?{q}", "seek": 0.0, "done": done}

@@ -27,6 +27,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   before a catalog build stay gone.
 
 ### Added
+- **Jellyfin servers as a place to get videos from.** The Sources page's Emby panel now also takes a Jellyfin server: type
+  its address, a user name and password (passed on once for a token, never saved), tick its libraries, and its shows and
+  movies appear on the Files page like an Emby server's (under `Emby/<server>/<library>`). It plays the original file; a
+  server far away can be asked for a capped H.264 stream instead. Tried against Jellyfin 12.4.
 - **A weather channel with one switch.** `WEATHER_CHANNEL=1` in `.env` starts two small containers (WeatherStar 4000+
   and ws4channels) and adds their stream as a channel (3, or the next free number), on a new install or an old one. Its
   place is one setting on the Settings page (a ZIP code, or City, State; United States); changing it needs no restart.

@@ -147,6 +147,53 @@ class EmbyTest(unittest.TestCase):
         got["done"]()
         self.assertEqual(fake.calls[-1][0], "DELETE")
 
+    def test_a_jellyfin_server_is_added_by_address_and_survives_emby_connect(self):
+        def jf(method, url, headers=None, data=None, timeout=20):
+            u = urllib.parse.urlsplit(url)
+            if u.hostname != "192.168.7.7":
+                return FakeEmby([])(method, url, headers, data, timeout)
+            self.assertNotIn("/emby/", u.path)                        # Jellyfin has no /emby prefix
+            if u.path == "/Users/AuthenticateByName":
+                if json.loads(data)["Pw"] != "jfpass":
+                    return 401, None
+                return 200, {"AccessToken": "jtok", "ServerId": "abc123", "User": {"Id": "ju1"}}
+            if u.path == "/System/Info/Public":
+                return 200, {"ServerName": "Den"}
+            self.assertIn('Token="jtok"', headers["Authorization"])
+            self.assertNotIn("X-Emby-Token", headers)
+            if u.path == "/Users/ju1/Views":
+                return 200, {"Items": [{"Id": "jl1", "Name": "Movies", "CollectionType": "movies"}]}
+            return 401, None                                          # everything else: the token went stale
+
+        e = emby.Emby(self.conf, self.mirror, http=jf)
+        with self.assertRaises(emby.EmbyError):
+            e.add_jellyfin("192.168.7.7:8096", "austin", "wrong")
+        with self.assertRaises(emby.EmbyError):
+            e.add_jellyfin("http://169.254.169.254", "austin", "jfpass")
+        got = e.add_jellyfin("192.168.7.7:8096/", "austin", "jfpass")["servers"]
+        self.assertEqual([(s["id"], s["name"], s["kind"], s["cap_kbps"]) for s in got], [("jf-abc123", "Den", "jellyfin", 0)])
+        with open(self.conf) as f:
+            self.assertNotIn("jfpass", f.read())
+        self.assertNotIn("jtok", json.dumps(e.describe()))
+        self.assertEqual(e.libraries("jf-abc123")[0]["name"], "Movies")
+
+        play = e.input_for("jf-abc123", "m1", 30)                     # cap 0: the original file, token in a header
+        self.assertEqual(play["url"].split("?")[0], "http://192.168.7.7:8096/Videos/m1/stream")
+        self.assertIn('Token="jtok"', play["opts"][play["opts"].index("-headers") + 1])
+        e.choose("jf-abc123", cap_kbps=4000)
+        self.assertIn("/Videos/m1/stream.ts?", e.input_for("jf-abc123", "m1", 30)["url"])
+
+        e.sign_in("austin", "secret")                                 # Emby Connect comes and goes: Jellyfin stays as it is
+        e.sign_out()
+        jelly = e.state["servers"]["jf-abc123"]
+        self.assertEqual((jelly["token"], jelly.get("gone")), ("jtok", False))
+        with self.assertRaises(emby.EmbyError) as stale:              # a refused token asks for the server to be added again
+            e._api("jf-abc123", "/Users/ju1/Items")
+        self.assertIn("add this Jellyfin server again", str(stale.exception))
+        with self.assertRaises(emby.EmbyError):
+            e.remove("sys1")                                          # only Jellyfin servers are removed by hand
+        self.assertEqual([s["id"] for s in e.remove("jf-abc123")["servers"]], ["sys1"])
+
     def test_cap_checks(self):
         e, _ = self.make([])
         with self.assertRaises(emby.EmbyError):
