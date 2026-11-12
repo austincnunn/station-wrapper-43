@@ -13,6 +13,11 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   edit page and the ticker adds lines like "Coming up at 9:00 PM: Friends on Channel 117" after your own messages: one
   programme per channel from the guide's listings, half an hour to eight hours ahead, up to eight lines, picked again
   every hour (`wrapper_guide.coming_up` in the station config).
+- **The channel bar on player PCs.** A client-mode player now shows the FS42 TV apps' channel bar on every channel
+  change, instead of only the number: the channel's number and name and a green clock in bevelled grey boxes, and the
+  programme on now (and when it ends) in lavender with blue type, in monospace type, along the bottom of the screen. What
+  is on comes from the server's `/channels.json`, as on the dashboard; with the server out of reach the bar still has the
+  number and name. It goes after `FS42_BANNER_SECONDS` (8 by default); `FS42_BANNER=off` still turns it off.
 
 ### Changed
 - **Nothing to set up before the first start.** Download `docker-compose.yml`, run `docker compose up -d`, open the
