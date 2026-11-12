@@ -2,6 +2,9 @@
 # The server builds every schedule; this copies it about once a minute and plays it with mpv, drawing straight to the
 # screen (no desktop, no X; a bare X server of its own only while the server has a pay-per-view station). Settings go in .env next to this file (see .env.example).
 #
+# The installer does 1 and 4 below for you, and starts this:
+#   curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | bash
+#
 # Before you start:
 #   1. Mount the SAME media share the server uses, at the SAME path inside the container (/mnt/media). The schedule
 #      names videos by that path, so a different path means nothing plays. On the host, a line in /etc/fstab, e.g.

@@ -194,9 +194,47 @@ The rule for the whole system: **everything goes through this container**, so th
 
 `/lineup.m3u` is the lineup as an M3U playlist for TVHeadend and other IPTV software. Each entry's `tvg-id` is the channel's id in `/xmltv.xml` (`fs42.<number>`), `tvg-chno` is its number, and `group-title` says where it comes from. In TVHeadend: Configuration > DVB Inputs > Networks > add an **IPTV Automatic Network** with `http://<host>:5004/lineup.m3u`, then map the services to channels. TVHeadend needs `advertise_url` (or the address you used) to be one it can reach, not `localhost`. The guide goes in through an XMLTV grabber script that prints `http://<host>:5004/xmltv.xml`; this part is untried against a real TVHeadend.
 
+## The installer
+
+`install.sh` sets up a server, or a player PC in client mode, on a Linux machine with apt, dnf or pacman:
+
+```
+curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | bash
+```
+
+It asks its questions first, lists what it is about to do, and changes nothing until you answer `y`. It uses `sudo` for the steps that need root. Then:
+
+- **Docker.** Installed with Docker's own script (get.docker.com) if the machine has none. A machine with Podman and no Docker gets Docker as well: the installer does not use Podman.
+- **The media share.** For videos on a NAS it installs the SMB or NFS tools, adds a read-only line to `/etc/fstab` (a copy of the old file is kept as `/etc/fstab.fs42.bak`) and mounts it. An SMB password goes in `/root/.smb-fs42-media`, which only root can read. If the mount fails, `/etc/fstab` is put back as it was. A mount point that is already mounted, or already in `/etc/fstab`, is left alone. It also makes Docker start after the share (`/etc/systemd/system/docker.service.d/fs42-media.conf`): a container that starts before the share is mounted sees an empty folder until it is restarted.
+- **The container.** It makes the folder (`~/station-wrapper-43`, or `~/fs42-player` for a player), downloads the compose file, writes `.env`, and runs `docker compose pull` and `docker compose up -d`. A server gets `FS42_MEDIA_ROOT`; a player gets `FS42_SERVER`, `FS42_SYNC_TOKEN`, `FS42_SCREEN` and `FS42_PLAYER_NAME`, and its token is tried against the server. On a player the share is always mounted at `/mnt/media`, where the schedule expects the videos. Every other setting is still yours to add to `.env`.
+- **Updates.** Answer `daily` or `weekly` and a systemd timer (`fs42-update.timer`) pulls the newest image at 04:30 and restarts the container only if the image changed. A machine that was off at that time does it when it is next switched on. A server and its players must run the same version, so give the same answer on each. `sudo systemctl start fs42-update` updates now; `systemctl list-timers fs42-update.timer` shows the next run.
+
+**Running it again** is safe, and is how you change an answer (answer `no` to updates and the timer is removed). It keeps a `docker-compose.yml` that is already in the folder, and the lines of `.env` it does not ask about.
+
+**Without questions.** An answer that is already in the environment is not asked for, so the whole install can be one line:
+
+```
+curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | FS42_ROLE=server FS42_MEDIA=local FS42_MEDIA_ROOT=/srv/videos FS42_AUTO_UPDATE=weekly FS42_GO=y bash
+```
+
+| Variable | Answer |
+|---|---|
+| `FS42_ROLE` | `server` or `client` |
+| `FS42_DIR` | the folder for the compose file and the container's data (a local disk) |
+| `FS42_MEDIA` | `local`, `smb` or `nfs` |
+| `FS42_MEDIA_ROOT` | server only: the folder with the videos, or where to mount the share (`/mnt/media`) |
+| `FS42_SHARE` | `//server/share` for SMB, `server:/path` for NFS |
+| `FS42_SHARE_USER`, `FS42_SHARE_PASS` | the SMB login; an empty user means guest |
+| `FS42_SERVER`, `FS42_SYNC_TOKEN`, `FS42_SCREEN`, `FS42_PLAYER_NAME` | client only: the same as in a player's `.env` |
+| `FS42_AUTO_UPDATE` | `no`, `daily` or `weekly` |
+| `FS42_GO` | `y` skips the last "Go ahead?" |
+| `FS42_RAW`, `FS42_IMAGE` | for a copy of this project kept somewhere else: where the compose files are downloaded from, and the image's name without its tag |
+
+**Taking it out again.** `docker compose down` in the folder stops the container. The timer: `sudo systemctl disable --now fs42-update.timer`, then delete `/etc/systemd/system/fs42-update.timer` and `fs42-update.service`. The share: delete its line from `/etc/fstab`, and delete `/etc/systemd/system/docker.service.d/fs42-media.conf` and `/root/.smb-fs42-media`.
+
 ## Backup, restore and upgrading
 
-Everything that is yours lives in the three volumes: `/config` (settings, stations, schedules, `sources.json`, the catalog database), `/app/catalog` and `/mnt/media`. To back up, stop the container and copy the config folder (and the catalog folder if you want to skip a rebuild). To restore, put the folders back and start the container. To upgrade, pull the new image and recreate the container (`docker compose pull && docker compose up -d`); your folders are untouched. Passwords in source addresses are kept in `config/tuner/sources.json`, so keep the backup private.
+Everything that is yours lives in the three volumes: `/config` (settings, stations, schedules, `sources.json`, the catalog database), `/app/catalog` and `/mnt/media`. To back up, stop the container and copy the config folder (and the catalog folder if you want to skip a rebuild). To restore, put the folders back and start the container. To upgrade, pull the new image and recreate the container (`docker compose pull && docker compose up -d`); your folders are untouched. [The installer](#the-installer) can set a timer that does this daily or weekly. Passwords in source addresses are kept in `config/tuner/sources.json`, so keep the backup private.
 
 ## An HDHomeRun antenna tuner
 
