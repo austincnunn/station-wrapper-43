@@ -87,6 +87,7 @@ THEMES["cable-box"] = {      # the FS42 TV apps' 90s cable-box info bar: bevelle
     # optional keys (the other themes leave them out): a programme's own text colours, the clock's, raised boxes, the type
     "cell_text": (42, 42, 42), "cell_dim": (85, 85, 95), "cell_now_text": (30, 30, 200), "cell_now_dim": (60, 56, 140),
     "clock": (80, 255, 80), "bevel": (242, 242, 242), "mono": True,
+    "still": True,           # long names are cut off with …, as the apps' bar does, instead of moving along the cell
 }
 DEFAULT_THEME = "modern-blue"
 THEME_NAMES = {"modern-blue": "Modern blue", "midnight": "Midnight", "classic-prevue": "Classic cable", "emerald": "Emerald", "sunset": "Sunset",
@@ -434,7 +435,7 @@ class Guide:
             return
         if d.textlength(text, font=font) <= room:
             d.text((x, y), text, font=font, fill=fill)
-        elif room < MIN_MOVING:
+        elif room < MIN_MOVING or self.theme.get("still"):         # a style that never moves names cuts them off with …
             d.text((x, y), _clip(d, text, font, room), font=font, fill=fill)
         else:
             marquees.append(self._marquee(d, text, font, fill, x, y, room))

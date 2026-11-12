@@ -334,6 +334,11 @@ class DrawTest(unittest.TestCase):
                 self.assertNotEqual(list(band(a, 232, 450).getdata()), list(band(b, 232, 450).getdata()))   # the long one has moved
             self.assertEqual(len(g._marquees), n)                           # one long title in each row
 
+    def test_the_cable_box_style_cuts_long_titles_off_instead_of_moving_them(self):
+        g = self.guide(n=3, wrapper_guide={"theme": "cable-box"})
+        g.frame(0.0)
+        self.assertEqual(g._marquees, [])
+
     def test_every_moving_name_goes_through_its_cell_twice_while_the_rows_scroll_up_once(self):
         g = self.guide(n=20, size=(1280, 720))                               # more rows than fit: the board scrolls up
         g.frame(0)
