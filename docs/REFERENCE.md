@@ -22,10 +22,10 @@ On a new install there is no schedule yet: FieldStation42 creates its schedule d
 
 ## Layout and conventions
 
-**Three volumes make it work: config, catalog, and media.** The first two are local folders under one root, `FS42_LOCAL_ROOT`, and that is what you copy, back up and move. Your media stays on the NAS.
+**Three volumes make it work: config, catalog, and media.** The first two are local folders under one root (`./data` beside the compose file, unless `FS42_LOCAL_ROOT` names another), and that is what you copy, back up and move. Your media stays on the NAS.
 
 ```
-$FS42_LOCAL_ROOT/                  <- local disk, never an SMB share
+./data/  (or $FS42_LOCAL_ROOT)     <- local disk, never an SMB share
   config/                          ONE volume: everything the container keeps
     runtime/                         FieldStation42's schedule database and sockets
     confs/                           station configs
@@ -37,20 +37,20 @@ $FS42_LOCAL_ROOT/                  <- local disk, never an SMB share
 $FS42_MEDIA_ROOT/                  <- your NAS: the videos themselves, read-only, ONE volume
 ```
 
-Host paths come from `.env` (see `.env.example`):
+Each host path has a default beside the compose file, so nothing has to be set; a line in `.env` moves one (see `.env.example`):
 
 | volume | where | why |
 |---|---|---|
-| `config` (`/config`) | `$FS42_CONFIG_ROOT`, default `$FS42_LOCAL_ROOT/config` | the sqlite schedule database, station configs, the dashboard's config. **Local disk**: sqlite misbehaves over SMB/NFS |
-| `catalog` (`/app/catalog`) | `$FS42_CATALOG_ROOT`, default `$FS42_LOCAL_ROOT/catalog` | the folders of symlinks FieldStation42 schedules from. **Local disk, not an SMB share** (see below) |
-| `media` (`/mnt/media`) | `$FS42_MEDIA_ROOT` | your actual show/commercial/channel mid card files, read-only. The only thing that belongs on the share |
+| `config` (`/config`) | `./data/config` (`$FS42_CONFIG_ROOT`, or `$FS42_LOCAL_ROOT/config`) | the sqlite schedule database, station configs, the dashboard's config. **Local disk**: sqlite misbehaves over SMB/NFS |
+| `catalog` (`/app/catalog`) | `./data/catalog` (`$FS42_CATALOG_ROOT`, or `$FS42_LOCAL_ROOT/catalog`) | the folders of symlinks FieldStation42 schedules from. **Local disk, not an SMB share** (see below) |
+| `media` (`/mnt/media`) | `./media` (`$FS42_MEDIA_ROOT`) | your actual show/commercial/channel mid card files, read-only. The only thing that belongs on the share |
 
 FieldStation42 itself looks for `runtime/` and `confs/` next to its code, so the container links `/app/runtime` and `/app/confs` into the config volume when it starts. Nothing for you to do.
 
 ### Media: the whole share, several shares, or only some folders
 
-- **Everything under one folder** (the default): set `FS42_MEDIA_ROOT` to it. The volume is a *recursive* bind, so if your NAS shares are mounted *inside* that folder on the host (`/mnt/media/tv` from one NAS, `/mnt/media/movies` from another) they all appear in the container. A plain bind would silently leave them out, so the compose file asks for the recursive kind. The read-only setting covers the nested shares too. (Checked on this project's Docker: a nested mount was invisible with a plain bind, visible with `rbind`, and not writable either way.)
-- **Only some folders**: use one volume per folder, each mounted at `/mnt/media/<folder>` read-only (`/mnt/media/youtube`, `/mnt/media/anime`, `/mnt/media/movies`). Only those are visible; anything else under `/mnt/media` on the host is not. `docker-compose.yml` has a commented block showing how. Keep each folder at the same path inside and outside. The generator's libraries are the folders named `tvseries`, `anime` and `movies`.
+- **Everything under one folder** (the default): put videos in `./media`, or set `FS42_MEDIA_ROOT` to the folder you have. A bind mount is *recursive*, so if your NAS shares are mounted *inside* that folder on the host (`/mnt/media/tv` from one NAS, `/mnt/media/movies` from another) they all appear in the container.
+- **Only some folders**: use one line per folder, each mounted at `/mnt/media/<folder>` read-only (`/mnt/media/youtube`, `/mnt/media/anime`, `/mnt/media/movies`). Only those are visible; anything else under `/mnt/media` on the host is not. `docker-compose.yml` has a commented block showing how. Keep each folder at the same path inside and outside. The generator's libraries are the folders named `tvseries`, `anime` and `movies`.
 - The catalog holds real folders; only individual video files in it are symlinks. Your media folders are *not* linked into it as whole folders (that sent a file manager straight into the media). An older install's whole-folder links (`catalog/anime -> /mnt/media/anime/`) are removed on container start. To get links to copy from, turn on `SYNC_ENABLED=1`: the pool is real folders with a link per file.
 
 ### Symlinks and SMB shares
@@ -59,10 +59,10 @@ The catalog is made of symlinks, and SMB/CIFS shares are bad at them: creating o
 
 - **Symlinks live on local disk. Media can live on the share.** A link that sits on local disk and points at a file on the share is ordinary file access, because the container's own mount resolves the path. Only the *media* has to be on SMB.
 - That is why the catalog and the pool are on local disk, under `FS42_LOCAL_ROOT`, and not on the NAS. `FS42_CATALOG_ROOT` can move the catalog, to another **local** path.
-- `./setup-dirs.sh` checks first: it refuses a database folder on a network share, refuses a catalog or pool that can't hold a working symlink, and notes one that works but sits on a network share.
+- `./setup-dirs.sh` (only needed to move an older layout) checks too: it refuses a database folder on a network share, refuses a catalog or pool that can't hold a working symlink, and notes one that works but sits on a network share.
 - `scripts/init.py` and `scripts/build_channels.py` both test the catalog (and `init.py` the TV libraries): they make a real symlink to a file outside the folder and follow it. If that fails, the generator stops before changing anything and says why. If it works but the folder is on a network filesystem, you get a note, because a link that works on the host can still resolve differently inside a container.
 - **The container enforces it.** At start-up, `station-wrapper-43` checks `/app/catalog`. If it is on an SMB/CIFS share, or a test symlink can't be made and followed, it logs why and **exits with status 78 instead of running broken**. Docker will keep restarting it, so look at `docker logs station-wrapper-43`: the message names the fix. The same check protects the pool. On NFS and similar it only prints a note. To start anyway on a share you have tested, set `FS42_ALLOW_NETWORK_CATALOG=1` in `.env`.
-- `docker-compose.yml` says the same at the top and at the volume. `FS42_LOCAL_ROOT` is required, so an unset one stops `docker compose` with a message rather than becoming an empty path. (It was called `FS42_SSD_ROOT`: the message says to rename it.)
+- `docker-compose.yml` says the same at the top and at the volume. With nothing set, config and catalog are `./data/config` and `./data/catalog` beside the compose file, so keep the compose file on local disk or set `FS42_LOCAL_ROOT`. (It was called `FS42_SSD_ROOT`: rename it in `.env`.)
 
 **Moving an existing install into this layout.** There have been two earlier layouts. In the first, `runtime/` and `catalog/` sat directly under `FS42_SSD_ROOT`, `confs/` was on the NAS under `FS42_NAS_DATA`, and two containers ran (`206_fieldstation42` and `206_fs42-tuner`). In the second, everything sat under `FS42_LOCAL_ROOT/fs42/` with `media-links/` beside it. Rename the variable in `.env` if it is still `FS42_SSD_ROOT` (`sed -i 's/^FS42_SSD_ROOT=/FS42_LOCAL_ROOT=/' .env`) and let the script do the move:
 
@@ -78,9 +78,9 @@ It will not touch an older layout unless you pass `--migrate`: starting with an 
 
 **Why the script also looks at Docker.** Docker remembers a bind-style named volume's path *and options* when it first creates the volume. If either later changes (a new layout, or you move `FS42_LOCAL_ROOT`), `docker compose up` quietly keeps the old ones, or stops with a confusing `no such file or directory` mount error, and containers from an earlier set of services show up as "orphans". The media volume is the sharp case: its path is unchanged but it is now a recursive bind, and the old plain one would silently leave out nested shares. `./setup-dirs.sh` checks for exactly this and tells you what to run; `--migrate` does it. Removing such a volume only deletes Docker's note of the path: the folder it pointed at, and everything in it, is left alone.
 
-**A note on who owns what.** The container runs as root, so the folders it creates inside `config/` and `catalog/` (`runtime/`, `tuner/`, `media-links/`) are root's. `config/` and `catalog/` themselves stay yours, so the scripts you run on the host (`init.py`, `build_channels.py`, `fs42_link.py`) can write `groups.toml`, the tag folders and the links there. The image deliberately does not contain `/config` or `/app/catalog`: if it did, Docker would copy their owner (root) onto your folders the first time they are used.
+**A note on who owns what.** The container runs as root, so the folders it creates inside `config/` and `catalog/` (`runtime/`, `tuner/`, `media-links/`) are root's. `config/` and `catalog/` themselves stay yours if you made them (folders Docker had to make on the first start are root's: `sudo chown` them, or make them first), so the scripts you run on the host (`init.py`, `build_channels.py`, `fs42_link.py`) can write `groups.toml`, the tag folders and the links there. The image deliberately does not contain `/config` or `/app/catalog`: if it did, Docker would copy their owner (root) onto your folders the first time they are used.
 
-The three volumes are bind-style named volumes (`driver_opts: {type: none, o: bind, device: ...}`), which is why `setup-dirs.sh` has to create the host directories up front -- unlike a plain short-syntax bind mount, this style won't auto-create a missing source directory, and `docker compose up` fails outright if it's missing instead.
+The three volumes are plain bind mounts, so Docker creates a missing host folder itself and a new install needs no setup step. (They used to be bind-style named volumes, which fail on a missing folder: that is what `setup-dirs.sh` was for, and why `--migrate` clears the old volumes.)
 
 Stack and container name: `station-wrapper-43`.
 
@@ -147,8 +147,8 @@ Almost nothing needs setting: the defaults work, and what you would change is in
 | `FIRSTRUN_CLIP_SECONDS` | `60` | Length of the test card the test station loops | variable |
 | `SYNC_ENABLED` | off | Keeps the pool (`catalog/media-links`) of links to your media current (see "The pool") | variable |
 | `SYNC_*` | see `.env.example` | Pool options: interval, include/exclude, prune, catalog rebuilds | variable |
-| `FS42_LOCAL_ROOT` | required | The local folder holding `config/` and `catalog/` | variable |
-| `FS42_MEDIA_ROOT` | required | Your media (read-only in the container) | variable |
+| `FS42_LOCAL_ROOT` | `./data` | The local folder holding `config/` and `catalog/` | variable |
+| `FS42_MEDIA_ROOT` | `./media` | Your media (read-only in the container) | variable |
 | `FS42_CONFIG_ROOT`, `FS42_CATALOG_ROOT` | beside `FS42_LOCAL_ROOT` | Put config or catalog somewhere else (local disk only) | variable |
 | `FS42_ALLOW_NETWORK_CATALOG` | off | Only for a catalog on a share you have tested symlinks on | variable |
 | `TZ` | host's | The container's time zone: schedules are in local time | variable |
@@ -409,4 +409,4 @@ If one fails, nothing is pushed and `:latest` stays the last good image; the fai
 
 The checks catch the wrapper breaking, not FieldStation42 behaving differently (how it picks shows or fills breaks). To go back to an earlier image, set `image:` to its `:main-<short-sha>` tag and `docker compose up -d`.
 
-A local build (`docker compose build`, `docker build`) fetches the newest commit too; Docker reuses an earlier fetch from its build cache, so use `--no-cache` or `--build-arg FS42_REF=<commit>` for a newer one.
+A local build (`docker build`) fetches the newest commit too; Docker reuses an earlier fetch from its build cache, so use `--no-cache` or `--build-arg FS42_REF=<commit>` for a newer one.

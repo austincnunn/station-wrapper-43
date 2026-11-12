@@ -27,7 +27,7 @@ How a release is made, and what to do the day this moves to GitHub.
 - [ ] Create the repository (`JamesM92/station-wrapper-43`), push `main`, `dev` and the tags.
 - [ ] The workflows for GitHub are in `.github/workflows/` (the same checks, CodeQL, and image builds to GHCR using the built-in
       token). 
-- [ ] Image name: `ghcr.io/jamesm92/station-wrapper-43`. Update `docker-compose.yml` (`image:`), README's Deploy section (no `docker login`
+- [ ] Image name: `ghcr.io/austincnunn/station-wrapper-43`. Update `docker-compose.yml` (`image:`), README's Deploy section (no `docker login`
       for a public package), and `FS42_TAG`'s default.
 - [ ] Make the package public in GitHub's package settings.
 - [ ] Turn on Dependabot alerts and secret scanning, and protect `main` (require the CI and security checks).

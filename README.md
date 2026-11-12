@@ -35,11 +35,18 @@ Make your own TV channels out of your own videos. **Station Wrapper 43** runs [F
 ## Quick start
 
 ```
-cp .env.example .env        # set FS42_LOCAL_ROOT (local disk) and FS42_MEDIA_ROOT (your videos)
-./setup-dirs.sh             # creates the local layout, once
-docker login ghcr.io          # only if the package is private
-docker compose pull && docker compose up -d
+mkdir tv && cd tv
+curl -LO https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/docker-compose.yml
+docker compose up -d
 ```
+
+That is all of it: no settings file, no setup script. It makes two folders beside the compose file: `data` (its own files; keep it on a local disk, not a network share) and `media`. Put videos in `media`, or, if they are somewhere else, say where in a file called `.env` beside the compose file and run `docker compose up -d` again:
+
+```
+FS42_MEDIA_ROOT=/mnt/media
+```
+
+Every other setting is optional and listed in [.env.example](.env.example); most can be changed on the dashboard's Settings page instead.
 
 Prefer to write the compose file yourself, with only some media folders mounted? [docker-compose.sample.yml](docker-compose.sample.yml) is a complete one.
 
@@ -50,10 +57,10 @@ Open `http://<host>:5004`. A new install already has a Channel Guide on channel 
 No media yet? `scripts/fetch-demo-media.py` downloads a small library the Internet Archive marks as public domain (a Fleischer *Superman* cartoon series, holiday cartoons, a civil-defence short, vintage commercials) with `.nfo` files, posters and "we'll be right back" cards:
 
 ```
-python3 scripts/fetch-demo-media.py --dest demo-media      # about 300 MB; --features adds two full films
+python3 scripts/fetch-demo-media.py --dest media      # about 300 MB; --features adds two full films
 ```
 
-Mount `demo-media` as `FS42_MEDIA_ROOT`. Where each file came from, and its license mark, is in `demo-media/SOURCES.md`.
+Run it beside the compose file (it needs a clone of this repository for the script) and the videos land in `media`, where the container looks. Where each file came from, and its license mark, is in `media/SOURCES.md`.
 
 ## A short tour
 
@@ -125,7 +132,7 @@ Workflows live in `.github/workflows/` and need a runner labeled `ubuntu-latest`
 
 Developer checks that need Docker: `scripts/e2e-breaks.py` (the break settings against the real engine), `scripts/e2e-seasons.py`, and `scripts/make-screenshots.py` (the pictures in `docs/images`). `scripts/preflight.sh` runs the CI checks and a throwaway image build before a push.
 
-The image: `ghcr.io/jamesm92/station-wrapper-43` (one image, whatever you switch on); `FS42_TAG` picks `dev` (default), `dev-<short-sha>`, or a release version. Setup, once: no secret is needed: the workflow uses GitHub's own token.
+The image: `ghcr.io/austincnunn/station-wrapper-43` (one image, whatever you switch on); `FS42_TAG` picks `latest` (default), `main-<short-sha>`, `dev`, or a release version. Setup, once: no secret is needed: the workflow uses GitHub's own token.
 
 ## About how this was made
 

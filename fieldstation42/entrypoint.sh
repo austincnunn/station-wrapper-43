@@ -36,7 +36,7 @@ if [ "$catalog_is_smb" = 1 ] || [ "$catalog_links_work" = 0 ]; then
     echo "entrypoint: /app/catalog cannot hold working symlinks ($catalog_fs)." >&2
   fi
   echo "entrypoint: The catalog is a folder of symlinks. On a share they are refused or resolve on the server." >&2
-  echo "entrypoint: Put the catalog on LOCAL DISK: set FS42_LOCAL_ROOT in .env (the catalog is \$FS42_LOCAL_ROOT/fs42/catalog)." >&2
+  echo "entrypoint: Put the catalog on LOCAL DISK: it is ./data/catalog beside the compose file; FS42_LOCAL_ROOT (or FS42_CATALOG_ROOT) in .env moves it." >&2
   echo "entrypoint: Your media can stay on the share. Only the catalog must be local." >&2
   if [ "${FS42_ALLOW_NETWORK_CATALOG:-}" = 1 ]; then
     echo "entrypoint: FS42_ALLOW_NETWORK_CATALOG=1 is set, so starting anyway." >&2

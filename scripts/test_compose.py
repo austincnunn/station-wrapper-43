@@ -41,12 +41,7 @@ def have_compose():
 
 def mounts(cfg, svc="station-wrapper-43"):
     """{container path: (host path, read_only)} for a service."""
-    vols = cfg.get("volumes", {})
-    out = {}
-    for v in cfg["services"][svc]["volumes"]:
-        device = v["source"] if v["type"] == "bind" else vols[v["source"]]["driver_opts"]["device"]
-        out[v["target"]] = (device, bool(v.get("read_only")))
-    return out
+    return {v["target"]: (v["source"], bool(v.get("read_only"))) for v in cfg["services"][svc]["volumes"]}
 
 
 class ComposeTextTest(unittest.TestCase):
@@ -66,12 +61,12 @@ class ComposeTextTest(unittest.TestCase):
     def test_the_header_describes_each_volume_and_what_is_in_it(self):
         head = read(COMPOSE).split("name: station-wrapper-43")[0]
         for needle in ("CONFIG", "CATALOG", "MEDIA", "runtime/", "confs/", "tuner/", "groups.toml", "by-genre/",
-                       "media-links/", "FS42_LOCAL_ROOT", "rbind", "ONLY SOME FOLDERS"):
+                       "media-links/", "FS42_LOCAL_ROOT", "recursive", "ONLY SOME FOLDERS"):
             self.assertIn(needle, head + read(COMPOSE))
 
     def test_the_catalog_volume_repeats_it(self):
         text = read(COMPOSE)
-        volume = text[text.index("CATALOG: MUST NOT be"):text.index("catalog:\n    driver_opts")]
+        volume = text[text.index("    volumes:"):text.index(":/app/catalog")]
         self.assertIn("MUST NOT be an SMB/CIFS share", volume)
 
     def test_the_container_refuses_rather_than_runs_broken(self):
@@ -94,9 +89,9 @@ class ComposeRenderTest(unittest.TestCase):
         config = self.cfg()
         self.assertEqual(list(config["services"]), ["station-wrapper-43"])
         svc = config["services"]["station-wrapper-43"]
-        self.assertEqual(svc["image"], "ghcr.io/jamesm92/station-wrapper-43:dev")
+        self.assertEqual(svc["image"], "ghcr.io/austincnunn/station-wrapper-43:latest")
         self.assertEqual(svc["container_name"], "station-wrapper-43")
-        self.assertTrue(svc["build"]["context"].rstrip("/").endswith(os.path.basename(os.path.abspath(ROOT))))
+        self.assertNotIn("build", svc)      # a lone compose file must start: with build: a missing image is BUILT, not pulled
 
     def test_both_the_console_and_the_dashboard_are_published(self):
         ports = {int(p["target"]): p for p in self.cfg()["services"]["station-wrapper-43"]["ports"]}
@@ -118,27 +113,27 @@ class ComposeRenderTest(unittest.TestCase):
             if target not in ("/mnt/media", "/etc/localtime"):
                 self.assertFalse(read_only, f"{target} must be writable: the container writes there")
 
-    def test_the_media_volume_is_a_recursive_bind_so_shares_mounted_inside_it_show_up(self):
-        opts = self.cfg()["volumes"]["media"]["driver_opts"]
-        self.assertEqual(opts["o"], "rbind")
-        self.assertEqual(self.cfg()["volumes"]["config"]["driver_opts"]["o"], "bind")      # the local ones need no recursion
-        self.assertEqual(self.cfg()["volumes"]["catalog"]["driver_opts"]["o"], "bind")
+    def test_every_volume_is_a_plain_bind_so_docker_makes_a_missing_folder(self):
+        # a bind-style NAMED volume fails on a missing folder (which is what setup-dirs.sh was for); a plain bind
+        # is also recursive, so shares mounted inside the media folder show up
+        config = self.cfg()
+        self.assertFalse(config.get("volumes"))
+        self.assertEqual({v["type"] for v in config["services"]["station-wrapper-43"]["volumes"]}, {"bind"})
 
     def test_the_catalog_and_the_config_can_each_be_moved_to_another_local_path(self):
         m = mounts(self.cfg(FS42_CATALOG_ROOT="/elsewhere", FS42_CONFIG_ROOT="/cfg"))
         self.assertEqual(m["/app/catalog"][0], "/elsewhere")
         self.assertEqual(m["/config"][0], "/cfg")
 
-    def test_a_missing_local_path_stops_compose_with_the_reason(self):
-        for missing in ({"FS42_LOCAL_ROOT": None},
-                        {"FS42_LOCAL_ROOT": None, "FS42_CATALOG_ROOT": "/c"},     # runtime still needs it
-                        {"FS42_LOCAL_ROOT": None, "FS42_SSD_ROOT": "/old"}):      # the old name is not enough
-            config, err = render(**{**self.BASE, **missing})
-            self.assertIsNone(config)
-            self.assertIn("FS42_LOCAL_ROOT", err)
-            self.assertIn("LOCAL", err)
-            self.assertIn("SMB", err)
-            self.assertIn("FS42_SSD_ROOT", err)                                   # and it says how to rename
+    def test_with_nothing_set_it_starts_from_folders_beside_the_compose_file(self):
+        config, err = render()                                                    # no .env, no variables at all
+        self.assertIsNotNone(config, err)
+        here = os.path.realpath(ROOT)
+        m = {t: (os.path.realpath(src), ro) for t, (src, ro) in mounts(config).items()}
+        self.assertEqual(m["/config"], (os.path.join(here, "data", "config"), False))
+        self.assertEqual(m["/app/catalog"], (os.path.join(here, "data", "catalog"), False))
+        self.assertEqual(m["/mnt/media"], (os.path.join(here, "media"), True))
+        self.assertEqual(config["services"]["station-wrapper-43"]["image"], "ghcr.io/austincnunn/station-wrapper-43:latest")
 
     def test_the_optional_parts_are_off_unless_switched_on(self):
         env = self.cfg()["services"]["station-wrapper-43"]["environment"]

@@ -16,7 +16,7 @@ name: fs42
 
 services:
   station-wrapper-43:
-    image: ghcr.io/jamesm92/station-wrapper-43:dev     # CHANGE to a version tag for a stable install
+    image: ghcr.io/austincnunn/station-wrapper-43:latest   # CHANGE to a version tag for a stable install
     container_name: fs42
     restart: unless-stopped
     ports:

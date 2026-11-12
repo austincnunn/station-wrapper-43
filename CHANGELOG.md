@@ -5,6 +5,13 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 
 ## [Unreleased]
 
+### Changed
+- **Nothing to set up before the first start.** Download `docker-compose.yml`, run `docker compose up -d`, open the
+  dashboard. No `.env`, no `setup-dirs.sh`: config and catalog default to `./data` and media to `./media` beside the compose
+  file, and Docker makes the folders. `FS42_LOCAL_ROOT` and `FS42_MEDIA_ROOT` still move them; an existing install keeps its
+  paths. The volumes are plain bind mounts now (the old named volumes are unused: `./setup-dirs.sh --migrate` or
+  `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
+
 ### Fixed
 - **Players froze at the change from one clip to the next.** Each clip, song or black gap is its own ffmpeg, and
   each one started its timestamps again at 0, so time went backwards at every change; a player reading the channel as one

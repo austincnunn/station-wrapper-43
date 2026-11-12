@@ -1,7 +1,8 @@
 #!/bin/bash
-# Run once on the Docker host before the first `docker compose up`.
+# NOT needed for a new install: `docker compose up -d` makes its own folders. This is for moving
+# an OLDER layout into the current one, and for checking the folders by hand.
 #
-#   ./setup-dirs.sh              create the folders
+#   ./setup-dirs.sh              create and check the folders
 #   ./setup-dirs.sh --migrate    first move an older layout into this one, and clear Docker's
 #                                leftovers from it (old containers, volumes with old paths)
 #
@@ -13,10 +14,8 @@
 # and the third is your media (FS42_MEDIA_ROOT), which stays on the share and may hold
 # several separate shares as subfolders.
 #
-# The bind-style named volumes in docker-compose.yml (driver_opts: o=bind)
-# require their host-side directory to already exist -- unlike a plain
-# short-syntax bind mount, Docker will not create it for you, and `up` fails
-# with "no such file or directory" instead.
+# FS42_LOCAL_ROOT and FS42_MEDIA_ROOT must be set in .env for this script (it will not guess
+# where an older install lives).
 set -euo pipefail
 cd "$(dirname "$0")"
 
