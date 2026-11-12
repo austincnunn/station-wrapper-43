@@ -318,8 +318,11 @@
     let top = 4000;
     try { top = (await (await fetch("/system.json")).json()).video_kbps || top; } catch (e) { /* the default list */ }
     if (kbps >= top) kbps = 0;
-    for (const r of [1000, 2000, 3000, 4000, 5000].filter((r) => r < top)) qualityEl.append(new Option(`${r}k`, r));
-    qualityEl.append(new Option(`${top}k (full)`, 0));
+    const names = { 1000: "Low", 2000: "Medium", 3000: "Extra Medium", 4000: "High" };     // High: only under a 5000k tuner
+    const rates = [1000, 2000, 3000, 4000, 5000].filter((r) => r < top);
+    for (const r of rates) qualityEl.append(new Option(names[r], r));
+    qualityEl.append(new Option("Full", 0));
+    qualityEl.title = "Picture quality: " + rates.map((r) => `${names[r]} ${r}k`).concat(`Full ${top}k`).join(", ");
     qualityEl.value = String(kbps);
     if (qualityEl.selectedIndex < 0) qualityEl.value = "0";
   }
@@ -346,9 +349,16 @@
       { type: "mpegts", isLive: true, url: `/auto/v${encodeURIComponent(num)}` + (kbps ? `?kbps=${kbps}` : "") },
       {
         enableStashBuffer: false,
+        // Falling behind is made up by playing a little faster, not by jumping ahead. A jump is a visible skip and left
+        // 1 s in hand, so the next hiccup froze the picture (worst in Firefox); the tuner's 3 s replay for a new viewer
+        // sat right on the old 3 s limit. The jump is kept for a long way behind (a tab left in the background).
+        liveSync: true,
+        liveSyncMaxLatency: 5.0,
+        liveSyncTargetLatency: 3.0,
+        liveSyncPlaybackRate: 1.1,
         liveBufferLatencyChasing: true,
-        liveBufferLatencyMaxLatency: 3.0,
-        liveBufferLatencyMinRemain: 1.0,
+        liveBufferLatencyMaxLatency: 15.0,
+        liveBufferLatencyMinRemain: 3.0,
       }
     );
     player.attachMediaElement(video);

@@ -25,11 +25,14 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   programme on now (and when it ends) in lavender with blue type, in monospace type, along the bottom of the screen. What
   is on comes from the server's `/channels.json`, as on the dashboard; with the server out of reach the bar still has the
   number and name. It goes after `FS42_BANNER_SECONDS` (8 by default); `FS42_BANNER=off` still turns it off.
-- **A quality list on the Watch page.** 1000k up to the tuner's own rate (`video.vbitrate`, 4000k unless you changed it;
+- **A quality list on the Watch page.** Low, Medium, Extra Medium and Full: 1000k up to the tuner's own rate (`video.vbitrate`, 4000k unless you changed it;
   the list goes to 5000k). Pick a lower one on a slow connection: the server makes a lower-rate copy of the channel
   (480p at 2000k and under), which takes one more encoder while it is watched. Your choice is remembered.
 
 ### Changed
+- **The Watch page plays more smoothly.** When it falls behind it plays a little faster until it has caught up, and
+  keeps 3 seconds in hand. It used to jump ahead and keep 1 second, which showed as skips and short freezes, most of
+  all in Firefox. The picture is about 2 seconds further behind the channel.
 - **The Watch page has the bar at the top**, like every other page (its own "Channels" button is gone: the bar's
   Dashboard link goes to the same place).
 - **The Dashboard page puts the channels first.** The channels are at the top with a one-line count ("23 of 23 on air ·
