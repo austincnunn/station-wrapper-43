@@ -155,6 +155,31 @@ class ClientSync(unittest.TestCase):
             client.sync_once(client.Server(BASE, "wrong"), client.screen({}), {})
         self.assertEqual(getattr(e.exception, "code", None), 403)
 
+    def test_manifest_and_confs_refuse_path_traversal_and_symlink_escape(self):
+        outside = os.path.join(APP, "outside.txt")
+        open(outside, "w").write("safe")
+        manifest = {
+            "dirs": ["../../escape_dir", "good"],
+            "links": {"../escape_link": outside, "sub": APP, "good/ok.mp4": "/mnt/media/ok.mp4"},
+            "files": {"../outside.txt": [7, 1000], "sub/outside.txt": [7, 1000], "good/note.nfo": [4, 1000]},
+        }
+        client.apply_catalog(manifest, lambda rel: b"overwritten" if "outside" in rel else b"<tv/>")
+        self.assertEqual(open(outside).read(), "safe")
+        self.assertFalse(os.path.exists(os.path.join(APP, "escape_link")))
+        self.assertEqual(os.readlink(os.path.join(client.CATALOG, "good", "ok.mp4")), "/mnt/media/ok.mp4")
+        self.assertEqual(open(os.path.join(client.CATALOG, "good", "note.nfo")).read(), "<tv/>")
+        client.apply_confs({"..": "bad", "../outside.json": "bad", "notjson.txt": "bad", "ok.json": '{"station_conf": {}}',
+                            "web.json": '{"station_conf": {"network_type": "web", "web_url": "file:///etc/passwd"}}'})
+        self.assertFalse(os.path.exists(os.path.join(APP, "outside.json")))
+        self.assertTrue(os.path.exists(os.path.join(client.CONFS, "ok.json")))
+        self.assertFalse(os.path.exists(os.path.join(client.CONFS, "web.json")))       # a web station that opens a local file
+        # a folder that was a link here last time: replaced, and its own folders made in the same pass
+        os.symlink(APP, os.path.join(client.CATALOG, "was_link"))
+        client.apply_catalog({"dirs": ["was_link/inner", "was_link"], "links": {}, "files": {}}, lambda rel: b"")
+        self.assertTrue(os.path.isdir(os.path.join(client.CATALOG, "was_link", "inner")))
+        self.assertFalse(os.path.islink(os.path.join(client.CATALOG, "was_link")))
+        self.assertFalse(os.path.exists(os.path.join(client.CONFS, "notjson.txt")))
+
 
 class StopPlayer(unittest.TestCase):
     @unittest.skipUnless(os.path.isdir("/proc/self"), "needs /proc (Linux)")
@@ -195,6 +220,11 @@ class WebStations(unittest.TestCase):
 
     def test_drm_until_a_web_station_comes(self):
         self.assertFalse(client.web_needed())
+        json.dump({"station_conf": {"network_name": "Bad", "channel_number": 114, "network_type": "web", "web_url": "file:///etc/passwd"}},
+                  open(os.path.join(client.CONFS, "bad.json"), "w"))
+        self.assertFalse(client.web_needed())
+        self.assertEqual(client.fit(1024, 768), 0)
+        os.remove(os.path.join(client.CONFS, "bad.json"))
         json.dump({"station_conf": {"network_name": "PPV", "channel_number": 115, "network_type": "web", "web_url": "http://x"}},
                   open(os.path.join(client.CONFS, "ppv.json"), "w"))
         self.assertTrue(client.web_needed())

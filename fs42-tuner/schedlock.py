@@ -23,7 +23,8 @@ class LockTimeout(Exception):
 def held(timeout=3600, poll=0.2, on_wait=None):
     """Wait for the lock (up to `timeout` seconds), hold it for the body, then release it.
     on_wait() is called once if the lock is not free straight away, so a page can say what it is waiting for."""
-    fd = os.open(PATH, os.O_CREAT | os.O_RDWR, 0o666)
+    # every program that builds opens this read-write, whoever made it first: an empty file, nothing to protect
+    fd = os.open(PATH, os.O_CREAT | os.O_RDWR, 0o666)  # nosec B103
     try:
         end = time.time() + timeout
         told = False

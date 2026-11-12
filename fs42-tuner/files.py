@@ -807,7 +807,7 @@ class Files:
             with os.fdopen(fd, "w") as f:
                 json.dump({"follows": items}, f, indent=2)
                 f.write("\n")
-            os.chmod(tmp, 0o666)  # nosec B103 - a file in the config volume, editable from the host by whoever owns the folder
+            os.chmod(tmp, 0o644)
             os.replace(tmp, self.follows_path)
         except BaseException:
             if os.path.exists(tmp):

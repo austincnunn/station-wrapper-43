@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import urllib.error
 
 import iptv
 
@@ -27,9 +28,23 @@ class Addresses(unittest.TestCase):
     def test_only_the_right_kinds_of_address_are_accepted(self):
         self.assertEqual(iptv.check_url("  rtsp://u:p@10.0.0.5:554/live  ", "stream"), "rtsp://u:p@10.0.0.5:554/live")
         for bad, kind in (("file:///etc/passwd", "stream"), ("rtsp://cam/x", "m3u"), ("http://", "stream"), ("http://a b/c", "stream"),
-                          ("", "stream"), (None, "m3u"), ("concat:a|b", "stream"), ("http://x/\nfile", "stream")):
+                          ("", "stream"), (None, "m3u"), ("concat:a|b", "stream"), ("http://x/\nfile", "stream"),
+                          ("http://169.254.169.254/latest/meta-data", "m3u"), ("http://127.0.0.1:4242/api", "m3u")):
             with self.assertRaises(iptv.SourceError, msg=repr(bad)):
                 iptv.check_url(bad, kind)
+
+    def test_this_container_is_never_a_source_however_its_address_is_spelled(self):
+        for bad in ("http://127.1:4242/", "http://2130706433:4242/", "http://0:4242/", "http://0.0.0.0:4242/", "http://[::1]:4242/",
+                    "http://[::ffff:127.0.0.1]:4242/", "http://127.0.0.2:4242/", "http://LOCALHOST.:4242/", "http://a.localhost:4242/",
+                    "http://127.0.0.1:5004/api/settings", "http://[::ffff:169.254.169.254]/", "http://[fe80::1]/"):
+            with self.assertRaises(iptv.SourceError, msg=bad):
+                iptv.check_url(bad, "m3u")
+        for fine in ("http://127.0.0.1:8096/list.m3u", "http://192.168.1.5:4242/list.m3u"):     # another program on this host; another machine
+            self.assertEqual(iptv.check_url(fine, "m3u"), fine)
+        self.assertEqual(iptv.check_url("udp://239.1.1.1:1234", "stream"), "udp://239.1.1.1:1234")        # multicast television
+        self.assertEqual(iptv.parse_m3u("#EXTINF:-1,A\nhttp://127.1:4242/x\n#EXTINF:-1,B\nhttp://10.0.0.9/b.ts\n")[0]["name"], "B")
+        with self.assertRaises(urllib.error.HTTPError):                                        # a redirect is held to the same rule
+            iptv._CheckedRedirects().redirect_request(None, None, 302, "Found", {}, "http://127.0.0.1:4242/stations")
 
     def test_a_password_in_an_address_is_hidden_when_shown(self):
         self.assertEqual(iptv.mask("rtsp://admin:s3cret@10.0.0.5:554/live"), "rtsp://admin:****@10.0.0.5:554/live")

@@ -146,14 +146,24 @@ class Auth:
         now = self.clock()
         with self._lock:
             recent = [t for t in self._fails.get(who, []) if now - t < FAIL_WINDOW]
-            self._fails[who] = recent
+            if recent:
+                self._fails[who] = recent
+            else:
+                self._fails.pop(who, None)
             if len(recent) >= FAIL_LIMIT:
                 return int(FAIL_WINDOW - (now - recent[0])) + 1
         return 0
 
     def failed(self, who):
+        now = self.clock()
         with self._lock:
-            self._fails.setdefault(who, []).append(self.clock())
+            if len(self._fails) >= 256:
+                self._fails = {k: ts for k, ts in ((k, [t for t in v if now - t < FAIL_WINDOW]) for k, v in self._fails.items()) if ts}
+                # ponytail: still full of live entries: the stalest address is forgotten, so the table never grows.
+                # 256 addresses failing inside one window can push a lockout out early; raise the cap if that matters.
+                if len(self._fails) >= 256 and who not in self._fails:
+                    self._fails.pop(min(self._fails, key=lambda k: self._fails[k][-1]))
+            self._fails.setdefault(who, []).append(now)
 
     def succeeded(self, who):
         with self._lock:

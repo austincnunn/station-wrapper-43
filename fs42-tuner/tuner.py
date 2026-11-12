@@ -1467,7 +1467,7 @@ def system_status():
         "viewers": {"in_use": sum(len(c.subs) for c in CHANS.values()), "max": TUNER_COUNT,
                     "served_total": counters["viewers_served"],
                     "refused_total": counters["refused"]},
-        "schedule": {"db": DB_PATH,
+        "schedule": {"db": os.path.basename(DB_PATH),
                      "db_modified": (datetime.fromtimestamp(os.path.getmtime(DB_PATH)).isoformat()
                                      if os.path.exists(DB_PATH) else None),
                      "channels_on_air": sum(1 for r in channels_status() if r["on_air"])},
@@ -1544,6 +1544,7 @@ def thumbnail(num):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    rescanned = 0.0                # when /lineup.post last forced a refresh of the upstream lineup
 
     def log_message(self, *a):
         pass
@@ -2031,7 +2032,9 @@ class Handler(BaseHTTPRequestHandler):
             body = self._json_body()
             return None if body is None else self._files_api(p, {}, body)
         if urlparse(self.path).path == "/lineup.post":
-            if UPSTREAM is not None:
+            # open on purpose (an HDHomeRun client's "scan" can't log in), so a forced refresh is at most one in 30 seconds
+            if UPSTREAM is not None and time.time() - Handler.rescanned >= 30:
+                Handler.rescanned = time.time()
                 try:
                     UPSTREAM.lineup(force=True)
                 except UpstreamError as e:
@@ -2128,7 +2131,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._bytes(xml.encode(), "application/xml")
 
         if p == "/xmltv.xml":
-            force = "refresh" in (urlparse(self.path).query or "")
+            force = "refresh" in (urlparse(self.path).query or "") and ((not AUTH.enabled) or (not AUTH.has_password()) or self._session_ok())
             body = GUIDE.xmltv(force=force)
             if b"@@BASE@@" in body:                       # pictures are addressed from where this client reached us
                 body = body.replace(b"@@BASE@@", self._base().encode())
@@ -2257,6 +2260,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/library.json":
             if "refresh" in urlparse(self.path).query:        # the Rescan button: asked for, so it is done
+                if AUTH.enabled and AUTH.has_password() and not self._session_ok():
+                    return self._json({"error": "log in first", "login": "/login.html", "setup": False}, 401)
                 library.request_scan(LIBRARY_ROOT)
             return self._json(library.cached(LIBRARY_ROOT))      # a page view never starts a scan: it shows the last one
 
@@ -2459,6 +2464,7 @@ if __name__ == "__main__":
               f"FieldStation42 console; channels are off air until then.")
 
     port = int(CONF.get("port", 5004))
+    iptv.OWN_PORTS.add(port)                 # this dashboard is never one of its own sources
     print(f"Station Wrapper 43 tuner on :{port}")
     print(f"  advertising {ADVERTISE}")
 

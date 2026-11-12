@@ -21,8 +21,11 @@ while true; do
   if [ -e "$FLAG" ] || [ $((now - last)) -ge $((INTERVAL * 60)) ]; then
     rm -f "$FLAG"
     echo "farm: $(date '+%Y-%m-%d %H:%M:%S') preparing /app/catalog/by-genre"
-    # shellcheck disable=SC2086   # ARGS is a list of options on purpose
-    if python3 /opt/wrapper/build_channels.py --links-only $ARGS; then
+    set -f
+    # shellcheck disable=SC2086   # ARGS is a list of options on purpose (globbing disabled with set -f)
+    set -- $ARGS
+    set +f
+    if python3 /opt/wrapper/build_channels.py --links-only "$@"; then
       :
     else
       echo "farm: that pass reported an error (exit $?); will try again next time" >&2

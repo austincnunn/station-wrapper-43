@@ -34,7 +34,7 @@ def _save(path, data):
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
-        os.chmod(tmp, 0o666)  # nosec B103 - a file in the config volume, editable from the host by whoever owns the folder            # the config volume is yours: you can read and edit it from the host
+        os.chmod(tmp, 0o644)
         os.replace(tmp, path)
     except BaseException:
         if os.path.exists(tmp):

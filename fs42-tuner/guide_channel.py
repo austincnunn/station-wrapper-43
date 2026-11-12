@@ -125,13 +125,15 @@ def frame_size(opts, size):
 
 def audio_files(path):
     """Audio files under a folder (every level), or the one file: sorted. [] when there are none."""
-    if not path:
+    if not path or any(c in path for c in "\r\n\0"):
         return []
     if os.path.isfile(path):
         return [path] if os.path.splitext(path)[1].lower() in AUDIO_EXT else []
     out = []
     for root, _dirs, names in os.walk(path, followlinks=True):
-        out += [os.path.join(root, n) for n in names if os.path.splitext(n)[1].lower() in AUDIO_EXT and not n.startswith(".")]
+        out += [os.path.join(root, n) for n in names
+                if os.path.splitext(n)[1].lower() in AUDIO_EXT and not n.startswith(".")
+                and not any(c in os.path.join(root, n) for c in "\r\n\0")]
     return sorted(out)
 
 
@@ -202,9 +204,10 @@ class MusicIndex:
 def playlist_text(files, rounds=30, seed=None):
     """An ffconcat playlist that plays the files in a shuffled order, over and over (a new shuffle each round)."""
     rng = random.Random(seed)
+    safe_files = [f for f in files if isinstance(f, str) and not any(c in f for c in "\r\n\0")]
     lines = ["ffconcat version 1.0"]
     for _ in range(rounds):
-        order = list(files)
+        order = list(safe_files)
         rng.shuffle(order)
         lines += ["file '" + f.replace("'", "'\\''") + "'" for f in order]
     return "\n".join(lines) + "\n"

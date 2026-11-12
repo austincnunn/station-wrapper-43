@@ -33,24 +33,33 @@ jobs:
       - name: Work out the tags and the FieldStation42 commit
         env:
           FS42_REF: ${{ github.event.inputs.fs42_ref || 'main' }}
+          GH_SHA: ${{ github.sha }}
+          GH_REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
-          branch="${{ github.ref_name }}"
+          printf '%s' "$FS42_REF" | grep -qE '^[A-Za-z0-9._][A-Za-z0-9._/-]*$' || { echo "invalid fs42_ref"; exit 1; }
+          sha="$(echo "$GH_SHA" | cut -c1-7)"
+          branch="$GH_REF_NAME"
           fs42="$(git ls-remote https://github.com/shane-mason/FieldStation42.git "$FS42_REF" | head -1 | cut -f1)"
+          if [ -z "$fs42" ]; then
+            printf '%s' "$FS42_REF" | grep -qE '^[0-9a-fA-F]{7,40}$' || { echo "unknown ref: $FS42_REF"; exit 1; }
+            fs42="$FS42_REF"
+          fi
           {
             echo "SHA=$sha"
             echo "TAG=$branch-$sha"
             echo "MOVING=$([ "$branch" = main ] && echo latest || echo dev)"
-            echo "FS42=${fs42:-$FS42_REF}"
+            echo "FS42=$fs42"
             echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_ENV"
 
       - name: Log in to the registry
         # Forgejo's automatic token can't write packages: REGISTRY_TOKEN is a personal token with package read+write
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          [ -n "${{ secrets.REGISTRY_TOKEN }}" ] || { echo "set the repo secret REGISTRY_TOKEN (a token with package: read and write)"; exit 1; }
-          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login git.herbert.link -u austin --password-stdin
+          [ -n "$REGISTRY_TOKEN" ] || { echo "set the repo secret REGISTRY_TOKEN (a token with package: read and write)"; exit 1; }
+          printf '%s\n' "$REGISTRY_TOKEN" | docker login git.herbert.link -u austin --password-stdin
 
       - name: Build, check, smoke-test, push
         run: |

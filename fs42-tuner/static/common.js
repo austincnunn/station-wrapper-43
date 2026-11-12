@@ -33,6 +33,7 @@
     const adv = el("a", {
       href: `${location.protocol}//${location.hostname}:4242/`, target: "_blank", rel: "noopener",
       textContent: "FieldStation42 console (advanced) ↗", className: "adv",
+      title: "No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env",
     });
     bar.append(adv);
     const host = document.getElementById("dash") || document.body;

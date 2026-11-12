@@ -108,9 +108,14 @@ def _station_confs():
                 yield os.path.join(CONFS, f), data
 
 
+def _safe_web_url(url):
+    return isinstance(url, str) and url.startswith(("http://", "https://")) and not any(c.isspace() or ord(c) < 32 for c in url)
+
+
 def web_needed():
     """Does a station need FieldStation42's browser (a pay-per-view or other web station)?"""
-    return any(d["station_conf"].get("network_type") == "web" for _, d in _station_confs())
+    return any(d["station_conf"].get("network_type") == "web" and _safe_web_url(d["station_conf"].get("web_url"))
+               for _, d in _station_confs())
 
 
 def vaapi_driver(probe=None):
@@ -153,7 +158,7 @@ def fit(width, height):
     n = 0
     for path, data in _station_confs():
         c = data["station_conf"]
-        if c.get("network_type") == "web" and (c.get("width"), c.get("height"), c.get("x"), c.get("y")) != (width, height, 0, 0):
+        if c.get("network_type") == "web" and _safe_web_url(c.get("web_url")) and (c.get("width"), c.get("height"), c.get("x"), c.get("y")) != (width, height, 0, 0):
             c.update(width=width, height=height, x=0, y=0)
             _atomic(path, json.dumps(data).encode())
             n += 1
@@ -245,6 +250,24 @@ def _atomic(path, data):
     os.replace(tmp, path)
 
 
+def _safe_rel(root, rel):
+    """Cleaned path inside `root` for a relative manifest entry, or None when it walks outside or through a symlink."""
+    if not isinstance(rel, str) or not rel or "\\" in rel or "\0" in rel or os.path.isabs(rel):
+        return None
+    parts = rel.split("/")
+    if any(not p or p in (".", "..") for p in parts):
+        return None
+    full = os.path.normpath(os.path.join(root, *parts))
+    if os.path.commonpath([root, full]) != root or full == root:
+        return None
+    cur = root
+    for part in parts[:-1]:
+        cur = os.path.join(cur, part)
+        if os.path.islink(cur):
+            return None
+    return full
+
+
 def apply_confs(confs):
     """Replace the server's station configs with `confs` ({file: text}); this player's own files are kept."""
     os.makedirs(CONFS, exist_ok=True)
@@ -252,24 +275,40 @@ def apply_confs(confs):
         if f.endswith(".json") and f not in confs and f not in KEEP_CONFS and not f.startswith("stream-"):
             os.remove(os.path.join(CONFS, f))
     for f, text in confs.items():
-        if f in KEEP_CONFS or "/" in f:
+        if f in KEEP_CONFS or "/" in f or "\\" in f or "\0" in f or f in (".", "..") or not f.endswith(".json"):
             continue
+        try:                                          # a web station that would open anything but a web page is not kept
+            c = json.loads(text).get("station_conf", {})
+            if c.get("network_type") == "web" and not _safe_web_url(c.get("web_url")):
+                print(f"sync: left out {f}: its web_url is not an http(s) address")
+                continue
+        except (ValueError, AttributeError):
+            pass
         _atomic(os.path.join(CONFS, f), text.encode())
 
 
 def apply_catalog(manifest, fetch):
     """Make the local catalog match the server's: links made, repointed or removed; real files fetched when they changed."""
-    links, files, dirs = manifest.get("links", {}), manifest.get("files", {}), manifest.get("dirs", [])
-    root = CATALOG
+    raw_links = manifest.get("links", {}) if isinstance(manifest.get("links"), dict) else {}
+    raw_files = manifest.get("files", {}) if isinstance(manifest.get("files"), dict) else {}
+    raw_dirs = manifest.get("dirs", []) if isinstance(manifest.get("dirs"), list) else []
+    root = os.path.abspath(CATALOG)
     os.makedirs(root, exist_ok=True)
-    for d in dirs:
-        p = os.path.join(root, d)
+    dirs = sorted(d for d in raw_dirs if isinstance(d, str))
+    for d in dirs:                          # parents first, each checked as it comes: a link turned folder is replaced before its children
+        p = _safe_rel(root, d)
+        if not p:
+            continue
         if os.path.islink(p):
             os.remove(p)
         os.makedirs(p, exist_ok=True)
+    links = {rel: target for rel, target in raw_links.items()
+             if isinstance(target, str) and target and "\0" not in target and _safe_rel(root, rel)}
     made = 0
     for rel, target in links.items():
-        p = os.path.join(root, rel)
+        p = _safe_rel(root, rel)
+        if not p:
+            continue
         if os.path.islink(p) and os.readlink(p) == target:
             continue
         if os.path.lexists(p):
@@ -277,9 +316,13 @@ def apply_catalog(manifest, fetch):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         os.symlink(target, p)
         made += 1
+    files = {rel: meta for rel, meta in raw_files.items()
+             if rel not in links and isinstance(meta, (list, tuple)) and len(meta) == 2 and _safe_rel(root, rel)}
     got = 0
     for rel, (size, mtime) in files.items():
-        p = os.path.join(root, rel)
+        p = _safe_rel(root, rel)
+        if not p:
+            continue
         try:
             st = os.lstat(p)
             if not os.path.islink(p) and st.st_size == size and int(st.st_mtime) == mtime:

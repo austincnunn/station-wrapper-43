@@ -936,7 +936,7 @@
         box.append(el("h2", { textContent: "This station can't be edited here" }),
           el("p", { textContent: `It ${got.why}.` }),
           el("p", { className: "dim", textContent: "Edit it in the FieldStation42 console, which understands every setting. Nothing here will change it." }),
-          el("a", { className: "btn", href: `${location.protocol}//${location.hostname}:4242/static/stations.html`, target: "_blank", rel: "noopener", textContent: "Open the FieldStation42 console ↗" }),
+          el("a", { className: "btn", href: `${location.protocol}//${location.hostname}:4242/static/stations.html`, target: "_blank", rel: "noopener", title: "No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env", textContent: "Open the FieldStation42 console ↗" }),
           el("a", { className: "btn", href: "/stations.html", textContent: "Back to stations" }));
         return;
       }

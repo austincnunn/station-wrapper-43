@@ -58,7 +58,7 @@ services:
       #   - anime:/mnt/media/anime:ro
       - /etc/localtime:/etc/localtime:ro
     ports:
-      - "4242:4242"     # FieldStation42's console: build stations, catalogs, schedules
+      - "${FS42_CONSOLE_BIND:-127.0.0.1}:4242:4242"     # FieldStation42's console (has no login: kept on localhost unless FS42_CONSOLE_BIND=0.0.0.0)
       - "5004:5004"     # the dashboard and player: what's on, watch a channel
     environment:
       # Leave unset. Only for a config or catalog on a share where you have tested it.

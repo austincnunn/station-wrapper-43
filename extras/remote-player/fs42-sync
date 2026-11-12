@@ -36,13 +36,18 @@ restart=""
 [ "$before" = "$(cat confs/*.json | md5sum)" ] || restart="the stations changed"
 
 rsync -a "$FEED":crt/FS42_REF runtime/server_fs42_ref
-want=$(cat runtime/server_fs42_ref)
+want=$(tr -d '[:space:]' < runtime/server_fs42_ref)
+if ! printf '%s' "$want" | grep -qE '^[0-9a-f]{7,40}$'; then
+  logger -t fs42-sync "refused invalid server_fs42_ref: $want"
+  want=""
+fi
 have=$(cat runtime/fs42_ref 2>/dev/null || git rev-parse HEAD)
 if [ -n "$want" ] && [ "$want" != "$have" ]; then
   git fetch -q --depth 1 origin "$want"
   git checkout -q "$want"
-  grep -vE "^[[:space:]]*(#|$)|$SKIP_PACKAGES" install/requirements.in > /tmp/fs42-req.txt
-  env/bin/pip install -q --progress-bar off -r /tmp/fs42-req.txt
+  grep -vE "^[[:space:]]*(#|$)|$SKIP_PACKAGES" install/requirements.in > runtime/fs42-req.txt
+  env/bin/pip install -q --progress-bar off -r runtime/fs42-req.txt
+  rm -f runtime/fs42-req.txt
   echo "$want" > runtime/fs42_ref
   restart="FieldStation42 updated to $want (the server's version)"
 fi

@@ -10,7 +10,10 @@
   const channelsEl = document.getElementById("channels");
   const statusEl = document.getElementById("status-line");
   const consoleLink = document.getElementById("console-link");
-  if (consoleLink) consoleLink.href = `${location.protocol}//${location.hostname}:4242/`;
+  if (consoleLink) {
+    consoleLink.href = `${location.protocol}//${location.hostname}:4242/`;
+    consoleLink.title = "No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env";
+  }
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({

@@ -31,7 +31,9 @@ import urllib.parse
 import urllib.request
 import uuid
 
-CONNECT = "https://connect.emby.media/service"
+import iptv
+
+CONNECT ="https://connect.emby.media/service"
 MIRROR_DIR = "Emby"                         # the mirror's folder in the media pool (client mode streams what plays from it)
 APP = "StationWrapper43/1.0"
 TYPES = "Movie,Episode,Video"
@@ -39,10 +41,19 @@ PAGE = 500
 REMOTE_CAP_KBPS = 6000                      # the starting cap for a server reached over the internet
 MAX_ITEMS = 50000                           # per library
 BAD = re.compile(r'[\x00-\x1f/\\:*?"<>|]+')
+CTRL = re.compile(r"[\x00-\x1f\x7f]+")       # what must never reach a request header (a token from a server)
 
 
 class EmbyError(Exception):
     """Something the person can fix: the message is safe to show."""
+
+
+def _safe_server_url(url):
+    if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+        return False
+    if any(c.isspace() or ord(c) < 32 for c in url):
+        return False
+    return not iptv.forbidden(urllib.parse.urlsplit(url))      # the one rule for every outside address (iptv.py)
 
 
 def clean_name(text, fallback="Untitled"):
@@ -141,7 +152,7 @@ def _http(method, url, headers=None, data=None, timeout=20):
     req = urllib.request.Request(url, data=data, method=method,
                                  headers={"User-Agent": APP, "Accept": "application/json", **(headers or {})})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - http(s) addresses only, checked by callers
+        with iptv.OPENER.open(req, timeout=timeout) as r:  # nosec B310 - http(s) only, checked by callers and on every redirect
             return r.status, parse(r.read(64 * 1024 * 1024), r.headers.get("Content-Type", ""))
     except urllib.error.HTTPError as e:
         return e.code, None
@@ -247,7 +258,7 @@ class Emby:
         if not s.get("access_key") or not self.state.get("connect"):
             raise EmbyError(f"{s.get('name', sid)}: sign in with Emby Connect again")
         why = "no address"
-        for base in [u for u in (s.get("local"), s.get("url")) if u and u.lower().startswith(("http://", "https://"))]:
+        for base in [u for u in (s.get("local"), s.get("url")) if _safe_server_url(u)]:
             try:
                 code, got = self.http("GET", f"{base}/emby/Connect/Exchange?format=json&ConnectUserId="
                                       + urllib.parse.quote(self.state["connect"]["user_id"]),
@@ -256,9 +267,12 @@ class Emby:
                 why = str(e)
                 continue
             if code == 200 and isinstance(got, dict) and got.get("AccessToken"):
+                tok = CTRL.sub("", str(got["AccessToken"]))
+                if not tok:
+                    continue
                 with self.lock:
                     s.update({"reach": base, "remote": base != s.get("local"), "user_id": got.get("LocalUserId"),
-                              "token": got["AccessToken"], "error": None})
+                              "token": tok, "error": None})
                     self._save()
                 return s
             why = f"{base} answered {code}"
@@ -478,13 +492,15 @@ class Emby:
             raise EmbyError("that server is not on the account any more")
         if not s.get("token"):
             s = self._reach(sid)
-        headers = f"X-Emby-Token: {s['token']}\r\nX-Emby-Authorization: {self._auth_header()}\r\n"
+        tok = CTRL.sub("", str(s["token"]))
+        headers = f"X-Emby-Token: {tok}\r\nX-Emby-Authorization: {self._auth_header()}\r\n"
         opts = ["-headers", headers, "-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "5",
                 "-rw_timeout", "15000000"]
-        base, dev = s["reach"], self.state["device_id"]
+        base, dev = s["reach"], urllib.parse.quote(str(self.state["device_id"]), safe="")
+        safe_item = urllib.parse.quote(str(item_id), safe="")
         cap = (s.get("cap_kbps") or 0) if s.get("remote") else 0      # on the LAN: always the original file
         if not cap:
-            return {"opts": opts, "url": f"{base}/emby/Videos/{item_id}/stream?static=true&DeviceId={dev}", "seek": seek,
+            return {"opts": opts, "url": f"{base}/emby/Videos/{safe_item}/stream?static=true&DeviceId={dev}", "seek": seek,
                     "done": lambda: None}
         session = uuid.uuid4().hex
         q = urllib.parse.urlencode({"VideoCodec": "h264", "AudioCodec": "aac", "VideoBitrate": cap * 1000,
@@ -494,7 +510,7 @@ class Emby:
         def done():                                  # tell the server to stop making it now, not when it notices
             try:
                 self.http("DELETE", f"{base}/emby/Videos/ActiveEncodings?DeviceId={dev}&PlaySessionId={session}",
-                          {"X-Emby-Token": s["token"]}, timeout=5)
+                          {"X-Emby-Token": tok}, timeout=5)
             except EmbyError:
                 pass
-        return {"opts": opts, "url": f"{base}/emby/Videos/{item_id}/stream.ts?{q}", "seek": 0.0, "done": done}
+        return {"opts": opts, "url": f"{base}/emby/Videos/{safe_item}/stream.ts?{q}", "seek": 0.0, "done": done}

@@ -99,8 +99,11 @@ class ComposeRenderTest(unittest.TestCase):
         self.assertTrue(svc["build"]["context"].rstrip("/").endswith(os.path.basename(os.path.abspath(ROOT))))
 
     def test_both_the_console_and_the_dashboard_are_published(self):
-        ports = sorted((int(p["target"]), p["published"]) for p in self.cfg()["services"]["station-wrapper-43"]["ports"])
-        self.assertEqual(ports, [(4242, "4242"), (5004, "5004")])
+        ports = {int(p["target"]): p for p in self.cfg()["services"]["station-wrapper-43"]["ports"]}
+        self.assertEqual(sorted((t, p["published"]) for t, p in ports.items()), [(4242, "4242"), (5004, "5004")])
+        self.assertEqual(ports[4242].get("host_ip"), "127.0.0.1")
+        lan = {int(p["target"]): p for p in self.cfg(FS42_CONSOLE_BIND="0.0.0.0")["services"]["station-wrapper-43"]["ports"]}
+        self.assertEqual(lan[4242].get("host_ip"), "0.0.0.0")
 
     def test_config_and_catalog_are_local_folders_under_the_one_root(self):
         m = mounts(self.cfg())

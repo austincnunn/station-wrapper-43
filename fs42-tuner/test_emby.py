@@ -133,6 +133,8 @@ class EmbyTest(unittest.TestCase):
         self.assertEqual(got["seek"], 125.5)
         self.assertNotIn("stok", got["url"])                          # the token is in a header, not the logged address
         self.assertIn("X-Emby-Token: stok", got["opts"][got["opts"].index("-headers") + 1])
+        self.assertFalse(emby._safe_server_url("http://169.254.169.254/emby"))
+        self.assertFalse(emby._safe_server_url("http://127.0.0.1:4242"))
 
         far, fake = self.make([], lan=False)
         far._reach("sys1")

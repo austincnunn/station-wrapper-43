@@ -156,9 +156,9 @@ fi
 #    host. Create it from the image's default the first time, never overwrite it.
 if [ ! -e /config/tuner/config.json ]; then
   if cp /opt/tuner-config.default.json /config/tuner/config.json 2>/dev/null; then
-    # The container runs as root, but scripts/build_channels.py runs on the host as you and
-    # must be able to write this file. It holds no secrets.
-    chmod 666 /config/tuner/config.json
+    # Hand ownership to whoever owns the /config folder on the host; never leave it world-writable.
+    chown --reference=/config /config/tuner/config.json 2>/dev/null || true
+    chmod 644 /config/tuner/config.json
     echo "entrypoint: created /config/tuner/config.json from the default"
   else
     echo "entrypoint: could not create /config/tuner/config.json (is /config read-only?); the tuner will not start" >&2

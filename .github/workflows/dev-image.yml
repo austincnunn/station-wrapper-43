@@ -45,18 +45,26 @@ jobs:
       - id: p
         env:
           FS42_REF: ${{ github.event.inputs.fs42_ref || 'main' }}
+          GH_SHA: ${{ github.sha }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          sha="$(echo "${{ github.sha }}" | cut -c1-7)"
-          branch="${{ github.ref_name }}"
+          printf '%s' "$FS42_REF" | grep -qE '^[A-Za-z0-9._][A-Za-z0-9._/-]*$' || { echo "invalid fs42_ref"; exit 1; }
+          sha="$(echo "$GH_SHA" | cut -c1-7)"
+          branch="$GH_REF_NAME"
           # a branch or tag is resolved to its commit here, once; a commit is used as given
           fs42="$(git ls-remote https://github.com/shane-mason/FieldStation42.git "$FS42_REF" | head -1 | cut -f1)"
+          if [ -z "$fs42" ]; then
+            printf '%s' "$FS42_REF" | grep -qE '^[0-9a-fA-F]{7,40}$' || { echo "unknown ref: $FS42_REF"; exit 1; }
+            fs42="$FS42_REF"
+          fi
           {
-            echo "image=$REGISTRY/$(echo "${{ github.repository_owner }}" | tr A-Z a-z)/$IMAGE"
+            echo "image=$REGISTRY/$(echo "$GH_OWNER" | tr A-Z a-z)/$IMAGE"
             echo "sha=$sha"
             echo "tag=$branch-$sha"
             echo "moving=$([ "$branch" = main ] && echo latest || echo dev)"
-            echo "fs42=${fs42:-$FS42_REF}"
+            echo "fs42=$fs42"
             echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
 
@@ -77,16 +85,26 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: printf '%s\n' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
       - name: Build, check, smoke-test, push (${{ matrix.arch }})
+        env:
+          PREP_IMAGE: ${{ needs.prep.outputs.image }}
+          PREP_TAG: ${{ needs.prep.outputs.tag }}
+          PREP_FS42: ${{ needs.prep.outputs.fs42 }}
+          PREP_SHA: ${{ needs.prep.outputs.sha }}
+          PREP_DATE: ${{ needs.prep.outputs.date }}
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          ref="${{ needs.prep.outputs.image }}:${{ needs.prep.outputs.tag }}-${{ matrix.arch }}"
+          ref="$PREP_IMAGE:$PREP_TAG-$ARCH"
           docker build -t "$ref" \
-            --build-arg FS42_REF="${{ needs.prep.outputs.fs42 }}" \
-            --build-arg BUILD_REF="${{ needs.prep.outputs.tag }}" --build-arg BUILD_SHA="${{ needs.prep.outputs.sha }}" \
-            --build-arg BUILD_DATE="${{ needs.prep.outputs.date }}" .
+            --build-arg FS42_REF="$PREP_FS42" \
+            --build-arg BUILD_REF="$PREP_TAG" --build-arg BUILD_SHA="$PREP_SHA" \
+            --build-arg BUILD_DATE="$PREP_DATE" .
           fs42="$(docker run --rm --entrypoint cat "$ref" /opt/FS42_REF | cut -c1-7)"
           echo "FieldStation42 in this image: $fs42"
           # what the wrapper relies on in FieldStation42, checked against the copy inside the image (scripts fed on
@@ -108,14 +126,19 @@ jobs:
       packages: write
     steps:
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: printf '%s\n' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
       - name: Publish one tag for both architectures
+        env:
+          image: ${{ needs.prep.outputs.image }}
+          tag: ${{ needs.prep.outputs.tag }}
+          moving: ${{ needs.prep.outputs.moving }}
         run: |
           set -euo pipefail
-          image="${{ needs.prep.outputs.image }}"
-          tag="${{ needs.prep.outputs.tag }}"
-          docker buildx imagetools create -t "$image:${{ needs.prep.outputs.moving }}" -t "$image:$tag" \
+          docker buildx imagetools create -t "$image:$moving" -t "$image:$tag" \
             "$image:$tag-amd64" "$image:$tag-arm64"
           docker buildx imagetools inspect "$image:$tag"
-          echo "published $image:${{ needs.prep.outputs.moving }} and :$tag (amd64, arm64)" >> "$GITHUB_STEP_SUMMARY"
+          echo "published $image:$moving and :$tag (amd64, arm64)" >> "$GITHUB_STEP_SUMMARY"

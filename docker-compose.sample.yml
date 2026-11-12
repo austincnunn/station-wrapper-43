@@ -20,7 +20,7 @@ services:
     container_name: fs42
     restart: unless-stopped
     ports:
-      - "4242:4242"      # FieldStation42's console (no login: keep it on your own network)
+      - "${FS42_CONSOLE_BIND:-127.0.0.1}:4242:4242"      # FieldStation42's console (no login: this machine only, unless FS42_CONSOLE_BIND=0.0.0.0)
       - "5004:5004"      # the dashboard, the player, and the HDHomeRun / guide endpoints for Jellyfin
     tmpfs:
       - /cache:size=6g,mode=1777        # read-ahead: the next break or episode is copied to RAM

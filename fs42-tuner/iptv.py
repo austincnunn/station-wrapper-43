@@ -15,18 +15,21 @@ Two ways to play a channel:
     relay       copy the stream as it is, with no re-encode: cheap, but a browser may not be able to play it
 """
 import hashlib
+import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
-PATH = os.environ.get("FS42_IPTV", "/config/tuner/sources.json")
+PATH =os.environ.get("FS42_IPTV", "/config/tuner/sources.json")
 TYPES = ("hdhomerun", "m3u", "stream")
 MODES = ("convert", "relay", "guide")      # "guide": a tuner whose channels are NOT played here (its listings only go in the guide)
 SCHEMES = {"hdhomerun": ("http", "https"), "m3u": ("http", "https"),
@@ -43,6 +46,61 @@ class SourceError(Exception):
 
 
 # ---- addresses --------------------------------------------------------------------------------------------
+OWN_PORTS = {4242, 5004}      # the console (no login) and this dashboard: never a source. tuner.py adds its own port.
+_DEFAULT_PORTS = {"http": 80, "https": 443, "rtsp": 554, "rtsps": 322, "rtmp": 1935, "rtmps": 443}
+
+
+def _addresses(host, resolve):
+    """The IP addresses a host name stands for: [] when it is a name and `resolve` is off, or it does not resolve."""
+    try:
+        return [ipaddress.ip_address(host)]
+    except ValueError:
+        pass
+    try:
+        return [ipaddress.ip_address(socket.inet_aton(host))]     # 127.1, 2130706433, 0: forms the C library also takes
+    except OSError:
+        pass
+    if not resolve:
+        return []
+    try:
+        return [ipaddress.ip_address(i[4][0].split("%")[0]) for i in socket.getaddrinfo(host, None)]
+    except (OSError, ValueError):
+        return []
+
+
+def forbidden(parts, resolve=True):
+    """True for an address no source may have: link-local (cloud metadata), or this container's own console or
+    dashboard however the address is spelled. Loopback on other ports is allowed: a media server on the same host.
+    resolve=False skips the name lookup (a playlist of thousands of channels)."""
+    # ponytail: the name is looked up here and again by whatever opens it (DNS rebinding); pin the address if that matters
+    host = (parts.hostname or "").lower().strip(".")
+    if not host or host in ("metadata.google.internal", "metadata"):
+        return True
+    try:
+        port = parts.port or _DEFAULT_PORTS.get((parts.scheme or "").lower())
+    except ValueError:
+        return True
+    local = host == "localhost" or host.endswith(".localhost")
+    for ip in _addresses(host, resolve and not local):
+        ip = getattr(ip, "ipv4_mapped", None) or ip
+        if ip.is_link_local:
+            return True
+        local = local or ip.is_loopback or ip.is_unspecified
+    return local and port in OWN_PORTS
+
+
+class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
+    """A redirect is followed only to an address that could have been given directly."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parts = urllib.parse.urlsplit(newurl)
+        if parts.scheme.lower() not in ("http", "https") or forbidden(parts):
+            raise urllib.error.HTTPError(newurl, code, "redirected to an address that cannot be used", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+OPENER = urllib.request.build_opener(_CheckedRedirects)
+
+
 def check_url(url, kind):
     if not isinstance(url, str) or not url.strip():
         raise SourceError("an address is needed")
@@ -52,6 +110,8 @@ def check_url(url, kind):
     parts = urllib.parse.urlsplit(url)
     if parts.scheme.lower() not in SCHEMES[kind] or not parts.hostname:
         raise SourceError(f"a {kind} source needs an address starting with " + ", ".join(s + "://" for s in SCHEMES[kind]))
+    if forbidden(parts):
+        raise SourceError("that address cannot be used as an external source")
     return url
 
 
@@ -76,7 +136,7 @@ def _get(url, limit, timeout=15):
     if not str(url).lower().startswith(("http://", "https://")):
         raise SourceError("an address to read a list of channels from must be http or https")
     req = urllib.request.Request(url, headers={"User-Agent": "StationWrapper43"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310 - http and https only, checked above
+    with OPENER.open(req, timeout=timeout) as r:  # nosec B310 - http and https only, checked above and on every redirect
         data = r.read(limit + 1)
     if len(data) > limit:
         raise SourceError("that is bigger than a channel list should be")
@@ -93,7 +153,10 @@ def playlist_guide_urls(text):
     for raw in text.splitlines()[:5]:
         if raw.strip().upper().startswith("#EXTM3U"):
             found = re.search(r'(?:url-tvg|x-tvg-url)="([^"]*)"', raw, re.I)
-            urls = [u.strip() for u in (found.group(1).split(",") if found else []) if u.strip().lower().startswith(("http://", "https://"))]
+            urls = [u.strip() for u in (found.group(1).split(",") if found else [])
+                    if u.strip().lower().startswith(("http://", "https://"))
+                    and not any(c.isspace() or ord(c) < 32 for c in u.strip())
+                    and not forbidden(urllib.parse.urlsplit(u.strip()))]
             return urls[:3]
     return []
 
@@ -110,7 +173,9 @@ def parse_m3u(text):
                     "logo": attrs.get("tvg-logo", ""), "id": attrs.get("tvg-id", "")}
         elif line and not line.startswith("#"):
             parts = urllib.parse.urlsplit(line)
-            if info is not None and parts.scheme.lower() in CHANNEL_SCHEMES and parts.hostname and len(line) <= 2000:
+            if (info is not None and parts.scheme.lower() in CHANNEL_SCHEMES and parts.hostname
+                    and len(line) <= 2000 and not any(c.isspace() or ord(c) < 32 for c in line)
+                    and not forbidden(parts, resolve=False)):
                 name = info["name"] or line
                 key = info["id"] or name
                 base, n = key, 1

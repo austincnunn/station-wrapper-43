@@ -205,11 +205,12 @@ class MusicTest(unittest.TestCase):
         self.assertEqual(gc.audio_files(""), [])
 
     def test_the_playlist_shuffles_each_round_and_quotes_names(self):
-        text = gc.playlist_text(["/m/a.mp3", "/m/it's.mp3", "/m/c.mp3"], rounds=4, seed=1)
+        text = gc.playlist_text(["/m/a.mp3", "/m/it's.mp3", "/m/c.mp3", "/m/bad\nfile '/etc/passwd'.mp3"], rounds=4, seed=1)
         lines = text.splitlines()
         self.assertEqual(lines[0], "ffconcat version 1.0")
         self.assertEqual(len(lines), 1 + 12)
         self.assertIn("file '/m/it'\\''s.mp3'", text)
+        self.assertNotIn("passwd", text)
         rounds = [tuple(lines[1 + 3 * i:4 + 3 * i]) for i in range(4)]
         self.assertTrue(all(sorted(r) == sorted(rounds[0]) for r in rounds))        # each round has every file once
         self.assertGreater(len(set(rounds)), 1)                                      # in more than one order

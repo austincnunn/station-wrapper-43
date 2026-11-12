@@ -79,7 +79,11 @@ class LoginTest(unittest.TestCase):
         for path in ("/api/files/create-tag", "/api/keeper/settings", "/api/stations/save",
                      "/api/stations/delete", "/api/stations/build"):
             self.assertEqual(self.c.request("POST", path, {"x": 1})[0], 401, path)
+        self.assertEqual(self.c.request("POST", "/lineup.post", {})[0], 200)       # an HDHomeRun client's scan can't log in
         self.assertFalse(os.path.exists(os.path.join(self.root, "catalog", "by-genre", "x")))
+        token = self.setup_password()
+        self.assertEqual(self.c.request("GET", "/library.json?refresh")[0], 401)
+        self.assertEqual(self.c.request("GET", "/library.json?refresh", cookie=token)[0], 200)
 
     def test_what_clients_and_viewers_need_stays_open(self):
         for path in ("/", "/watch.html", "/login.html", "/login.js", "/channels.json", "/lineup.json", "/discover.json",
