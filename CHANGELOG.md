@@ -27,6 +27,8 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   before a catalog build stay gone.
 
 ### Added
+- **A prompt for AI agents** (`docs/AGENT-PROMPT.md`): paste it into Claude Code or a similar agent after setup and it plans a
+  lineup from your library, waits for your yes, then builds the channels through the dashboard.
 - **Music channels (like Music Choice).** Lists take songs (mp3, flac, m4a, ogg...) as well as videos, and a song
   plays over a card drawn for it: the album cover, artist, song, album and year, what is up next, and a bar that fills
   as it plays. A **music channel** template on the Stations page; the guide names each song; a player PC streams such a

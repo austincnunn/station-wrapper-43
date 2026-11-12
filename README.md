@@ -13,7 +13,7 @@ Make your own TV channels out of your own videos. **Station Wrapper 43** runs [F
 - **A scrolling TV guide channel** drawn live, with every channel and what is on.
 - **One lineup for everything.** Your channels, an antenna tuner, a playlist and a camera in one HDHomeRun-style lineup and one guide, with synopsis, pictures and channel logos.
 - **An HDHomeRun's guide for Jellyfin.** Jellyfin cannot read an HDHomeRun's schedule itself. The container reads SiliconDust's guide for the antenna and serves it as XMLTV (listings, logos, episode details), so Jellyfin needs no Schedules Direct account. It is SiliconDust's own service, so how far ahead it lists depends on their answer for your device (a unit without their DVR subscription usually gets a short window), and it covers over-the-air in the US and Canada.
-- **Easy to start.** A *Getting started* card, a **Make me a channel now** button, and templates for a cartoon channel, a mainstream channel, a movie channel and a loop.
+- **Easy to start.** A *Getting started* card, a **Make me a channel now** button, and templates for a cartoon channel, a mainstream channel, a movie channel and a loop. Or hand the job to an AI agent with [this prompt](docs/AGENT-PROMPT.md).
 - **Your media is never touched.** It is mounted read-only; a list is only links.
 
 ### Added in this fork
@@ -107,6 +107,7 @@ A small supervisor runs these and keeps them up (it restarts one that stops, tag
 ## Documentation
 
 - [QUICKSTART](QUICKSTART.md): the first ten minutes.
+- [Let an AI agent build your channels](docs/AGENT-PROMPT.md): a prompt to paste into Claude Code or a similar agent once the server is up. It looks at your library, proposes a lineup, and builds it after you say yes.
 - [Wiki](https://github.com/austincnunn/station-wrapper-43/wiki): step-by-step guides. Setting up a server, making channels (including pay-per-view), a client-mode player PC that plays the same broadcast on its own TV, weather, block and YouTube channels, backups. Its scripts are in [extras/](extras/README.md).
 - [Reference](docs/REFERENCE.md): the volumes and settings, the login, every page, sources and antenna tuners, breaks and mid cards, the YouTube conversion, the generator, updating FieldStation42.
 - [Changelog](CHANGELOG.md), [Roadmap](ROADMAP.md), [Security](SECURITY.md), [Contributing](CONTRIBUTING.md), [Notices](NOTICE), [Releasing](docs/RELEASING.md).
