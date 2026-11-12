@@ -166,6 +166,39 @@ class NarrowCellsTest(unittest.TestCase):
         self.assertTrue(notes)
 
 
+class ComingUpTest(unittest.TestCase):
+    def row(self, number, name, *items):
+        return {"number": number, "name": name, "items": [{"title": t, "start": NOW + timedelta(minutes=m), "end": NOW + timedelta(minutes=m + 30)}
+                                                          for t, m in items]}
+
+    def test_one_later_programme_per_channel_in_time_order(self):
+        rows = [self.row("117", "Sitcoms", ("Friends", 10), ("Seinfeld", 79)),        # Friends is too soon: the grid shows it as next
+                self.row("105", "Cartoons", ("Off air", 60)),                         # nothing to say about a dark channel
+                self.row("", "Live", ("The News", 60)),                               # no number: its name
+                self.row("120", "Late", ("Too late", 9 * 60))]                        # past the look-ahead
+        self.assertEqual(gc.coming_up(rows, NOW, seed=1), ["Coming up at 9:41 PM: The News on Live",
+                                                            "Coming up at 10:00 PM: Seinfeld on Channel 117"])
+
+    def test_at_most_limit_and_the_same_pick_for_the_same_seed(self):
+        rows = [self.row(str(100 + n), f"C{n}", *[(f"Show {n}.{k}", 30 + 30 * k) for k in range(10)]) for n in range(20)]
+        got = gc.coming_up(rows, NOW, limit=8, seed="2026100720")
+        self.assertEqual(len(got), 8)
+        self.assertEqual(len({line.rsplit(" on ", 1)[1] for line in got}), 8)               # eight different channels
+        self.assertEqual(got, gc.coming_up(rows, NOW, limit=8, seed="2026100720"))
+
+    @unittest.skipIf(gc.Image is None, "needs Pillow")
+    def test_the_guide_adds_them_after_the_fixed_messages_and_survives_bad_listings(self):
+        rows = lambda a, b: [self.row("117", "Sitcoms", ("Seinfeld", 79))]
+        g = gc.Guide(gc.options({"messages": ["Hi"], "wrapper_guide": {"coming_up": True}}), (640, 360), rows_fn=rows, now=lambda: NOW)
+        self.assertEqual(g.messages, ["Hi", "Coming up at 10:00 PM: Seinfeld on Channel 117"])
+        self.assertEqual(gc.Guide(gc.options({"messages": ["Hi"]}), (640, 360), rows_fn=rows, now=lambda: NOW).messages, ["Hi"])   # off
+
+        def broken(a, b):
+            raise ValueError("bad listings")
+        g = gc.Guide(gc.options({"messages": ["Hi"], "wrapper_guide": {"coming_up": True}}), (640, 360), rows_fn=broken, now=lambda: NOW)
+        self.assertEqual(g.messages, ["Hi"])
+
+
 class OptionsTest(unittest.TestCase):
     def test_defaults_and_cleaning(self):
         o = gc.options({})

@@ -9,6 +9,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 - **A "Cable box" style for the guide channel.** The look of the FS42 TV apps' channel bar: bevelled grey boxes, the
   programme on now in lavender with blue type, a green clock and time line, monospace type. Pick it under Style on the
   guide's edit page. Long names are cut off with … as the apps do, instead of moving along their cell.
+- **"Coming up" lines on the guide channel's ticker.** Tick "Add what's coming up later to the messages" on the guide's
+  edit page and the ticker adds lines like "Coming up at 9:00 PM: Friends on Channel 117" after your own messages: one
+  programme per channel from the guide's listings, half an hour to eight hours ahead, up to eight lines, picked again
+  every hour (`wrapper_guide.coming_up` in the station config).
 
 ### Changed
 - **Nothing to set up before the first start.** Download `docker-compose.yml`, run `docker compose up -d`, open the

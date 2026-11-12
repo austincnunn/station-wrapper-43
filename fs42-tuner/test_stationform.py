@@ -439,7 +439,7 @@ class GuideKindTest(unittest.TestCase):
                          ("guide", False, 1.0, ["Hello", "World"]))
         self.assertNotIn("sound_to_play", conf)                       # FieldStation42 would refuse to start if the music were away
         self.assertEqual(conf["wrapper_guide"], {"title": "Penguin Guide", "hours": 3, "theme": "modern-blue", "music": "/mnt/media/music",
-                                                 "aspect": "16:9", "text_size": "normal"})
+                                                 "aspect": "16:9", "text_size": "normal", "coming_up": False})
         for key in ("content_dir", "day_templates", "monday", "bump_dir"):
             self.assertNotIn(key, conf)
 
@@ -463,6 +463,14 @@ class GuideKindTest(unittest.TestCase):
         del old["wrapper_guide"]["aspect"], old["wrapper_guide"]["text_size"]
         back = sf.parse(old)[0]["guide"]
         self.assertEqual((back["aspect"], back["text_size"]), ("16:9", "normal"))
+
+    def test_the_coming_up_lines_are_switched_on_and_read_back(self):
+        conf = sf.to_conf(sf.validate(self.guide(coming_up=True)))
+        self.assertIs(conf["wrapper_guide"]["coming_up"], True)
+        self.assertIs(sf.parse(conf)[0]["guide"]["coming_up"], True)
+        self.assertIs(sf.validate(self.guide(coming_up="yes"))["guide"]["coming_up"], False)        # only a real true turns it on
+        del conf["wrapper_guide"]["coming_up"]                                                    # a guide saved before this
+        self.assertIs(sf.parse(conf)[0]["guide"]["coming_up"], False)
 
     def test_it_reads_back_the_same_and_no_music_means_no_sound(self):
         form = sf.validate(self.guide(music=""))

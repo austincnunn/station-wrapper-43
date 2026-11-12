@@ -213,7 +213,7 @@ def _guide(g):
     if text_size not in guide_channel.TEXT_SIZES:
         raise FormError("the guide's text size must be one of: " + ", ".join(guide_channel.TEXT_SIZES))
     return {"title": title.strip(), "hours": hours, "scroll_speed": float(speed), "messages": msgs, "music": music.strip(),
-            "theme": theme, "aspect": aspect, "text_size": text_size}
+            "theme": theme, "aspect": aspect, "text_size": text_size, "coming_up": g.get("coming_up") is True}
 
 
 def _ppv(p):
@@ -358,7 +358,7 @@ def to_conf(form, existing=None, today=None, shows=(), skip=()):
         conf["play_sound"] = False        # FieldStation42 checks that a sound_to_play file exists when its console starts, and
         conf["scroll_speed"] = g["scroll_speed"]       # would not start at all if a media share were away: the music is ours
         conf["wrapper_guide"] = {"title": g["title"], "hours": g["hours"], "theme": g["theme"], "music": g["music"],
-                                 "aspect": g["aspect"], "text_size": g["text_size"]}
+                                 "aspect": g["aspect"], "text_size": g["text_size"], "coming_up": g["coming_up"]}
         return conf
     if form["kind"] == "ppv":                            # a menu of movies, drawn by each player's browser (ppv.py makes the folder)
         p = form["ppv"]
@@ -485,7 +485,8 @@ def _parse(conf):
             "messages": [m for m in msgs if isinstance(m, str)][:20], "music": music,
             "theme": extra.get("theme") if extra.get("theme") in guide_channel.THEMES else guide_channel.DEFAULT_THEME,
             "aspect": extra.get("aspect") if extra.get("aspect") in guide_channel.ASPECTS else "16:9",
-            "text_size": extra.get("text_size") if extra.get("text_size") in guide_channel.TEXT_SIZES else "normal"}}, None
+            "text_size": extra.get("text_size") if extra.get("text_size") in guide_channel.TEXT_SIZES else "normal",
+            "coming_up": extra.get("coming_up") is True}}, None
     if kind == "web" and isinstance(conf.get("wrapper_ppv"), dict):
         p = conf["wrapper_ppv"]
         return {"name": name, "number": number, "kind": "ppv", "logo": conf.get("wrapper_logo") or "", "ppv": {

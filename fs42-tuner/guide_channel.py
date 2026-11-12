@@ -126,7 +126,8 @@ def options(conf):
             "music": music if isinstance(music, str) else "", "hours": min(6, max(1, hours)),
             "title": title.strip()[:40], "theme": extra.get("theme") if extra.get("theme") in THEMES else "modern-blue",
             "aspect": extra.get("aspect") if extra.get("aspect") in ASPECTS else "16:9",
-            "text_size": extra.get("text_size") if extra.get("text_size") in TEXT_SIZES else "normal"}
+            "text_size": extra.get("text_size") if extra.get("text_size") in TEXT_SIZES else "normal",
+            "coming_up": extra.get("coming_up") is True}
 
 
 def frame_size(opts, size):
@@ -277,6 +278,26 @@ def rows_from_xmltv(xml, start, end, skip_names=()):
     return sorted(rows, key=key)
 
 
+COMING_UP_AHEAD = timedelta(hours=8)    # how far ahead the "Coming up" lines look
+
+
+def coming_up(rows, now, limit=8, seed=None):
+    """Ticker lines like "Coming up at 9:00 PM: Friends on Channel 117", from guide rows (rows_from_xmltv's shape): one
+    programme per channel, picked at random from those starting half an hour to COMING_UP_AHEAD from now (so not what the
+    grid already shows as next), in time order, at most `limit`."""
+    rng = random.Random(seed)
+    picks = []
+    for r in rows:
+        later = [i for i in r.get("items", []) if now + timedelta(minutes=30) <= i["start"] < now + COMING_UP_AHEAD
+                 and i["title"] not in ("Off air", "(no title)")]
+        if later:
+            picks.append((rng.choice(later), r))
+    rng.shuffle(picks)
+    picks = sorted(picks[:limit], key=lambda p: p[0]["start"])
+    return [f"Coming up at {i['start']:%-I:%M %p}: {i['title']} on " + (f"Channel {r['number']}" if r["number"] else r["name"])
+            for i, r in picks]
+
+
 # ---- drawing ------------------------------------------------------------------------------------------------
 def _font(paths, size):
     for p in paths:
@@ -322,7 +343,15 @@ class Guide:
         self.f_ruler = _font(bold, int(self.ruler_h * 0.5))
         self.f_ticker = _font(regular, int(self.ticker_h * 0.5))
         self.bg = self._background()
-        self.ticker = self._ticker_strip()
+        messages = list(opts["messages"])
+        if opts.get("coming_up"):           # made again each time the guide starts (every hour): never stale
+            try:
+                now = self.now()
+                messages += coming_up(self.rows_fn(now, now + COMING_UP_AHEAD) or [], now, seed=now.strftime("%Y%m%d%H"))
+            except Exception as e:          # the listings must never stop the guide: the fixed messages alone
+                print(f"[guide channel] no coming-up lines ({type(e).__name__}: {e})", flush=True)
+        self.messages = messages
+        self.ticker = self._ticker_strip(messages)
         self._board_key, self._board, self._ruler, self._t0 = None, None, None, None
         self._clock_key, self._clock = None, None
 
@@ -333,8 +362,8 @@ class Guide:
         col.putdata([tuple(int(top[i] + (bottom[i] - top[i]) * y / (self.H - 1)) for i in range(3)) for y in range(self.H)])
         return col.resize((self.W, self.H))
 
-    def _ticker_strip(self):
-        text = "   •   ".join(self.opts["messages"]) + "   •   "
+    def _ticker_strip(self, messages):
+        text = "   •   ".join(messages) + "   •   "
         d = ImageDraw.Draw(Image.new("RGB", (1, 1)))
         w = max(int(d.textlength(text, font=self.f_ticker)), self.W)
         strip = Image.new("RGBA", (w * 2, self.ticker_h), self.theme["ticker"] + (255,))

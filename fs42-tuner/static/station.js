@@ -786,6 +786,7 @@
         title: $("g-title").value, hours: Number($("g-hours").value), theme: $("g-theme").value, scroll_speed: Number($("g-speed").value),
         aspect: $("g-aspect").value, text_size: $("g-textsize").value,
         messages: $("g-messages").value.split("\n").map((m) => m.trim()).filter(Boolean), music: $("g-music").value.trim(),
+        coming_up: $("g-comingup").checked,
       };
     } else if (form.kind === "ppv") {
       form.ppv = { folder: $("p-folder").value.trim(), theme: $("p-theme").value, seconds: Number($("p-seconds").value) };
@@ -831,6 +832,7 @@
       const near = speeds.reduce((a, b) => (Math.abs(b - g.scroll_speed) < Math.abs(a - g.scroll_speed) ? b : a));
       $("g-speed").value = String(near);
       $("g-messages").value = g.messages.join("\n");
+      $("g-comingup").checked = !!g.coming_up;
       $("g-music").value = g.music;
     } else if (form.kind === "ppv") {
       $("p-folder").value = form.ppv.folder;
