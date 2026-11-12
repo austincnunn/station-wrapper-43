@@ -13,20 +13,25 @@
   <main id="dash">
     <header class="dash-head">
       <h1>Channels</h1>
+      <span id="summary" class="dim"></span>
     </header>
 
     <section id="setup" class="panel setup" hidden aria-label="Getting started"></section>
-    <section id="stats" class="stats" aria-label="System"></section>
     <section id="channels" class="channels" aria-label="Channels"></section>
 
-    <section class="library" aria-label="Library">
-      <div class="lib-head">
-        <h2>Library</h2>
-        <span id="lib-summary" class="lib-summary"></span>
+    <details id="sys" class="fold">
+      <summary><h2>System</h2><span id="sys-summary" class="fold-summary"></span></summary>
+      <div id="stats" class="stats"></div>
+    </details>
+
+    <details id="lib" class="fold">
+      <summary><h2>Library</h2><span id="lib-summary" class="fold-summary"></span></summary>
+      <div class="lib-tools">
+        <input id="lib-filter" type="search" placeholder="Find a list…" aria-label="Find a list">
         <button id="lib-rescan" class="lib-rescan" type="button">Rescan</button>
       </div>
       <div id="library" class="lib-tags"></div>
-    </section>
+    </details>
     <p id="status-line" class="status-line"></p>
   </main>
 

@@ -280,7 +280,7 @@
     bannerNum.textContent = chan.number;
     bannerName.textContent = chan.name;
     const np = nowPlaying(chan.number);
-    bannerTitle.textContent = np ? np.title : "";
+    bannerTitle.textContent = np && np.title !== chan.name ? np.title : "";   // a guide or a camera is its own title: say it once
     if (showAndFade) {
       bannerEl.classList.remove("hidden");
       clearTimeout(bannerTimer);

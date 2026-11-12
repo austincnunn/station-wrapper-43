@@ -544,6 +544,24 @@ class Emby:
         hit = self._index.get(real_path[len(root):])
         return (hit[0], hit[1]) if hit else None
 
+    def still(self, sid, item_id, width=320):
+        """A small JPEG of an item for the dashboard's tile: its backdrop (a film), else its own picture (an episode's
+        frame). None when the server has none or does not answer. A placeholder's own frames are black, and reading
+        one real frame could start a transcode on somebody else's server, so this asks for a picture it already has."""
+        s = self.state["servers"].get(sid)
+        if s is None or not s.get("token"):
+            return None
+        safe_item = urllib.parse.quote(str(item_id), safe="")
+        for kind in ("Backdrop", "Primary"):
+            try:
+                code, got = self.http("GET", f"{self._base(s)}/Items/{safe_item}/Images/{kind}?maxWidth={int(width)}&format=jpg",
+                                      self._headers(s, s["token"]), timeout=8)
+            except EmbyError:
+                return None
+            if code == 200 and isinstance(got, bytes) and got[:2] == b"\xff\xd8":
+                return got
+        return None
+
     def input_for(self, sid, item_id, seek):
         """{"opts": ffmpeg options before -i, "url", "seek": what to pass as -ss, "done": call when finished} to read an
         item from `seek` seconds. The token goes in a header, never in the address (which is logged)."""

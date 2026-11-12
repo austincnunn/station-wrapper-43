@@ -7,6 +7,14 @@
   const jobs = new Map();            // station name -> the message of a build in progress
   let editable = true;
   let loadedKeeper = false;
+  const SHOWN_LISTS = 6;             // a card names this many lists; the rest fold away
+  const opened = new Set();          // the folds you opened ("<station>|lists", "<station>|more"), kept across the reload every few seconds
+
+  function fold(key, label, ...kids) {
+    const d = el("details", { className: "more", open: opened.has(key) }, el("summary", { textContent: label }), ...kids);
+    d.addEventListener("toggle", () => { if (d.open) opened.add(key); else opened.delete(key); });
+    return d;
+  }
 
   function say(text, kind) {
     $("msg").textContent = text || "";
@@ -27,11 +35,9 @@
     const c = el("div", { className: "card" });
     c.append(el("h2", {}, el("span", { className: "num", textContent: `#${s.number}` }), el("span", { textContent: s.name }),
       el("span", { className: "type", textContent: s.type })));
-    if (s.lists.length) {
-      const chips = el("div", { className: "chips" });
-      for (const l of s.lists) chips.append(el("span", { className: "chip", textContent: l }));
-      c.append(chips);
-    }
+    const chips = (lists) => el("div", { className: "chips" }, ...lists.map((l) => el("span", { className: "chip", textContent: l })));
+    if (s.lists.length) c.append(chips(s.lists.slice(0, SHOWN_LISTS)));
+    if (s.lists.length > SHOWN_LISTS) c.append(fold(`${s.name}|lists`, `${s.lists.length - SHOWN_LISTS} more lists`, chips(s.lists.slice(SHOWN_LISTS))));
     if (s.number === 0) c.append(el("p", { className: "why", textContent: "Channel 0 doesn't work in Jellyfin and some other IPTV clients: Edit the station and give it a number from 1 up." }));
     const [text, kind] = status(s);
     c.append(el("p", { className: "status " + kind, textContent: text }));
@@ -43,18 +49,21 @@
       b.addEventListener("click", fn);
       return b;
     };
-    if (s.editable) actions.append(el("a", { className: "btn", href: `/station.html?name=${encodeURIComponent(s.name)}`, textContent: "Edit" }));
     const live = s.type === "guide" || s.type === "web";      // drawn live (the guide) or by a player (pay-per-view): no schedule
-    if (s.editable && !live) actions.append(el("a", { className: "btn", href: `/station.html?copy=${encodeURIComponent(s.name)}`, textContent: "Duplicate", title: "A new station that starts as a copy of this one" }));
-    if (!live) actions.append(el("a", { className: "btn", href: `/schedule.html?name=${encodeURIComponent(s.name)}`, textContent: "Schedule" }));
-    if (!live) {                               // nothing to schedule or build
-      actions.append(btn("Add 7 days", "", () => run(() => build(s.name, 7, false)), !editable || busy));
-      actions.append(btn("Update videos", "", () => run(() => refresh(s)), !editable || busy));
-      actions.append(btn("Rebuild schedule", "", () => run(() => rebuild(s)), !editable || busy));
+    const rare = live ? actions : el("div", { className: "actions" });      // what is seldom wanted folds under More
+    if (s.editable) actions.append(el("a", { className: "btn", href: `/station.html?name=${encodeURIComponent(s.name)}`, textContent: "Edit" }));
+    if (s.type !== "web") actions.append(el("a", { className: "btn", href: `/watch.html?ch=${encodeURIComponent(s.number)}`, textContent: "Watch" }));
+    if (!live) {                               // a guide or a menu has nothing to schedule or build
+      actions.append(el("a", { className: "btn", href: `/schedule.html?name=${encodeURIComponent(s.name)}`, textContent: "Schedule" }));
+      rare.append(btn("Add 7 days", "", () => run(() => build(s.name, 7, false)), !editable || busy));
+      if (s.editable) rare.append(el("a", { className: "btn", href: `/station.html?copy=${encodeURIComponent(s.name)}`, textContent: "Duplicate", title: "A new station that starts as a copy of this one" }));
+      rare.append(btn("Update videos", "", () => run(() => refresh(s)), !editable || busy));
+      rare.append(btn("Rebuild schedule", "", () => run(() => rebuild(s)), !editable || busy));
     }
-    actions.append(btn("Rename", "", () => run(() => rename(s)), !editable || busy));
-    actions.append(btn("Delete", "danger", () => run(() => remove(s)), !editable || busy));
+    rare.append(btn("Rename", "", () => run(() => rename(s)), !editable || busy));
+    rare.append(btn("Delete", "danger", () => run(() => remove(s)), !editable || busy));
     c.append(actions);
+    if (rare !== actions) c.append(fold(`${s.name}|more`, "More", rare));
     if (busy) c.append(el("p", { className: "job", textContent: busy }));
     if (s.old_schedule && s.old_schedule.interrupted) {      // started, then the server restarted (or it failed): nothing is building
       c.append(el("p", { className: "job err", textContent: `A rebuild of this schedule was started but is not running now (the server was restarted, or it stopped with a problem). The old schedule is still playing, until ${fmtWhen(s.old_schedule.cut)}.` }));
@@ -101,6 +110,10 @@
     }
     box.textContent = text;
     box.className = cls;
+    // the folded panel's one line; a keeper that is off or failing is worth a look, so it says so in red
+    const bad = !k.settings.enabled || !!st.error;
+    $("k-short").textContent = st.error ? "could not check the stations" : k.settings.enabled ? `on \u00b7 ${k.settings.days_ahead} days ahead` : "off: stations go off air when their schedule runs out";
+    $("k-short").classList.toggle("warn", bad);
   }
 
   async function saveKeeper() {
@@ -124,6 +137,7 @@
     const sel = $("c-lang");
     if (![...sel.options].some((o) => o.value === c.settings.language)) sel.append(el("option", { value: c.settings.language, textContent: c.settings.language }));
     sel.value = c.settings.language;
+    $("c-short").textContent = sel.selectedOptions[0].textContent;
     sel.disabled = $("c-save").disabled = !editable;
   }
   $("c-save").addEventListener("click", () => run(async () => {

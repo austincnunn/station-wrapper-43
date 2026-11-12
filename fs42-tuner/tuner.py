@@ -1540,6 +1540,16 @@ def _grab_frame(station):
     path = media_path(cur.entry.path)
     if not os.path.exists(path):
         return None
+    hit = EMBY.lookup(os.path.realpath(path))
+    if hit is not None:                              # a placeholder (its own frames are black): the server's picture of it
+        if hit not in EMBY_STILLS:                   # the picture does not change while the item plays: ask once
+            got = EMBY.still(*hit)
+            if got is None:
+                return None
+            if len(EMBY_STILLS) >= 64:
+                EMBY_STILLS.clear()
+            EMBY_STILLS[hit] = got
+        return EMBY_STILLS[hit]
     best = None
     for ahead in THUMB_LOOKAHEAD:       # a programme's first seconds are often a black fade: look a little further in
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
@@ -1557,6 +1567,7 @@ def _grab_frame(station):
     return best or None
 
 
+EMBY_STILLS = {}                      # (server, item) -> JPEG, for the tiles of what plays from an Emby server
 THUMB_LOOKAHEAD = (0, 4, 10, 20)      # seconds past "now" to try when the frame is black
 THUMB_NOT_BLACK = 3000                # a 320px JPEG smaller than this is (nearly) one flat colour
 

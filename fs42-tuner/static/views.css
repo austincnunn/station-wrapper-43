@@ -1,8 +1,10 @@
 .topnav { display: flex; flex-wrap: wrap; gap: 0.3em 0.4em; align-items: center; margin-bottom: 1em; padding-bottom: 0.7em; border-bottom: 1px solid var(--line); }
-.topnav a { color: var(--text); text-decoration: none; padding: 0.35em 0.8em; border: 1px solid transparent; border-radius: 0.4em; }
+.topnav a { color: var(--text); text-decoration: none; padding: 0.35em 0.6em; border: 1px solid transparent; border-radius: 0.4em; }
 .topnav a:hover { border-color: var(--line); }
 .topnav a[aria-current="page"] { border-color: var(--accent); color: var(--accent); }
 .topnav a.adv { margin-left: auto; color: var(--dim); font-size: 0.9em; }
+/* a phone: one row to swipe along, not four wrapped rows above every page */
+@media (max-width: 700px) { .topnav { flex-wrap: nowrap; overflow-x: auto; } .topnav a { white-space: nowrap; } }
 
 .view-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6em; margin-bottom: 0.8em; }
 .view-head h1 { margin: 0; font-size: 1.4em; }
@@ -58,7 +60,19 @@ table.sched th { color: var(--dim); font-weight: 500; font-size: 0.9em; }
 table.sched tr.now { background: rgba(79, 209, 197, 0.12); }
 table.sched tr.now td:first-child { color: var(--accent); font-weight: 600; }
 
+/* buttons and links: here, not in a page's own sheet, so every page has them */
+a { color: var(--accent); }
+.btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 0.4em; padding: 0.4em 0.9em; cursor: pointer; font: inherit; }
+.btn.primary { background: var(--accent); color: #05201e; border-color: var(--accent); font-weight: 600; }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: 0.4; cursor: default; }
 a.btn { text-decoration: none; display: inline-block; }
+/* the Save row of a long form stays in reach instead of waiting at the bottom of the page */
+form > .form-actions, .panel > .form-actions { position: sticky; bottom: 0; z-index: 5; margin-bottom: 0; padding: 0.6em 0; background: var(--bg); border-top: 1px solid var(--line); }
+.panel > .form-actions { background: var(--panel); }
+/* a station's card: its long list of lists and its seldom-used buttons fold away */
+.card details.more > summary { cursor: pointer; color: var(--dim); font-size: 0.9em; margin: 0.4em 0; }
+.card details.more > .actions { margin-top: 0.3em; }
 
 #k-status.ok { color: var(--accent); }
 #k-status.err { color: var(--danger); }

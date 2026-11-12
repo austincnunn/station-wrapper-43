@@ -20,6 +20,24 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   number and name. It goes after `FS42_BANNER_SECONDS` (8 by default); `FS42_BANNER=off` still turns it off.
 
 ### Changed
+- **The Dashboard page puts the channels first.** The channels are at the top with a one-line count ("23 of 23 on air ·
+  1 watching"), in smaller tiles of one size. A tile shows what is not ordinary (off air, encoding, watching) instead of
+  an "on air" badge on every one, and a file name only during a break. System and Library are folded under the channels
+  with one line each ("No problems · up 11h", "31,965 videos in 474 lists"); System opens by itself when something needs
+  a look, the Library has a box to find a list, and the browser remembers which you opened. Pictures no longer flash
+  to black every ten seconds, the guide channel's tile shows the guide, and a tile for a video from an Emby or Jellyfin
+  server shows the server's picture of it instead of a black square.
+- **The bar at the top.** A "Log in" link when you are not logged in, a shorter "FS42 console" link, and no "Password"
+  link (it is now "Change the password" on the Settings page, under This machine), so the bar fits one row; on a phone
+  it is one row to swipe along instead of four.
+- **The Stations page is a third of the length.** A card names a station's first six lists and folds the rest ("40
+  more lists"); **Edit**, **Watch** (new) and **Schedule** are on the card and the seldom-used buttons (Add 7 days,
+  Duplicate, Update videos, Rebuild schedule, Rename, Delete) are under **More**. "Keep schedules going" and "Captions"
+  are folded to one line each that says how they are set ("on · 2 days ahead", "English"), red when the keeper is off.
+- **Buttons and links look the same on every page.** The Status, Settings and Dashboard pages showed the browser's
+  plain grey buttons and purple links. The Save row of a long form (a station, Settings) stays at the bottom of the
+  window instead of the bottom of the page.
+- **The Sources page is headed "Sources"**, as in the bar (it said "IPTV sources").
 - **Nothing to set up before the first start.** Download `docker-compose.yml`, run `docker compose up -d`, open the
   dashboard. No `.env`, no `setup-dirs.sh`: config and catalog default to `./data` and media to `./media` beside the compose
   file, and Docker makes the folders. `FS42_LOCAL_ROOT` and `FS42_MEDIA_ROOT` still move them; an existing install keeps its
@@ -27,6 +45,11 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
 
 ### Fixed
+- **"Getting started" showed on a working setup when you were not logged in.** The page took "log in first" for "no
+  stations yet".
+- **The Schedule page opened on an error.** It opened on the first station, usually the guide channel, which has no
+  schedule ("Nothing is scheduled for this station yet"). A guide or a pay-per-view menu is no longer in its list.
+- **The player's banner said a guide's or camera's name twice** ("100 TV Guide TV Guide").
 - **Players froze at the change from one clip to the next.** Each clip, song or black gap is its own ffmpeg, and
   each one started its timestamps again at 0, so time went backwards at every change; a player reading the channel as one
   long stream (Android TV's Media3, VLC) could freeze there (most often on a music channel, which changes every few

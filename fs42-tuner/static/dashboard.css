@@ -6,8 +6,7 @@
 
 .dash-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 1em;
   margin-bottom: 1em;
 }
@@ -17,28 +16,11 @@
   font-size: 1.4em;
 }
 
-.console-link {
-  color: var(--text);
-  padding: 0.5em 1em;
-  border: 1px solid var(--line);
-  border-radius: 0.4em;
-  text-decoration: none;
-}
-
-.watch-link {
-  background: var(--accent);
-  color: #05201e;
-  padding: 0.5em 1em;
-  border-radius: 0.4em;
-  font-weight: 600;
-  text-decoration: none;
-}
-
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.6em;
-  margin-bottom: 1.2em;
+  margin-top: 0.8em;
 }
 
 .stat {
@@ -72,7 +54,7 @@
 
 .channels {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
   gap: 0.8em;
 }
 
@@ -88,6 +70,7 @@
 }
 
 .card-chan:hover { border-color: var(--accent); }
+.card-chan.off { opacity: 0.6; }
 
 .thumb {
   position: relative;
@@ -95,12 +78,12 @@
   background: #000;
 }
 
-.thumb img,
 .thumb-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  display: block;
+  object-fit: contain;
 }
 
 .thumb-off {
@@ -135,18 +118,15 @@
 
 .name {
   color: var(--dim);
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3em;
-}
-
 .badge {
+  flex: none;
   font-size: 0.72em;
   padding: 0.15em 0.5em;
   border-radius: 999px;
@@ -158,7 +138,7 @@
 .badge.off { color: var(--dim); }
 .badge.enc { border-color: #d7a844; color: #d7a844; }
 .badge.ext { border-color: #7aa7e8; color: #7aa7e8; }
-.badge.view { border-color: var(--line); color: var(--text); }
+.badge.view { border-color: var(--accent); background: var(--accent); color: #05201e; font-weight: 600; }
 
 .now {
   font-weight: 600;
@@ -211,12 +191,25 @@
 
 .status-line.error { color: var(--danger); }
 
-/* Library: read-only view of the content folder, by tag. */
-.library { margin-top: 2em; }
-.lib-head { display: flex; align-items: baseline; gap: 1em; flex-wrap: wrap; margin-bottom: 0.6em; }
-.lib-head h2 { margin: 0; font-size: 1.15em; }
-.lib-summary { color: var(--dim); flex: 1; }
-.lib-summary.warn { color: var(--danger); }
+/* System and Library: folded under the channels, one line each until opened. */
+.fold { margin-top: 1.2em; padding-top: 0.9em; border-top: 1px solid var(--line); }
+.fold > summary, details.panel > summary, .lib-tag summary { cursor: pointer; list-style: none; }
+.fold > summary::-webkit-details-marker, details.panel > summary::-webkit-details-marker, .lib-tag summary::-webkit-details-marker { display: none; }
+.fold > summary::before, details.panel > summary::before, .lib-tag summary::before { content: "\25B8"; color: var(--dim); }
+.fold[open] > summary::before, details.panel[open] > summary::before, .lib-tag[open] summary::before { content: "\25BE"; }
+.fold > summary, details.panel > summary { display: flex; align-items: baseline; gap: 0.7em; flex-wrap: wrap; }
+.fold > summary h2 { margin: 0; font-size: 1.15em; }
+details.panel > summary h2 { margin: 0; }
+details.panel[open] > summary { margin-bottom: 0.6em; }
+.fold-summary { color: var(--dim); }
+.fold-summary.warn { color: var(--danger); }
+
+/* Library: read-only view of the content folder, by list. */
+.lib-tools { display: flex; gap: 0.6em; margin: 0.8em 0 0.6em; }
+.lib-tools input {
+  flex: 1; max-width: 24em; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 0.4em; padding: 0.3em 0.6em; font: inherit;
+}
 .lib-rescan {
   background: none; color: var(--text); border: 1px solid var(--line);
   border-radius: 0.4em; padding: 0.3em 0.9em; cursor: pointer; font: inherit;

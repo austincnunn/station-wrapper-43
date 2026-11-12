@@ -9,11 +9,19 @@
   const statsEl = document.getElementById("stats");
   const channelsEl = document.getElementById("channels");
   const statusEl = document.getElementById("status-line");
-  const consoleLink = document.getElementById("console-link");
-  if (consoleLink) {
-    consoleLink.href = `${location.protocol}//${location.hostname}:4242/`;
-    consoleLink.title = "No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env";
-  }
+  const summaryEl = document.getElementById("summary");
+  const sysEl = document.getElementById("sys");
+  const sysSummaryEl = document.getElementById("sys-summary");
+  let sysWarned = "";
+
+  // An answer that is not 2xx (not logged in, restarting) is an error, never data.
+  const get = (path) => fetch(path).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+  // System and Library stay folded away under the channels; the browser remembers which you opened.
+  document.querySelectorAll("details.fold").forEach((d) => {
+    try { d.open = localStorage.getItem(`fold-${d.id}`) === "1"; } catch (e) { /* not remembered */ }
+    d.addEventListener("toggle", () => { try { localStorage.setItem(`fold-${d.id}`, d.open ? "1" : "0"); } catch (e) { /* not remembered */ } });
+  });
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -30,9 +38,10 @@
 
   function fmtClock(sec) {
     sec = Math.max(0, Math.round(sec));
-    const m = Math.floor(sec / 60);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = String(sec % 60).padStart(2, "0");
-    return `${m}:${s}`;
+    return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
   }
 
   function fmtAge(sec) {
@@ -75,6 +84,12 @@
       readAheadCard(sys.prefetch),
       card("Uptime", fmtUptime(sys.uptime_seconds), "", false),
     ].join("");
+    // The fold's one line: what needs a look, or that nothing does. A new warning opens the fold once.
+    const warns = [...statsEl.querySelectorAll(".stat.warn .stat-label")].map((n) => n.textContent).join(", ");
+    sysSummaryEl.textContent = warns ? `Check: ${warns}` : `No problems \u00b7 up ${fmtUptime(sys.uptime_seconds)}`;
+    sysSummaryEl.classList.toggle("warn", !!warns);
+    if (warns && warns !== sysWarned) sysEl.open = true;
+    sysWarned = warns;
   }
 
   // the read-ahead: copies of the next break or episode made before they are due (prefetch.py)
@@ -88,40 +103,49 @@
 
   function renderChannels(rows) {
     const bucket = Math.floor(Date.now() / THUMB_BUCKET_MS);
+    const loaded = new Map([...channelsEl.querySelectorAll(".thumb-img")].map((img) => [img.getAttribute("src"), img]));
+    const watching = rows.reduce((sum, r) => sum + (r.viewers || 0), 0);
+    summaryEl.textContent = `${rows.filter((r) => r.on_air).length} of ${rows.length} on air` + (watching ? ` \u00b7 ${watching} watching` : "");
     channelsEl.innerHTML = rows.map((r) => {
       const n = esc(r.channel);
       const now = r.now;
       let thumb;
-      if (r.on_air && now && !now.is_stream) {
+      if (r.on_air && now && (!now.is_stream || now.content_type === "guide")) {   // the guide draws a picture of itself
         thumb = `<img class="thumb-img" alt="" loading="lazy" src="/thumb/${n}.jpg?b=${bucket}">`;
       } else {
-        thumb = `<div class="thumb-off">${r.on_air ? "live stream" : "off air"}</div>`;
+        thumb = `<div class="thumb-off">${r.on_air ? "live" : "off air"}</div>`;
       }
       const pct = now && now.duration ? Math.min(100, (now.elapsed / now.duration) * 100) : 0;
+      // only what is out of the ordinary gets a badge: every channel is normally on air
       const badges = [
-        r.on_air ? '<span class="badge live">on air</span>' : '<span class="badge off">off air</span>',
-        r.external ? `<span class="badge ext" title="${esc(r.external.source)}">IPTV external source</span>` : "",
+        r.on_air ? "" : '<span class="badge off">off air</span>',
         r.encoding ? '<span class="badge enc">encoding</span>' : "",
         r.viewers ? `<span class="badge view">${r.viewers} watching</span>` : "",
       ].join("");
-      const body = now
-        ? `<div class="now">${esc(now.title)}</div>
-           <div class="file">${esc(now.file)} <span class="kind">${esc(now.content_type === "bump" ? "mid card" : now.content_type)}</span></div>` +
-          (r.external ? `<div class="time">from ${esc(r.external.source)}</div>`
-            : `<div class="bar"><span style="width:${pct.toFixed(1)}%"></span></div>
-           <div class="time">${fmtClock(now.elapsed)} / ${fmtClock(now.duration)}</div>`)
-        : `<div class="now dim">Nothing scheduled</div>`;
-      return `<a class="card-chan" href="/watch.html?ch=${n}">
+      let body = '<div class="now dim">Nothing scheduled</div>';
+      if (now) {
+        // a break names the show it interrupts as the title, so say what is really playing under it
+        const filler = !["feature", "guide", "iptv"].includes(now.content_type);
+        body = [
+          now.title && now.title !== r.station ? `<div class="now" title="${esc(now.file)}">${esc(now.title)}</div>` : "",
+          r.external ? `<div class="time">Live from ${esc(r.external.source)}</div>` : "",
+          filler ? `<div class="file"><span class="kind">${esc(now.content_type === "bump" ? "mid card" : now.content_type)}</span> ${esc(now.file.replace(/\.\w+$/, ""))}</div>` : "",
+          now.duration ? `<div class="bar"><span style="width:${pct.toFixed(1)}%"></span></div>
+           <div class="time">${fmtClock(now.elapsed)} / ${fmtClock(now.duration)}</div>` : "",
+        ].join("");
+      }
+      return `<a class="card-chan${r.on_air ? "" : " off"}" href="/watch.html?ch=${n}" title="Watch channel ${n}">
         <div class="thumb">${thumb}</div>
         <div class="meta">
-          <div class="head"><span class="num">${n}</span><span class="name">${esc(r.station)}</span></div>
-          <div class="badges">${badges}</div>
+          <div class="head"><span class="num">${n}</span><span class="name">${esc(r.station)}</span>${badges}</div>
           ${body}
         </div>
       </a>`;
     }).join("");
 
     channelsEl.querySelectorAll(".thumb-img").forEach((img) => {
+      const kept = loaded.get(img.getAttribute("src"));
+      if (kept) return img.replaceWith(kept);                 // the same frame as last time: keep the picture, no flash to black
       img.addEventListener("error", () => {
         const off = document.createElement("div");
         off.className = "thumb-off";
@@ -133,10 +157,7 @@
 
   async function refresh() {
     try {
-      const [sys, chans] = await Promise.all([
-        fetch("/system.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch("/channels.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      ]);
+      const [sys, chans] = await Promise.all([get("/system.json"), get("/channels.json")]);
       renderStats(sys);
       renderChannels(chans);
       statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
@@ -164,7 +185,7 @@
     const warns = [];
     if (t.dead) warns.push(`${t.dead} dead link${t.dead === 1 ? "" : "s"}`);
     if (t.duplicates) warns.push(`${t.duplicates} duplicate${t.duplicates === 1 ? "" : "s"}`);
-    libSummaryEl.textContent = `${t.videos} videos in ${lib.tags.length} tags` + (warns.length ? ` \u2014 ${warns.join(", ")}` : "");
+    libSummaryEl.textContent = `${t.videos.toLocaleString()} videos in ${lib.tags.length} lists` + (warns.length ? ` \u2014 ${warns.join(", ")}` : "");
     libSummaryEl.classList.toggle("warn", warns.length > 0);
     libEl.innerHTML = lib.tags.map((tag) => {
       const badges = [
@@ -180,13 +201,19 @@
     libEl.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => {
       if (d.open) libOpen.add(d.dataset.tag); else libOpen.delete(d.dataset.tag);
     }));
+    filterLibrary();
   }
+
+  const libFilterEl = document.getElementById("lib-filter");
+  function filterLibrary() {
+    const q = libFilterEl.value.trim().toLowerCase();
+    libEl.querySelectorAll(".lib-tag").forEach((d) => { d.hidden = !!q && !d.dataset.tag.toLowerCase().includes(q); });
+  }
+  libFilterEl.addEventListener("input", filterLibrary);
 
   async function loadLibrary(rescan) {
     try {
-      const r = await fetch(rescan ? "/library.json?refresh" : "/library.json");
-      if (!r.ok) throw new Error(r.status);
-      const data = await r.json();
+      const data = await get(rescan ? "/library.json?refresh" : "/library.json");
       if (data.never) {                                       // the server has not finished its first scan yet
         libSummaryEl.textContent = "Waiting for the first scan of your lists…";
         setTimeout(() => loadLibrary(false), 10000);
@@ -209,9 +236,7 @@
     try { dismissed = localStorage.getItem("setup-dismissed") === "1"; } catch (e) { /* not remembered */ }
     try {
       const [sys, lib, stations] = await Promise.all([
-        fetch("/api/system/status").then((r) => r.json()),
-        fetch("/library.json").then((r) => r.json()),
-        fetch("/api/stations").then((r) => r.json()),
+        get("/api/system/status"), get("/library.json"), get("/api/stations"),
       ]);
       const rows = stations.stations || stations.rows || stations || [];
       const list = Array.isArray(rows) ? rows : [];

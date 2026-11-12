@@ -17,8 +17,8 @@
       <a class="btn primary" id="new-btn" href="/station.html">New station</a>
     </div>
     <p id="msg" class="msg" role="status" aria-live="polite"></p>
-    <section class="panel" id="keeper" aria-label="Schedule keeper">
-      <h2>Keep schedules going</h2>
+    <details class="panel" id="keeper" aria-label="Schedule keeper">
+      <summary><h2>Keep schedules going</h2><span id="k-short" class="fold-summary"></span></summary>
       <p class="dim">FieldStation42 doesn't extend a station's schedule by itself, so without this a station goes off air when its scheduled days run out. When this is on, every station that already has a schedule is topped up to the number of days below. It only adds days; it never rebuilds anything, and it leaves a station alone while you are building it.</p>
       <div class="ta-row">
         <label class="check"><input type="checkbox" id="k-on"> Keep schedules topped up</label>
@@ -30,9 +30,9 @@
         <button type="button" class="btn primary" id="k-save">Save</button>
       </div>
       <p id="k-status" class="dim"></p>
-    </section>
-    <section class="panel" id="caption-language" aria-label="Captions">
-      <h2>Captions</h2>
+    </details>
+    <details class="panel" id="caption-language" aria-label="Captions">
+      <summary><h2>Captions</h2><span id="c-short" class="fold-summary"></span></summary>
       <p class="dim">The language of the captions your videos are asked for: a <code>.srt</code>, <code>.vtt</code> or <code>.ass</code> file beside a video with the language in its name (<code>Show - 01.en.srt</code>), or a text track inside it. Stations carry them as a track a player can switch on; a block of a station's calendar can draw them on the picture instead.</p>
       <div class="ta-row">
         <label>Caption language
@@ -45,7 +45,7 @@
         <button type="button" class="btn primary" id="c-save">Save</button>
       </div>
       <p id="c-status" class="dim"></p>
-    </section>
+    </details>
     <section id="cards" class="cards" aria-label="Stations"></section>
   </main>
   <script src="/common.js"></script>

@@ -88,9 +88,9 @@
       el("table", { className: "chan-table" }, ...[
         ["Role", `${m.role} (FS42_ROLE in the compose file; a player PC runs the client compose file)`],
         ["Time zone", m.tz || "(the container's)"], ["Version", m.version || "?"],
-        ["Login", m.login ? "on" : "OFF (DASHBOARD_LOGIN)"], ["Changes from the dashboard", m.edit ? "on" : "OFF (DASHBOARD_EDIT)"],
+        ["Login", m.login ? el("span", {}, "on \u00b7 ", el("a", { href: "/login.html?change=1", textContent: "Change the password" })) : "OFF (DASHBOARD_LOGIN)"], ["Changes from the dashboard", m.edit ? "on" : "OFF (DASHBOARD_EDIT)"],
         ["Secrets (in .env; the sync token can be made here)", Object.entries(m.secrets).map(([k, v]) => `${k} ${yes(v)}`).join(", ")],
-      ].map(([k, v]) => el("tr", {}, el("th", { textContent: k }), el("td", { textContent: v })))));
+      ].map(([k, v]) => el("tr", {}, el("th", { textContent: k }), el("td", {}, v)))));
     if (!r.edit) say("Changing settings is switched off (DASHBOARD_EDIT=0): this page only shows them.");
 
     const srv = $("server");

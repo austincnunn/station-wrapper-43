@@ -112,6 +112,13 @@ class EmbyTest(unittest.TestCase):
         self.assertFalse(os.path.exists(show))                       # its emptied folders (and poster) too
         self.assertIsNone(e2.lookup(stub))
 
+    def test_a_still_for_the_dashboard_tile(self):
+        e, fake = self.make([EP])
+        e.libraries("sys1")                                           # any call: the server's token is in hand
+        self.assertEqual(e.still("sys1", "e1"), b"\xff\xd8poster")
+        self.assertIn("/Items/e1/Images/Backdrop?maxWidth=320", fake.calls[-1][1])
+        self.assertIsNone(e.still("gone", "e1"))
+
     @unittest.skipUnless(shutil.which("ffprobe"), "needs ffmpeg")
     def test_unreachable_server_keeps_its_placeholders(self):
         e, fake = self.make([MOVIE])

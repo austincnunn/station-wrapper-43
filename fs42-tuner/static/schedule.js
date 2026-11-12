@@ -158,15 +158,16 @@
     state.edit = data.edit;
     $("date").value = iso(new Date());
     const sel = $("station");
-    for (const s of data.stations) sel.append(el("option", { value: s.name, textContent: `#${s.number}  ${s.name}` }));
-    if (!data.stations.length) {
+    const stations = data.stations.filter((s) => s.type !== "guide" && s.type !== "web");
+    for (const s of stations) sel.append(el("option", { value: s.name, textContent: `#${s.number}  ${s.name}` }));
+    if (!stations.length) {
       $("empty").hidden = false;
       $("empty").textContent = "There are no stations yet. Make one on the Stations page.";
       $("extend").disabled = true;
       return;
     }
     const wanted = params.get("name");
-    if (wanted && data.stations.some((s) => s.name === wanted)) sel.value = wanted;
+    if (wanted && stations.some((s) => s.name === wanted)) sel.value = wanted;
     await load();
   });
 })();

@@ -32,8 +32,8 @@
     }
     const adv = el("a", {
       href: `${location.protocol}//${location.hostname}:4242/`, target: "_blank", rel: "noopener",
-      textContent: "FieldStation42 console (advanced) ↗", className: "adv",
-      title: "No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env",
+      textContent: "FS42 console ↗", className: "adv",
+      title: "FieldStation42's own console, for advanced use. No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env",
     });
     bar.append(adv);
     const host = document.getElementById("dash") || document.body;
@@ -41,7 +41,7 @@
     account(bar);
   }
 
-  // The login's state in the bar: a warning while no password is set, and Log out / Password once logged in.
+  // The login's state in the bar: a warning while no password is set, Log in or Log out (Settings changes the password).
   async function account(bar) {
     try {
       const st = await (await fetch("/api/auth/status")).json();
@@ -55,8 +55,9 @@
           await fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
           location.assign("/login.html");
         });
-        bar.insertBefore(el("a", { href: "/login.html?change=1", textContent: "Password" }), bar.querySelector(".adv"));
         bar.insertBefore(out, bar.querySelector(".adv"));
+      } else {                                     // the pages that change things need it; say so before a click bounces
+        bar.insertBefore(el("a", { href: "/login.html?next=" + encodeURIComponent(location.pathname + location.search), textContent: "Log in" }), bar.querySelector(".adv"));
       }
     } catch (e) { /* the bar still works without it */ }
   }
