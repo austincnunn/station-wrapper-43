@@ -23,7 +23,6 @@ html, body {
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
 }
 
 #screen {
@@ -124,6 +123,15 @@ html, body {
   margin-left: auto;
 }
 
+#quality {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0.4em;
+  padding: 0.5em 0.4em;
+  font-size: 1em;
+}
+
 #chan-input {
   width: 6em;
   background: var(--panel-2);
@@ -192,14 +200,8 @@ html, body {
   .guide-next { grid-column: auto; }
 }
 
-#home-link {
-  color: var(--text);
-  text-decoration: none;
-  align-self: center;
-  padding: 0.5em 0.8em;
-  border: 1px solid var(--line);
-  border-radius: 0.4em;
-}
+/* the Watch page has no #dash, so the bar sits on the body: same place and width as on the other pages */
+body > .topnav { max-width: 1200px; margin: 0 auto; padding: 1em 16px 0.7em; }
 
 /* captions */
 #captions {

@@ -1496,6 +1496,7 @@ def system_status():
         counters = dict(STATS)
     return {
         "uptime_seconds": round(time.time() - STARTED),
+        "video_kbps": int(float(V.get("vbitrate", "4000k").rstrip("k"))),      # the top of the player page's quality list
         "cpu": {"count": os.cpu_count(), "load1": round(load1, 2),
                 "load5": round(load5, 2), "load15": round(load15, 2)},
         "memory": _meminfo(),

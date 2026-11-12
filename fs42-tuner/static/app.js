@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  W.nav("watch");                                  // the same bar as every other page
+
   const LAST_CHANNEL_KEY = "fs42.lastChannel";
   const GUIDE_REFRESH_MS = 5 * 60 * 1000;
   const BANNER_REFRESH_MS = 15 * 1000;
@@ -306,6 +308,28 @@
     }
   }
 
+  // ---- quality: a lower-rate copy of the channel (/auto/v<n>?kbps=N) for a slow connection. 1000k to 5000k, never over
+  // what the tuner itself makes (video.vbitrate): the top of the list is the channel as it is. Remembered.
+  const QUALITY_KEY = "fs42.quality";
+  const qualityEl = document.getElementById("quality");
+  let kbps = 0;                                          // 0: the channel as it is
+  try { kbps = Number(localStorage.getItem(QUALITY_KEY)) || 0; } catch (e) { /* the channel as it is */ }
+  async function loadQuality() {
+    let top = 4000;
+    try { top = (await (await fetch("/system.json")).json()).video_kbps || top; } catch (e) { /* the default list */ }
+    if (kbps >= top) kbps = 0;
+    for (const r of [1000, 2000, 3000, 4000, 5000].filter((r) => r < top)) qualityEl.append(new Option(`${r}k`, r));
+    qualityEl.append(new Option(`${top}k (full)`, 0));
+    qualityEl.value = String(kbps);
+    if (qualityEl.selectedIndex < 0) qualityEl.value = "0";
+  }
+  qualityEl.addEventListener("change", () => {
+    kbps = Number(qualityEl.value);
+    try { localStorage.setItem(QUALITY_KEY, String(kbps)); } catch (e) { /* not remembered */ }
+    if (current != null) tune(current);
+  });
+  loadQuality();
+
   function tune(num) {
     const chan = channels.find((c) => c.number === num);
     if (!chan) {
@@ -319,7 +343,7 @@
     destroyPlayer();
 
     player = mpegts.createPlayer(
-      { type: "mpegts", isLive: true, url: `/auto/v${encodeURIComponent(num)}` },
+      { type: "mpegts", isLive: true, url: `/auto/v${encodeURIComponent(num)}` + (kbps ? `?kbps=${kbps}` : "") },
       {
         enableStashBuffer: false,
         liveBufferLatencyChasing: true,

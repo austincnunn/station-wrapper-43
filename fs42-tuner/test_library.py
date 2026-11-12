@@ -322,7 +322,9 @@ class NoDatabaseTest(unittest.TestCase):
         self.assertIn(b"Station Wrapper 43", self.get("/"))
         chans = json.loads(self.get("/channels.json"))
         self.assertEqual([(c["channel"], c["on_air"]) for c in chans], [("801", False)])
-        self.assertIn("uptime_seconds", json.loads(self.get("/system.json")))
+        system = json.loads(self.get("/system.json"))
+        self.assertIn("uptime_seconds", system)
+        self.assertEqual(system["video_kbps"], 4000)                  # the top of the player page's quality list
         self.assertEqual(json.loads(self.get("/library.json"))["found"], False)
 
     def test_the_guide_and_the_lineup_are_empty_but_valid(self):
