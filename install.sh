@@ -26,7 +26,6 @@ set -euo pipefail
 
 RAW=${FS42_RAW:-https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main}
 STOCK_IMAGE=ghcr.io/austincnunn/station-wrapper-43
-SMB_CRED=/root/.smb-fs42-media
 
 if [ -t 1 ]; then B=$'\e[1m' G=$'\e[32m' Y=$'\e[33m' R=$'\e[31m' C=$'\e[36m' N=$'\e[0m'; else B="" G="" Y="" R="" C="" N=""; fi
 say()  { printf '%s\n' "${C}==>${N} ${B}$*${N}"; }
@@ -76,19 +75,32 @@ pkg() {            # pkg <Debian/Ubuntu name> <Fedora/Arch name>
 in_fstab() { awk -v m="$1" '$1 !~ /^#/ && $2 == m { f = 1 } END { exit !f }' /etc/fstab; }
 has_systemd() { [ -d /run/systemd/system ]; }
 
+smb_cred() { printf '/root/.smb-fs42%s' "${1//[!A-Za-z0-9._-]/-}"; }     # /mnt/media -> /root/.smb-fs42-mnt-media
+
+# .env is read by Docker Compose and by the shell (setup-dirs.sh sources it). Unquoted, Compose expands a $ and cuts
+# the value at " #", and the shell splits it at a space. In single quotes both take it as it is, but neither can hold
+# an apostrophe the same way, so main refuses one before any work starts.
 setenv() {         # setenv KEY VALUE: replaces that line of .env and keeps the rest
-  ( umask 077; { grep -v "^$1=" .env 2> /dev/null || true; printf '%s=%s\n' "$1" "$2"; } > .env.tmp )
+  local val=$2
+  case $val in *[!A-Za-z0-9_./:@%+,=-]*) val="'$val'" ;; esac
+  ( umask 077; { grep -v "^$1=" .env 2> /dev/null || true; printf '%s=%s\n' "$1" "$val"; } > .env.tmp )
   mv .env.tmp .env
 }
 
+envget() {         # envget KEY: its value in an install's .env from an earlier run ("" when there is none)
+  [ -f "$FS42_DIR/.env" ] || return 0
+  sed -n "s/^$1=//p" "$FS42_DIR/.env" | tail -n 1 | sed "s/^'\(.*\)'\$/\1/"
+}
+
 add_share() {      # add_share smb|nfs <mount point>: the tools, the password file and the /etc/fstab line
-  local kind=$1 mp=$2 src=${FS42_SHARE// /\\040} opts=ro,_netdev,nofail
+  local kind=$1 mp=$2 src=${FS42_SHARE// /\\040} opts=ro,_netdev,nofail cred
+  cred=$(smb_cred "$mp")
   if [ "$kind" = smb ]; then
     command -v mount.cifs > /dev/null || pkg cifs-utils cifs-utils
     if [ -n "$FS42_SHARE_USER" ]; then
       printf 'username=%s\npassword=%s\n' "$FS42_SHARE_USER" "$FS42_SHARE_PASS" |
-        $SUDO sh -c 'umask 077; cat > "$1"' _ "$SMB_CRED"
-      opts=$opts,iocharset=utf8,credentials=$SMB_CRED
+        $SUDO sh -c 'umask 077; cat > "$1"' _ "$cred"
+      opts=$opts,iocharset=utf8,credentials=$cred
     else
       opts=$opts,iocharset=utf8,guest
     fi
@@ -107,6 +119,7 @@ mount_share() {    # mount_share <mount point> <"new" when add_share just wrote 
   if ! mountpoint -q "$mp" && ! $SUDO mount "$mp"; then
     if [ "${2-}" = new ]; then
       $SUDO cp /etc/fstab.fs42.bak /etc/fstab
+      $SUDO rm -f "$(smb_cred "$mp")"
       die "could not mount $FS42_SHARE (the error is above). /etc/fstab is back as it was: check the share's name, the user and the password, and run this again"
     fi
     die "could not mount $mp with the line /etc/fstab already has for it (the error is above)"
@@ -128,17 +141,25 @@ install_docker() {
     curl -fsSL https://get.docker.com | $SUDO sh ||
       die "Docker's installer did not work here: install Docker Engine and its compose plugin yourself, then run this again"
   fi
-  if has_systemd; then $SUDO systemctl enable --now docker > /dev/null 2>&1 || true; fi
-  if docker info > /dev/null 2>&1; then DOCKER="docker"; else DOCKER="$SUDO docker"; fi
+  if docker info > /dev/null 2>&1; then
+    DOCKER="docker"
+  else                                        # not running yet, or this user may not use it
+    if has_systemd; then $SUDO systemctl enable --now docker > /dev/null 2>&1 || true; fi
+    DOCKER="$SUDO docker"
+  fi
   $DOCKER info > /dev/null 2>&1 || die "Docker is installed but not running (try: sudo systemctl start docker)"
   $DOCKER compose version > /dev/null 2>&1 || die "this Docker has no 'docker compose': install the docker-compose-plugin package, then run this again"
   ok "$($DOCKER --version)"
+  # Rootless Docker is this user's own daemon: root's timer would talk to another one (or none).
+  ROOTLESS=""
+  if $DOCKER info --format '{{.SecurityOptions}}' 2> /dev/null | grep -q rootless; then ROOTLESS=1; fi
 }
 
 auto_update() {    # a systemd timer: pull the newest image, restart only if it changed
-  local when bin
-  if ! has_systemd; then
-    [ "$FS42_AUTO_UPDATE" = no ] || warn "no systemd here, so no update timer. A cron line does the same: cd $DIR && docker compose pull && docker compose up -d"
+  local when bin why
+  if ! has_systemd || [ -n "$ROOTLESS" ]; then
+    if [ -n "$ROOTLESS" ]; then why="rootless Docker runs as you, and the timer would run as root"; else why="there is no systemd here"; fi
+    [ "$FS42_AUTO_UPDATE" = no ] || warn "no update timer: $why. A cron line of your own does the same: cd $DIR && docker compose pull && docker compose up -d"
     return 0
   fi
   if [ "$FS42_AUTO_UPDATE" = no ]; then
@@ -162,7 +183,7 @@ Type=oneshot
 WorkingDirectory=$DIR
 ExecStart=$bin compose pull --quiet
 ExecStart=$bin compose up -d
-ExecStart=$bin image prune -f
+ExecStart=$bin image prune -f --filter "label=org.opencontainers.image.title=Station Wrapper 43"
 EOF
   # Persistent: a machine that was off at 04:30 (a player PC) updates when it is next switched on.
   $SUDO tee /etc/systemd/system/fs42-update.timer > /dev/null << EOF
@@ -182,7 +203,7 @@ EOF
 }
 
 main() {
-  local mp="" share_new="" compose code ip
+  local mp="" share_new="" compose code ip old_root v
 
   cat << EOF
 ${C}   ___________
@@ -195,14 +216,19 @@ EOF
   [ "$(uname -s)" = Linux ] || die "this installs on Linux. On a Mac or Windows, use Docker Desktop and the compose file (see the README)"
   if [ "$(id -u)" = 0 ]; then SUDO=""; else command -v sudo > /dev/null || die "run this as root, or install sudo"; SUDO=sudo; fi
 
+  case ${FS42_IMAGE-} in *[!A-Za-z0-9._/:-]*) die "FS42_IMAGE is not an image's name: $FS42_IMAGE" ;; esac
+
   # ---- the questions --------------------------------------------------------------------------------------------
   choose FS42_ROLE "What is this machine? server = builds the channels, client = a player PC on a TV, playing a server's" server server client
   if [ "$FS42_ROLE" = server ]; then
     ask FS42_DIR "Folder for the compose file and the container's data (a local disk, not a share)" "$HOME/station-wrapper-43"
     # An Emby or Jellyfin server's videos are streamed from it, through placeholders the server makes: nothing to mount.
     choose FS42_EMBY "Do you have an Emby or Jellyfin server whose shows and movies you want on your channels?" n y n
+    old_root=$(envget FS42_MEDIA_ROOT)        # an earlier run's answer is the default, so Enter all the way keeps it
     if [ "$FS42_EMBY" = y ]; then
-      choose FS42_OWN_VIDEOS "Do you also have videos that are not in Emby or Jellyfin (on this machine, or a NAS share)?" n y n
+      # Asked for a folder or a share (an unattended run), or has one already: then there are videos of its own.
+      [ -z "${FS42_MEDIA-}${FS42_MEDIA_ROOT-}" ] || FS42_OWN_VIDEOS=${FS42_OWN_VIDEOS:-y}
+      choose FS42_OWN_VIDEOS "Do you also have videos that are not in Emby or Jellyfin (on this machine, or a NAS share)?" "$([ -n "$old_root" ] && echo y || echo n)" y n
     else
       FS42_OWN_VIDEOS=y
     fi
@@ -211,10 +237,10 @@ EOF
     else
       choose FS42_MEDIA "Where are your videos? local = on this machine, smb = a Windows or NAS share, nfs = an NFS share" local local smb nfs
       if [ "$FS42_MEDIA" = local ]; then
-        ask FS42_MEDIA_ROOT "The folder with your videos (empty: a new 'media' folder beside the compose file)" ""
+        ask FS42_MEDIA_ROOT "The folder with your videos$([ -n "$old_root" ] || echo " (empty: a new 'media' folder beside the compose file)")" "$old_root"
         [ -z "$FS42_MEDIA_ROOT" ] || [ -d "$FS42_MEDIA_ROOT" ] || warn "$FS42_MEDIA_ROOT is not there yet"
       else
-        need FS42_MEDIA_ROOT "Mount the share at" /mnt/media
+        need FS42_MEDIA_ROOT "Mount the share at" "${old_root:-/mnt/media}"
         mp=$FS42_MEDIA_ROOT
       fi
     fi
@@ -250,12 +276,15 @@ EOF
       need FS42_SHARE "The share, as //server/share"
       FS42_SHARE=${FS42_SHARE//\\//}          # \\nas\media, typed the Windows way
       ask FS42_SHARE_USER "Its user name (empty: guest, no password)" ""
-      [ -z "$FS42_SHARE_USER" ] || ask FS42_SHARE_PASS "Its password (kept in $SMB_CRED, which only root can read)" "" secret
+      [ -z "$FS42_SHARE_USER" ] || ask FS42_SHARE_PASS "Its password (kept in $(smb_cred "$mp"), which only root can read)" "" secret
     else
       share_new=new
       need FS42_SHARE "The export, as server:/path"
     fi
   fi
+  for v in FS42_MEDIA_ROOT FS42_SERVER FS42_SYNC_TOKEN FS42_PLAYER_NAME WEATHER_LOCATION; do
+    case ${!v-} in *\'* | *$'\n'*) die "$v can't have an apostrophe or a line break in it: .env can't hold one (for a place, use its ZIP code)" ;; esac
+  done
   choose FS42_AUTO_UPDATE "Check for a new version and install it by itself? (a server and its players must run the same version: answer the same on each)" weekly no daily weekly
 
   echo
@@ -284,6 +313,8 @@ EOF
   if [ "$FS42_ROLE" = server ]; then
     compose=docker-compose.yml
     [ -z "${FS42_MEDIA_ROOT-}" ] || setenv FS42_MEDIA_ROOT "$FS42_MEDIA_ROOT"
+    # "No videos of my own" on a server that had a folder: back to the empty 'media' folder beside the compose file.
+    [ "$FS42_OWN_VIDEOS" = y ] || sed -i '/^FS42_MEDIA_ROOT=/d' .env 2> /dev/null || true
     # Beside videos of your own, the Emby folder only shows on the Files page once the pool of links is on.
     [ "$FS42_EMBY$FS42_OWN_VIDEOS" != yy ] || setenv SYNC_ENABLED 1
     if [ "$FS42_WEATHER" = y ]; then
