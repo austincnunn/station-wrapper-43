@@ -6,6 +6,12 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **An installer.** `curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main/install.sh | bash`
+  sets up a server or a client-mode player PC on a Linux machine: it installs Docker if it is missing, can mount the
+  media share (SMB or NFS, read-only, with an `/etc/fstab` line and Docker made to start after it), writes `.env`,
+  starts the container, and checks a player's sync token against the server. It asks whether to install new versions by
+  itself (a systemd timer, daily or weekly at 04:30; a machine that was off catches up when switched on). Safe to run
+  again; any answer already in the environment is not asked for.
 - **A "Cable box" style for the guide channel.** The look of the FS42 TV apps' channel bar: bevelled grey boxes, the
   programme on now in lavender with blue type, a green clock and time line, monospace type. Pick it under Style on the
   guide's edit page. Long names are cut off with … as the apps do, instead of moving along their cell.

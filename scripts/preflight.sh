@@ -11,7 +11,7 @@ cd "$ROOT"
 
 echo "== syntax"
 python3 -m py_compile fs42-tuner/*.py scripts/*.py fs42-sync/*.py supervisor/*.py
-bash -n scripts/*.sh setup-dirs.sh fieldstation42/entrypoint.sh
+bash -n scripts/*.sh install.sh setup-dirs.sh fieldstation42/entrypoint.sh
 sh -n farm/run.sh fieldstation42/fs42-channels
 python3 -c "import json; json.load(open('fs42-tuner/config.default.json')); json.load(open('fs42-tuner/config.example.json'))"
 
