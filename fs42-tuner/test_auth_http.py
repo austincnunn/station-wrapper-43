@@ -96,9 +96,11 @@ class LoginTest(unittest.TestCase):
                      "/lineup_status.json", "/status.json", "/library.json", "/app.css", "/common.js",
                      "/vendor/bulma-1.0.4.min.css", "/vendor/alpine-3.17.5.min.js"):
             self.assertEqual(self.c.request("GET", path)[0], 200, path)
-        # Bulma and Alpine carry their version in the file name, so a browser fetches them once; the pages' own files are not held
+        # Bulma and Alpine carry their version in the file name, so a browser fetches them once; a page and its scripts
+        # are asked for again each time, so an upgrade never leaves an old script under a new page
         self.assertIn("immutable", self.c.request("GET", "/vendor/bulma-1.0.4.min.css")[1].getheader("Cache-Control"))
-        self.assertIsNone(self.c.request("GET", "/common.js")[1].getheader("Cache-Control"))
+        for path in ("/", "/common.js", "/app.css"):
+            self.assertEqual(self.c.request("GET", path)[1].getheader("Cache-Control"), "no-cache", path)
 
     def test_a_blocked_post_does_not_poison_the_connection(self):
         conn = http.client.HTTPConnection(self.c.host, self.c.port, timeout=10)

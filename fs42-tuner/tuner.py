@@ -2377,8 +2377,9 @@ class Handler(BaseHTTPRequestHandler):
         if os.path.commonpath([full, STATIC_DIR]) != STATIC_DIR or not os.path.isfile(full):
             return False
         ctype = STATIC_TYPES.get(os.path.splitext(full)[1], "application/octet-stream")
-        # static/vendor holds Bulma and Alpine with the version in the file name: a browser keeps them for good
-        cache = "public, max-age=31536000, immutable" if rel.startswith("vendor/") else None
+        # static/vendor holds Bulma and Alpine with the version in the file name: a browser keeps them for good. A page
+        # and its scripts must match, so everything else is asked for again each time (an upgrade never mixes old and new).
+        cache = "public, max-age=31536000, immutable" if rel.startswith("vendor/") else "no-cache"
         with open(full, "rb") as f:
             self._bytes(f.read(), ctype, cache=cache)
         return True
