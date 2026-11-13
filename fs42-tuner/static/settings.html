@@ -14,7 +14,7 @@
 <div class="container">
   <!-- nothing above the tabs changes height, so they stay put from one tab to the next: each tab says what it is itself -->
   <h1 class="is-sr-only">Settings</h1>
-  <div class="tabs is-boxed">
+  <div class="tabs is-boxed has-body">
     <ul role="tablist">
       <template x-for="t in tabs" :key="t.id">
         <li :class="tab === t.id && 'is-active'" role="presentation">
@@ -24,6 +24,8 @@
     </ul>
   </div>
 
+  <!-- the tab bar and what the chosen tab shows are one framed panel: the frame carries on from the tabs' own line -->
+  <div class="tab-body">
   <!-- ================= General and Players: the compose file's settings ================= -->
   <section x-show="tab === 'general' || tab === 'players'" role="tabpanel" x-cloak>
     <article class="message is-warning" x-show="r && !r.edit">
@@ -597,6 +599,7 @@
       </template>
     </section>
   </template>
+  </div>
 </div>
 </main>
 <script src="/common.js"></script>

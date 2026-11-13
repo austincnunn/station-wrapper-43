@@ -59,6 +59,10 @@ details.box:not([open]) > summary, .box > details:not([open]) > summary { margin
 .push-right { margin-left: auto; }
 fieldset { border: 0; padding: 0; min-width: 0; }
 fieldset > legend.title { width: 100%; padding-bottom: 0.4rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
+/* a tab bar with its content framed under it (Settings): the frame's sides and foot carry on from the tabs' line */
+.tabs.has-body { margin-bottom: 0; }
+.tab-body { border: 1px solid var(--bulma-border); border-top: 0; border-radius: 0 0 var(--bulma-radius-large) var(--bulma-radius-large); padding: 1.25rem; }
+@media (max-width: 768px) { .tab-body { padding: 0.75rem; } }
 .tabs { scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 .field .input, .field .select, .field .select select { max-width: 34rem; }
