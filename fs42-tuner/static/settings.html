@@ -361,7 +361,7 @@
           <thead><tr><th>Time</th><th>Playing</th></tr></thead>
           <template x-for="b in blocks" :key="b.start">
             <tbody>
-              <tr :class="b.now && 'is-selected'">
+              <tr :class="b.now && 'is-now'">
                 <td x-text="when(b)"></td>
                 <td>
                   <button type="button" class="button is-small is-ghost twisty" title="Show the files" :aria-expanded="b.open" @click="flip(b)" x-text="b.open ? '▾' : '▸'"></button>

@@ -102,7 +102,7 @@
       <template x-for="tag in shownTags" :key="tag.tag">
         <details class="box inner lib-tag" :open="libOpen.includes(tag.tag)" @toggle="noteOpen(tag.tag, $el.open)">
           <summary>
-            <strong x-text="tag.tag"></strong> <span class="has-text-grey" x-text="`${tag.videos} videos`"></span>
+            <strong x-text="tag.tag"></strong> <span class="has-text-grey" x-text="`${tag.videos} video${tag.videos === 1 ? '' : 's'}`"></span>
             <span class="tag is-danger is-light" x-show="tag.dead" title="Links whose file is gone, as seen from this container" x-text="`${tag.dead} dead`"></span>
             <span class="tag is-danger is-light" x-show="tag.duplicates" title="The same file linked more than once in this tag; FieldStation42 would schedule it twice" x-text="`${tag.duplicates} duplicate`"></span>
           </summary>

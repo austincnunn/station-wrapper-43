@@ -147,7 +147,7 @@
         } catch (e) { this.counting = false; }               // counts are a nicety
       },
       countText(name) {
-        return this.counts[name] != null ? `${this.counts[name]} videos` : this.counting ? "not counted yet" : "";
+        return this.counts[name] != null ? plural(this.counts[name], "video") : this.counting ? "not counted yet" : "";
       },
       async loadTags(keepOpen) {
         const data = await list("tags", "");
