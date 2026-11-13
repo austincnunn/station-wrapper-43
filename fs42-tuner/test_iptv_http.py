@@ -63,7 +63,7 @@ class SourcesHttpTest(unittest.TestCase):
             rows = {x["channel"]: x for x in json.load(r)}
         self.assertEqual(rows["200"]["external"], {"source": "Playlist", "type": "m3u", "mode": "convert"})
         self.assertTrue(rows["200"]["on_air"])
-        for page in ("/iptv.html", "/iptv.js", "/iptv.css"):
+        for page in ("/settings.html", "/iptv.js", "/emby.js"):
             self.assertEqual(urllib.request.urlopen(self.srv.base + page, timeout=10).status, 200)
         # a channel switched off leaves the lineup; switched on it comes back with the same number
         self.assertEqual(self.srv.post("/api/iptv/channel", {"id": pl["id"], "key": "a", "enabled": False})[0], 200)

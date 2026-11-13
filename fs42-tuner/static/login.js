@@ -1,17 +1,15 @@
+// The login page: log in, set the first password, or change it. It stands alone (no bar, no common.js): it is the one
+// page everyone can open.
 (function () {
   "use strict";
-  const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
 
-  // only ever go back to a page on this server
+  // Only ever go back to a page on this server. A tab of the Settings page (#schedule) survives the redirect here
+  // as this page's own #, so it is put back on.
   function nextUrl() {
     const n = params.get("next") || "/";
-    return /^\/(?![\/\\])[^\s]*$/.test(n) && !n.startsWith("/login") ? n : "/";
-  }
-
-  function say(text, kind) {
-    $("msg").textContent = text || "";
-    $("msg").className = "msg" + (kind ? " " + kind : "");
+    const ok = /^\/(?![\/\\])[^\s]*$/.test(n) && !n.startsWith("/login");
+    return ok ? n + (n.includes("#") ? "" : location.hash) : "/";
   }
 
   async function post(path, body) {
@@ -25,43 +23,57 @@
     if (!res.ok) throw new Error(data.error || `that failed (${res.status})`);
     return data;
   }
-  const run = (fn) => fn().catch((e) => say(e.message, "err"));
 
-  $("login-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    run(async () => {
-      await post("/api/auth/login", { password: $("l-pw").value });
-      location.assign(nextUrl());
-    });
-  });
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("loginPage", () => ({
+      mode: "",                  // login | setup | change | off
+      msg: "", kind: "", busy: false,
+      pw: "", pw2: "", old: "",
 
-  $("setup-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    run(async () => {
-      if ($("s-pw").value !== $("s-pw2").value) throw new Error("the two passwords are not the same");
-      await post("/api/auth/setup", { password: $("s-pw").value });
-      location.assign(nextUrl());
-    });
-  });
-
-  $("change-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    run(async () => {
-      if ($("c-new").value !== $("c-new2").value) throw new Error("the two new passwords are not the same");
-      await post("/api/auth/password", { current: $("c-old").value, new: $("c-new").value });
-      say("Password changed. Everyone else has been logged out.", "ok");
-      $("change-form").reset();
-    });
-  });
-
-  run(async () => {
-    const res = await fetch("/api/auth/status");
-    const st = await res.json();
-    if (!st.login) { $("off").hidden = false; return; }
-    if (st.setup_needed) { $("setup-form").hidden = false; $("s-pw").focus(); return; }
-    if (st.authenticated && params.get("change")) { $("change-form").hidden = false; $("c-old").focus(); return; }
-    if (st.authenticated) { location.replace(nextUrl()); return; }
-    $("login-form").hidden = false;
-    $("l-pw").focus();
+      init() {
+        this.run(async () => {
+          const st = await (await fetch("/api/auth/status")).json();
+          if (!st.login) this.mode = "off";
+          else if (st.setup_needed) this.mode = "setup";
+          else if (st.authenticated && params.get("change")) this.mode = "change";
+          else if (st.authenticated) return location.replace(nextUrl());
+          else this.mode = "login";
+          this.$nextTick(() => this.$refs[this.mode] && this.$refs[this.mode].focus());
+        });
+      },
+      async run(fn) {
+        this.busy = true;
+        this.msg = "";
+        try {
+          await fn();
+        } catch (e) {
+          this.msg = e.message;
+          this.kind = "err";
+        }
+        this.busy = false;
+      },
+      login() {
+        return this.run(async () => {
+          await post("/api/auth/login", { password: this.pw });
+          location.assign(nextUrl());
+        });
+      },
+      setup() {
+        return this.run(async () => {
+          if (this.pw !== this.pw2) throw new Error("the two passwords are not the same");
+          await post("/api/auth/setup", { password: this.pw });
+          location.assign(nextUrl());
+        });
+      },
+      change() {
+        return this.run(async () => {
+          if (this.pw !== this.pw2) throw new Error("the two new passwords are not the same");
+          await post("/api/auth/password", { current: this.old, new: this.pw });
+          this.old = this.pw = this.pw2 = "";
+          this.msg = "Password changed. Everyone else has been logged out.";
+          this.kind = "ok";
+        });
+      },
+    }));
   });
 })();

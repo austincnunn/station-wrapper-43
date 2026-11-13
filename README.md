@@ -80,9 +80,9 @@ Run it beside the compose file (it needs a clone of this repository for the scri
 | | |
 |---|---|
 | ![Stations](docs/images/stations.png) | ![Lists and files](docs/images/files.png) |
-| **Stations**: one card per channel, build and keep it going | **Lists & files**: browse your media, make lists, or use a series directly |
+| **Stations**: one card per channel, build and keep it going | **Settings → Lists & files**: browse your media, make lists, or use a series directly |
 | ![Status](docs/images/status.png) | ![Schedule](docs/images/schedule.png) |
-| **Status**: what is wrong first, with a button to fix it | **Schedule**: what plays when, down to each file in a break |
+| **Settings → Status**: what is wrong first, with a button to fix it | **Settings → Schedule**: what plays when, down to each file in a break |
 | ![First run](docs/images/dashboard-first-run.png) | ![New station](docs/images/station-new.png) |
 | **First run**: the Getting started card and a channel in one click | **New station**: start from a template, then change anything |
 
@@ -94,7 +94,7 @@ Add the container as an HDHomeRun tuner and its `/xmltv.xml` as the guide; your 
 
 1. **Live TV → Tuner Devices → Add → HDHomeRun**: `http://<container host>:5004`.
 2. **Live TV → TV Guide Data Providers → Add → XMLTV**: `http://<container host>:5004/xmltv.xml`.
-3. **An antenna tuner set to *guide only*** (Sources page) brings only its listings into this guide; its video still comes from the tuner. So also add the tuner itself as a **second HDHomeRun tuner device** in Jellyfin, at its own address (`http://<tuner address>`), for its channels. It needs no guide provider of its own: its listings are already in the container's XMLTV. Set it to *proxy* instead and the container carries its channels and none of this is needed.
+3. **An antenna tuner set to *guide only*** (Settings → Sources) brings only its listings into this guide; its video still comes from the tuner. So also add the tuner itself as a **second HDHomeRun tuner device** in Jellyfin, at its own address (`http://<tuner address>`), for its channels. It needs no guide provider of its own: its listings are already in the container's XMLTV. Set it to *proxy* instead and the container carries its channels and none of this is needed.
 4. **Refresh Guide Data**, then check each tuner's channels are mapped.
 
 ![Jellyfin's Live TV setup: the antenna and this container as two HDHomeRun tuners, and this container's XMLTV as the one guide provider](docs/images/jellyfin-livetv-setup.png)

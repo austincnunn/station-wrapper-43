@@ -1,0 +1,62 @@
+"""The dashboard's pages (static/): each one loads files that exist, from this server only, and the station
+editor's chooser keeps its rows as data.
+
+Run: python3 test_pages.py
+"""
+import glob
+import os
+import re
+import unittest
+
+STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+def read(name):
+    with open(os.path.join(STATIC, name), encoding="utf-8") as f:
+        return f.read()
+
+
+class PagesTest(unittest.TestCase):
+    def pages(self):
+        return sorted(os.path.basename(p) for p in glob.glob(os.path.join(STATIC, "*.html")))
+
+    def test_every_page_loads_only_files_this_server_has(self):
+        self.assertIn("settings.html", self.pages())
+        for page in self.pages():
+            for ref in re.findall(r'(?:src|href)="(/[^"#?]+\.(?:js|css))"', read(page)):
+                if ref == "/mpegts.min.js":                      # fetched into the image when it is built (Dockerfile)
+                    continue
+                self.assertTrue(os.path.isfile(os.path.join(STATIC, ref.lstrip("/"))), f"{page} loads {ref}, which is not there")
+            self.assertNotRegex(read(page), r'(?:src|href)="(?:https?:)?//', f"{page} loads something from another server")
+
+    def test_every_page_is_bulma_and_alpine_from_the_vendor_folder(self):
+        for page in self.pages():
+            html = read(page)
+            self.assertRegex(html, r'href="/vendor/bulma-[\d.]+\.min\.css"', page)
+            self.assertRegex(html, r'<script defer src="/vendor/alpine-[\d.]+\.min\.js"></script>', page)
+            self.assertIn('data-theme="dark"', html, page)
+
+    def test_the_pages_that_became_tabs_are_gone_and_settings_has_their_tabs(self):
+        for old in ("iptv.html", "schedule.html", "files.html", "status.html"):
+            self.assertNotIn(old, self.pages())
+        html, js = read("settings.html"), read("settings.js")
+        for tab in ("general", "sources", "schedule", "files", "players", "status"):
+            self.assertIn(f'id: "{tab}"', js)
+        for part in ("sourcesTab", "embyPanel", "scheduleTab", "filesTab", "statusTab"):
+            self.assertIn(f'x-data="{part}"', html)
+
+    def test_nothing_drawn_by_the_chooser_is_a_function(self):
+        """Alpine calls any function an expression evaluates to. A row that carried its own "use" function was chosen
+        just by being drawn (x-show="r.use"), which walked the media and made a source of everything in it. Rows and
+        chips are data; only openRow / useRow / removeChip act, and only on a click."""
+        js = read("station.js")
+        self.assertNotRegex(js, r"\b(?:open|use|remove)\s*:\s*(?:async\s*)?\([^)]*\)\s*=>")
+        template = js[js.index("const CHOOSER = `"):js.index("`;", js.index("const CHOOSER = `"))]
+        for shown in re.findall(r'(?:x-show|x-text|:disabled|:title|:class)="([^"]*)"', template):
+            self.assertNotRegex(shown, r"^\s*!?\s*(?:r|c)\.(?:open|use|remove)\s*(?:\|\||&&|$)", shown)
+        for click in re.findall(r'@click(?:\.prevent)?="([^"]*)"', template):
+            self.assertRegex(click, r"^(?:removeChip\(c\)|toggle\(\)|go\(c\.root, c\.path\)|openRow\(r\)|useRow\(r\))$", click)
+
+
+if __name__ == "__main__":
+    unittest.main()

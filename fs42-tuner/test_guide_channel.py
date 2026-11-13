@@ -329,7 +329,7 @@ class DrawTest(unittest.TestCase):
         self.assertEqual(len(set(frames.values())), len(gc.THEMES))
         self.assertEqual(set(gc.THEME_NAMES), set(gc.THEMES))
         html = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "station.html")).read()
-        offered = re.search(r'<select id="g-theme">(.*?)</select>', html, re.S).group(1)
+        offered = re.search(r'<select id="g-theme"[^>]*>(.*?)</select>', html, re.S).group(1)
         self.assertEqual(re.findall(r'value="([^"]+)"', offered), list(gc.THEMES))
 
     def test_a_4_3_guide_is_drawn_in_the_middle_and_bigger_text_makes_taller_rows(self):
@@ -355,7 +355,7 @@ class DrawTest(unittest.TestCase):
         import re
         html = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "station.html")).read()
         for sel, want in (("g-aspect", list(gc.ASPECTS)), ("g-textsize", list(gc.TEXT_SIZES))):
-            offered = re.search(rf'<select id="{sel}">(.*?)</select>', html, re.S).group(1)
+            offered = re.search(rf'<select id="{sel}"[^>]*>(.*?)</select>', html, re.S).group(1)
             self.assertEqual(re.findall(r'value="([^"]+)"', offered), want)
 
     def test_a_title_too_long_for_its_slot_scrolls_along_it_and_one_that_fits_stays_put(self):

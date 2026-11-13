@@ -33,7 +33,7 @@ class DiagUnitTest(unittest.TestCase):
                             "sources": [], "media": {"present": False, "path": "/m"}, "ffmpeg": {"found": True}, "disk": {}, "guide": {}})
         fixes = {r["text"].split(":")[0][:20]: r.get("href") for r in rows}
         self.assertTrue(any(r.get("href") == "/stations.html" for r in rows))
-        self.assertTrue(any(r.get("href") == "/files.html" for r in rows))
+        self.assertTrue(any(r.get("href") == "/settings.html#files" for r in rows))
         self.assertTrue(all(r.get("fix") for r in rows if r.get("href")), fixes)
 
     def test_the_log_ring_keeps_what_was_printed(self):
@@ -134,8 +134,9 @@ class StatusHttpTest(unittest.TestCase):
             shutil.rmtree(root)
 
     def test_the_status_page_is_served(self):
-        with urllib.request.urlopen(self.srv.base + "/status.html", timeout=10) as resp:
-            self.assertIn(b"Status", resp.read())
+        with urllib.request.urlopen(self.srv.base + "/status.html", timeout=10) as resp:      # an old link: it lands on the tab
+            self.assertIn("/settings.html", resp.url)
+            self.assertIn(b'x-data="statusTab"', resp.read())
 
 
 if __name__ == "__main__":

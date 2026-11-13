@@ -1,0 +1,151 @@
+/* Station Wrapper 43 on Bulma (/vendor/bulma-*.min.css). This sheet is only: the dark theme's colours, the page
+   skeleton every page shares, and the few things Bulma has no component for. Look for a Bulma class first. */
+
+/* ---- theme: dark only, teal accent */
+html[data-theme=dark] {
+  color-scheme: dark;
+  --bulma-scheme-h: 223;
+  --bulma-scheme-s: 14%;
+  --bulma-scheme-main-l: 6%;          /* the page */
+  --bulma-scheme-main-bis-l: 10%;     /* a box on it */
+  --bulma-scheme-main-ter-l: 14%;     /* something inside a box */
+  --bulma-background-l: 14%;
+  --bulma-border-weak-l: 16%;
+  --bulma-border-l: 22%;
+  --bulma-text-weak-l: 62%;
+  --bulma-text-l: 82%;
+  --bulma-text-strong-l: 92%;
+  --bulma-text-title-l: 96%;
+  --bulma-primary-h: 174;
+  --bulma-primary-s: 59%;
+  --bulma-primary-l: 56%;
+  --bulma-primary-on-scheme-l: 62%;
+  --bulma-link-h: 174;
+  --bulma-link-s: 59%;
+  --bulma-link-l: 56%;
+  --bulma-link-on-scheme-l: 62%;
+  --bulma-danger-h: 3;
+  --bulma-danger-s: 75%;
+  --bulma-danger-l: 60%;
+  --bulma-family-primary: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --panel: hsl(223, 14%, 10%);
+  --panel-2: hsl(223, 14%, 14%);
+  --line: hsl(223, 14%, 22%);
+  --dim: hsl(223, 10%, 62%);
+}
+
+/* an element with the hidden attribute is hidden, whatever display a class gave it; x-cloak hides until Alpine has started */
+[hidden], [x-cloak] { display: none !important; }
+
+/* ---- the skeleton: bar, title row with its actions on the right, boxes */
+.navbar { border-bottom: 1px solid var(--line); }
+.navbar .brand { font-weight: 700; color: var(--bulma-primary); }
+.navbar a.navbar-item.is-active { background: none; color: var(--bulma-primary); font-weight: 600; box-shadow: inset 0 -2px 0 var(--bulma-primary); }
+.navbar-item.adv { color: var(--dim); font-size: 0.9em; }
+main.section { padding-top: 1.5rem; }
+.page-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 0.75rem 1.5rem; margin-bottom: 1.25rem; }
+.page-head .title { margin-bottom: 0.35rem; }
+.page-head .subtitle { font-size: 1rem; max-width: 62em; margin: 0; color: var(--dim); }
+.page-head .buttons { margin: 0; }
+.box { --bulma-box-background-color: var(--panel); border: 1px solid var(--line); box-shadow: none; }
+.box.inner, .box .box { --bulma-box-background-color: var(--panel-2); }
+.box.is-off, tr.is-off td { opacity: 0.6; }
+.box > .title:first-child, .box > summary { margin-bottom: 0.9rem; }
+details > summary { cursor: pointer; }
+details.box:not([open]) > summary { margin-bottom: 0; }
+.title.with-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.title.with-tags .tag { font-weight: 400; }
+.push-right { margin-left: auto; }
+fieldset { border: 0; padding: 0; min-width: 0; }
+fieldset > legend.title { width: 100%; padding-bottom: 0.4rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
+.tabs { scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.field .input, .field .select, .field .select select { max-width: 34rem; }
+.field.has-addons .input, .field.is-grouped .input { max-width: none; }
+.input.num { width: 6rem; }
+.field.cap { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.field.cap .label, .field.cap .help { margin: 0; font-weight: 400; font-size: 0.9rem; }
+/* the Save row of a long form stays in reach instead of waiting at the bottom of the page */
+.sticky-actions { position: sticky; bottom: 0; z-index: 5; margin: 1rem -1.25rem -1.25rem; padding: 0.75rem 1.25rem; background: var(--bulma-box-background-color, var(--panel)); border-top: 1px solid var(--line); border-radius: 0 0 var(--bulma-radius-large) var(--bulma-radius-large); }
+.sticky-actions.buttons .button { margin-bottom: 0; }
+
+/* ---- messages (top right) and the progress bar of a long job */
+.toasts { position: fixed; top: 4.25rem; right: 1rem; z-index: 60; display: flex; flex-direction: column; gap: 0.5rem; width: min(30rem, calc(100vw - 2rem)); pointer-events: none; }
+.toasts .notification { margin: 0; pointer-events: auto; padding: 0.9rem 2.5rem 0.9rem 1.1rem; box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.5); overflow-wrap: anywhere; }
+.job-progress { margin: 0.75rem 0; }
+.job-progress .progress { margin-bottom: 0.3rem; }
+.job-progress .help { margin-top: 0; overflow-wrap: anywhere; }
+.modal-content.box { margin: 0 1rem; max-width: 34rem; }
+
+/* ---- tables of facts (name on the left), and rows of things with their buttons on the right */
+.table { --bulma-table-background-color: transparent; }
+.table.facts th { width: 16rem; font-weight: 500; color: var(--dim); }
+.table.facts td { overflow-wrap: anywhere; }
+@media (max-width: 768px) { .table.facts th { width: 9rem; } }
+ul.rows { list-style: none; margin: 0; padding: 0; }
+ul.rows > li { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.15rem; border-bottom: 1px solid var(--bulma-border-weak); }
+ul.rows > li:last-child { border-bottom: 0; }
+ul.rows .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.rows .name.wrap { white-space: normal; overflow: visible; }
+ul.rows .meta { color: var(--dim); font-size: 0.85em; white-space: nowrap; }
+ul.rows.scroll { max-height: 60vh; overflow: auto; }
+.addr { font-size: 0.85em; word-break: break-all; margin-bottom: 0.4rem; }
+.chan-table td { vertical-align: middle; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85em; }
+
+/* ---- Lists & files */
+.tag-list { max-height: 26vh; overflow: auto; margin: 0.75rem 0; }
+.tag-list .menu-list a { display: flex; justify-content: space-between; gap: 0.75rem; }
+.tag-list .count { color: var(--dim); font-size: 0.85em; white-space: nowrap; }
+.tag-list .menu-list a.is-active .count { color: inherit; }
+.breadcrumb { margin-bottom: 0.75rem !important; }
+
+/* ---- Schedule */
+table.sched .twisty { padding: 0 0.3rem; height: 1.5rem; vertical-align: baseline; text-decoration: none; }
+table.sched tr.detail td { background: var(--panel-2); padding: 0.5rem 0.9rem 0.9rem 2rem; }
+ul.files { list-style: none; margin: 0 0 0.5rem; padding: 0; }
+ul.files li { display: flex; gap: 0.8em; padding: 0.15em 0; align-items: baseline; }
+ul.files .when { color: var(--dim); min-width: 5.5em; }
+ul.files .kind { min-width: 6.5em; color: var(--bulma-primary); font-size: 0.85em; }
+ul.files li.kind-bump, ul.files li.kind-commercial, ul.files li.kind-bump .kind, ul.files li.kind-commercial .kind { color: var(--dim); }
+ul.files .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.files .fname, ul.files .len { color: var(--dim); }
+ul.files .fname { font-size: 0.85em; margin-left: 0.6em; }
+table.sched { table-layout: fixed; }
+table.sched th:first-child { width: 13rem; }
+
+/* ---- Dashboard: channel cards, the system's tiles, the library by list */
+.channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 0.8rem; }
+.card.chan { --bulma-card-background-color: var(--panel); margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); box-shadow: none; overflow: hidden; color: var(--bulma-text); }
+.card.chan:hover { border-color: var(--bulma-primary); }
+.card.chan.is-off { opacity: 0.6; }
+.card.chan .thumb { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.card.chan .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.card.chan .thumb-off { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 0.9em; background: var(--panel-2); }
+.card.chan .card-content { padding: 0.6rem 0.75rem 0.8rem; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.card.chan .card-content > div:not(.head) { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.card.chan .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2em 0.5em; }
+.card.chan .num { font-weight: 700; font-size: 1.15em; color: var(--bulma-primary); font-variant-numeric: tabular-nums; }
+.card.chan .name { color: var(--dim); flex: 1; min-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.chan .now { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.chan .now.has-text-grey { font-weight: 400; }
+.card.chan .clip { color: var(--dim); font-size: 0.8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.chan .time { color: var(--dim); font-size: 0.78em; font-variant-numeric: tabular-nums; }
+.card.chan .progress { height: 4px; margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; }
+.tile-stat { margin: 0 !important; padding: 0.7rem 0.9rem; }
+.tile-stat.is-warn { border-color: var(--bulma-danger); }
+.tile-stat .heading { color: var(--dim); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.04em; }
+.tile-stat .value { font-size: 1.3em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lib-tags { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.6rem; align-items: start; margin-top: 0.75rem; }
+.lib-tag { margin: 0 !important; padding: 0.6rem 0.8rem; }
+.lib-tag[open] { grid-column: 1 / -1; }
+.lib-tag > summary { margin-bottom: 0; }
+ul.rows.two-col { columns: 2 260px; margin-top: 0.5rem; }
+ul.rows.two-col > li { break-inside: avoid; border: 0; padding: 0.15rem 0; }
+
+/* ---- Stations: a card each */
+.grid > .box { margin: 0; }
+.box.station .num { color: var(--bulma-primary); font-variant-numeric: tabular-nums; }
+.box.station details > summary { font-size: 0.9em; margin: 0.25rem 0 0.5rem; }
+.box.station .buttons:last-child, .box.station details:last-child .buttons { margin-bottom: 0; }

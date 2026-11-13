@@ -65,10 +65,16 @@ class LoginTest(unittest.TestCase):
                          (200, True, False, True, False))
         code, _, body, _ = self.c.request("GET", "/api/stations")
         self.assertEqual((code, body["setup"], body["login"]), (401, True, "/login.html"))
-        for page in ("/stations.html", "/station.html", "/schedule.html", "/files.html"):
+        for page in ("/stations.html", "/station.html", "/settings.html"):
             code, resp, _, _ = self.c.request("GET", page)
             self.assertEqual(code, 302, page)
             self.assertEqual(resp.getheader("Location"), "/login.html?next=" + page.replace("/", "%2F"))
+        # the pages that became tabs of Settings lead to their tab (which then asks for the login like any other)
+        for page, tab in (("/iptv.html", "sources"), ("/schedule.html", "schedule"), ("/files.html", "files"), ("/status.html", "status")):
+            code, resp, _, _ = self.c.request("GET", page)
+            self.assertEqual((code, resp.getheader("Location")), (302, "/settings.html#" + tab), page)
+        self.assertEqual(self.c.request("GET", "/schedule.html?name=A%20B")[1].getheader("Location"),
+                         "/settings.html?name=A%20B#schedule")                            # the station asked for is kept
         self.assertEqual(self.c.request("GET", "/stations.html?name=A%20B")[1].getheader("Location"),
                          "/login.html?next=%2Fstations.html%3Fname%3DA%2520B")             # the whole address, encoded
 
@@ -87,8 +93,12 @@ class LoginTest(unittest.TestCase):
 
     def test_what_clients_and_viewers_need_stays_open(self):
         for path in ("/", "/watch.html", "/login.html", "/login.js", "/channels.json", "/lineup.json", "/discover.json",
-                     "/lineup_status.json", "/status.json", "/library.json", "/style.css", "/common.js"):
+                     "/lineup_status.json", "/status.json", "/library.json", "/app.css", "/common.js",
+                     "/vendor/bulma-1.0.4.min.css", "/vendor/alpine-3.17.5.min.js"):
             self.assertEqual(self.c.request("GET", path)[0], 200, path)
+        # Bulma and Alpine carry their version in the file name, so a browser fetches them once; the pages' own files are not held
+        self.assertIn("immutable", self.c.request("GET", "/vendor/bulma-1.0.4.min.css")[1].getheader("Cache-Control"))
+        self.assertIsNone(self.c.request("GET", "/common.js")[1].getheader("Cache-Control"))
 
     def test_a_blocked_post_does_not_poison_the_connection(self):
         conn = http.client.HTTPConnection(self.c.host, self.c.port, timeout=10)

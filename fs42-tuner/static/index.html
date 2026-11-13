@@ -1,42 +1,125 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Station Wrapper 43 -- Channels</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/dashboard.css">
-<link rel="stylesheet" href="/views.css">
+<link rel="stylesheet" href="/vendor/bulma-1.0.4.min.css">
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <main id="dash">
-    <header class="dash-head">
-      <h1>Channels</h1>
-      <span id="summary" class="dim"></span>
-    </header>
+<div id="shell" data-page="dashboard"></div>
+<main class="section" x-data="dashboardPage">
+<div class="container">
+  <header class="page-head">
+    <div>
+      <h1 class="title">Channels</h1>
+      <p class="subtitle" x-text="summary"></p>
+    </div>
+  </header>
 
-    <section id="setup" class="panel setup" hidden aria-label="Getting started"></section>
-    <section id="channels" class="channels" aria-label="Channels"></section>
-
-    <details id="sys" class="fold">
-      <summary><h2>System</h2><span id="sys-summary" class="fold-summary"></span></summary>
-      <div id="stats" class="stats"></div>
-    </details>
-
-    <details id="lib" class="fold">
-      <summary><h2>Library</h2><span id="lib-summary" class="fold-summary"></span></summary>
-      <div class="lib-tools">
-        <input id="lib-filter" type="search" placeholder="Find a list…" aria-label="Find a list">
-        <button id="lib-rescan" class="lib-rescan" type="button">Rescan</button>
+  <section class="box" x-show="setup.show" x-cloak aria-label="Getting started">
+    <div class="level is-mobile">
+      <div class="level-left"><h2 class="title is-5">Getting started</h2></div>
+      <div class="level-right"><button type="button" class="button is-small" @click="hideSetup()">Hide</button></div>
+    </div>
+    <ul class="rows">
+      <template x-for="(s, i) in setup.steps" :key="i">
+        <li :class="s.done ? 'has-text-success' : i === setup.next ? '' : 'has-text-grey'">
+          <span aria-hidden="true" x-text="s.done ? '✔' : i === setup.next ? '▶' : '○'"></span>
+          <span class="name wrap" x-text="s.text"></span>
+          <a class="button is-small" :class="i === setup.next && 'is-primary'" x-show="!s.done && (i === setup.next || s.done === null)" :href="s.href" x-text="s.go"></a>
+        </li>
+      </template>
+    </ul>
+    <!-- no station yet: a way to get one without choosing anything. Its "on air" message stays until the page is reloaded. -->
+    <div class="block" x-data="quickStart" x-show="setup.noStation || busy || made">
+      <div class="buttons"><button type="button" class="button is-primary" :disabled="busy" @click="setupBusy = true; go()">Make me a channel now</button></div>
+      <div x-progress="job"></div>
+      <p role="status" x-text="note"></p>
+      <div class="buttons" x-show="made">
+        <a class="button" :href="made ? `/watch.html?ch=${made.number}` : '#'">Watch it</a>
+        <a class="button" :href="made ? `/station.html?name=${encodeURIComponent(made.name)}` : '#'">Change it</a>
       </div>
-      <div id="library" class="lib-tags"></div>
-    </details>
-    <p id="status-line" class="status-line"></p>
-  </main>
+    </div>
+  </section>
 
-  <script src="/common.js"></script>
-  <script>W.nav("dashboard");</script>
-  <script src="/dashboard.js"></script>
+  <section class="channels block" aria-label="Channels">
+    <template x-for="r in channels" :key="r.channel">
+      <a class="card chan" :class="!r.on_air && 'is-off'" :href="`/watch.html?ch=${encodeURIComponent(r.channel)}`" :title="`Watch channel ${r.channel}`">
+        <div class="thumb">
+          <img alt="" loading="lazy" x-show="hasThumb(r)" :src="hasThumb(r) ? `/thumb/${encodeURIComponent(r.channel)}.jpg?b=${bucket}` : null" @error="noThumb[r.channel] = bucket">
+          <div class="thumb-off" x-show="!hasThumb(r)" x-text="thumbText(r)"></div>
+        </div>
+        <div class="card-content">
+          <div class="head">
+            <span class="num" x-text="r.channel"></span><span class="name" x-text="r.station"></span>
+            <!-- only what is out of the ordinary gets a tag: every channel is normally on air -->
+            <span class="tag" x-show="!r.on_air">off air</span>
+            <span class="tag is-warning" x-show="r.encoding">encoding</span>
+            <span class="tag is-primary" x-show="r.viewers" x-text="`${r.viewers} watching`"></span>
+          </div>
+          <p class="now has-text-grey" x-show="!r.now">Nothing scheduled</p>
+          <template x-if="r.now">
+            <div>
+              <p class="now" x-show="r.now.title && r.now.title !== r.station" :title="r.now.file" x-text="r.now.title"></p>
+              <p class="time" x-show="r.external" x-text="r.external ? `Live from ${r.external.source}` : ''"></p>
+              <!-- a break names the show it interrupts as the title, so say what is really playing under it -->
+              <p class="clip" x-show="filler(r.now)"><span class="tag is-small" x-text="r.now.content_type === 'bump' ? 'mid card' : r.now.content_type"></span> <span x-text="(r.now.file || '').replace(/\.\w+$/, '')"></span></p>
+              <progress class="progress is-primary" max="100" x-show="r.now.duration" :value="r.now.duration ? Math.min(100, (r.now.elapsed / r.now.duration) * 100) : 0" :aria-label="`${r.station}: how far through`"></progress>
+              <p class="time" x-show="r.now.duration" x-text="`${fmtClock(r.now.elapsed)} / ${fmtClock(r.now.duration)}`"></p>
+            </div>
+          </template>
+        </div>
+      </a>
+    </template>
+  </section>
+
+  <details class="box" id="system" x-ref="sys" @toggle="remember('sys', $el.open)">
+    <summary><span class="title is-5">System</span> <span :class="sysWarns ? 'has-text-danger' : 'has-text-grey'" x-text="sysSummary"></span></summary>
+    <div class="tiles">
+      <template x-for="s in stats" :key="s.label">
+        <div class="box inner tile-stat" :class="s.warn && 'is-warn'">
+          <p class="heading" x-text="s.label"></p>
+          <p class="value" x-text="s.value"></p>
+          <p class="help" x-text="s.sub"></p>
+        </div>
+      </template>
+    </div>
+  </details>
+
+  <details class="box" id="library" x-ref="lib" @toggle="remember('lib', $el.open)">
+    <summary><span class="title is-5">Library</span> <span :class="libWarn ? 'has-text-danger' : 'has-text-grey'" x-text="libSummary"></span></summary>
+    <div class="field is-grouped">
+      <div class="control is-expanded"><input class="input" type="search" placeholder="Find a list…" aria-label="Find a list" x-model="libFilter"></div>
+      <div class="control"><button type="button" class="button" :disabled="scanning" @click="loadLibrary(true)">Rescan</button></div>
+    </div>
+    <div x-progress="scanJob"></div>
+    <p class="has-text-grey" x-show="lib && !lib.found" x-text="lib ? `No content folder at ${lib.root}. Run the channel generator, or put videos in tag folders there.` : ''"></p>
+    <p class="has-text-grey" x-show="lib && lib.found && !lib.tags.length">The content folder is empty.</p>
+    <div class="lib-tags">
+      <template x-for="tag in shownTags" :key="tag.tag">
+        <details class="box inner lib-tag" :open="libOpen.includes(tag.tag)" @toggle="noteOpen(tag.tag, $el.open)">
+          <summary>
+            <strong x-text="tag.tag"></strong> <span class="has-text-grey" x-text="`${tag.videos} videos`"></span>
+            <span class="tag is-danger is-light" x-show="tag.dead" title="Links whose file is gone, as seen from this container" x-text="`${tag.dead} dead`"></span>
+            <span class="tag is-danger is-light" x-show="tag.duplicates" title="The same file linked more than once in this tag; FieldStation42 would schedule it twice" x-text="`${tag.duplicates} duplicate`"></span>
+          </summary>
+          <ul class="rows two-col">
+            <li class="has-text-grey" x-show="!tag.sources.length">empty</li>
+            <template x-for="s in tag.sources" :key="s.name"><li><span class="name" x-text="s.name"></span><span class="meta" x-text="s.videos"></span></li></template>
+          </ul>
+        </details>
+      </template>
+    </div>
+  </details>
+
+  <p class="help" :class="lost && 'is-danger'" x-text="statusLine"></p>
+</div>
+</main>
+<script src="/common.js"></script>
+<script src="/dashboard.js"></script>
+<script defer src="/vendor/alpine-3.17.5.min.js"></script>
 </body>
 </html>

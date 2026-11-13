@@ -1,54 +1,123 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Station Wrapper 43 -- Stations</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/dashboard.css">
-<link rel="stylesheet" href="/files.css">
-<link rel="stylesheet" href="/views.css">
+<link rel="stylesheet" href="/vendor/bulma-1.0.4.min.css">
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <main id="dash">
-    <div class="view-head">
-      <h1>Stations</h1>
-      <a class="btn primary" id="new-btn" href="/station.html">New station</a>
+<div id="shell" data-page="stations"></div>
+<main class="section" x-data="stationsPage">
+<div class="container">
+  <header class="page-head">
+    <div>
+      <h1 class="title">Stations</h1>
+      <p class="subtitle">Your channels: what each plays, whether it is on air, and how far ahead it is scheduled.</p>
     </div>
-    <p id="msg" class="msg" role="status" aria-live="polite"></p>
-    <details class="panel" id="keeper" aria-label="Schedule keeper">
-      <summary><h2>Keep schedules going</h2><span id="k-short" class="fold-summary"></span></summary>
-      <p class="dim">FieldStation42 doesn't extend a station's schedule by itself, so without this a station goes off air when its scheduled days run out. When this is on, every station that already has a schedule is topped up to the number of days below. It only adds days; it never rebuilds anything, and it leaves a station alone while you are building it.</p>
-      <div class="ta-row">
-        <label class="check"><input type="checkbox" id="k-on"> Keep schedules topped up</label>
-        <label>Days shown ahead
-          <select id="k-days" aria-label="Days ahead">
-            <option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option>
-          </select>
-        </label>
-        <button type="button" class="btn primary" id="k-save">Save</button>
+    <div class="buttons"><a class="button is-primary" href="/station.html" x-show="editable">New station</a></div>
+  </header>
+
+  <article class="message is-warning" x-show="!editable" x-cloak>
+    <div class="message-body">Changing stations is switched off on this server (DASHBOARD_EDIT=0). You can still look.</div>
+  </article>
+
+  <details class="box" aria-label="Schedule keeper">
+    <summary><span class="title is-5">Keep schedules going</span> <span :class="keeper.bad ? 'has-text-danger' : 'has-text-grey'" x-text="keeper.short"></span></summary>
+    <p class="block has-text-grey">FieldStation42 doesn't extend a station's schedule by itself, so without this a station goes off air when its scheduled days run out. When this is on, every station that already has a schedule is topped up to the number of days below. It only adds days; it never rebuilds anything, and it leaves a station alone while you are building it.</p>
+    <div class="field">
+      <label class="checkbox"><input type="checkbox" x-model="keeper.enabled" :disabled="!editable" @change="toggleKeeper()"> Keep schedules topped up</label>
+    </div>
+    <div class="field">
+      <label class="label" for="k-days">Days shown ahead</label>
+      <div class="control"><div class="select">
+        <select id="k-days" x-model.number="keeper.days" :disabled="!editable">
+          <template x-for="d in keeper.options" :key="d"><option :value="d" x-text="`${d} days`" :selected="d === keeper.days"></option></template>
+        </select>
+      </div></div>
+    </div>
+    <p class="block" :class="keeper.cls" x-text="keeper.text"></p>
+    <div class="buttons is-right"><button type="button" class="button is-primary" :disabled="!editable" @click="saveKeeper(true)">Save</button></div>
+  </details>
+
+  <details class="box" aria-label="Captions">
+    <summary><span class="title is-5">Captions</span> <span class="has-text-grey" x-text="captions.short"></span></summary>
+    <p class="block has-text-grey">The language of the captions your videos are asked for: a <code>.srt</code>, <code>.vtt</code> or <code>.ass</code> file beside a video with the language in its name (<code>Show - 01.en.srt</code>), or a text track inside it. Stations carry them as a track a player can switch on; a block of a station's calendar can draw them on the picture instead.</p>
+    <div class="field">
+      <label class="label" for="c-lang">Caption language</label>
+      <div class="control"><div class="select">
+        <select id="c-lang" x-model="captions.language" :disabled="!editable">
+          <template x-for="o in captions.options" :key="o[0]"><option :value="o[0]" x-text="o[1]" :selected="o[0] === captions.language"></option></template>
+        </select>
+      </div></div>
+    </div>
+    <div class="buttons is-right"><button type="button" class="button is-primary" :disabled="!editable" @click="saveCaptions()">Save</button></div>
+  </details>
+
+  <div class="box" x-show="loaded && !stations.length" x-cloak x-data="quickStart" @made="load()">
+    <p class="block has-text-grey">No stations yet. Make one with New station, or let it pick something to play:</p>
+    <div class="buttons"><button type="button" class="button is-primary" :disabled="busy" @click="go()">Make me a channel now</button></div>
+    <div x-progress="job"></div>
+    <p role="status" x-text="note"></p>
+  </div>
+
+  <section class="grid is-col-min-14" aria-label="Stations">
+    <template x-for="s in stations" :key="s.name">
+      <div class="cell box station">
+        <h2 class="title is-5 with-tags">
+          <span class="num" x-text="`#${s.number}`"></span><span x-text="s.name"></span><span class="tag" x-text="s.type"></span>
+        </h2>
+        <div class="tags" x-show="s.lists.length">
+          <template x-for="l in s.lists.slice(0, SHOWN_LISTS)" :key="l"><span class="tag is-rounded" x-text="l"></span></template>
+        </div>
+        <details x-show="s.lists.length > SHOWN_LISTS">
+          <summary class="has-text-grey" x-text="`${s.lists.length - SHOWN_LISTS} more lists`"></summary>
+          <div class="tags"><template x-for="l in s.lists.slice(SHOWN_LISTS)" :key="l"><span class="tag is-rounded" x-text="l"></span></template></div>
+        </details>
+        <p class="help" x-show="s.number === 0">Channel 0 doesn't work in Jellyfin and some other IPTV clients: Edit the station and give it a number from 1 up.</p>
+        <p class="block" :class="status(s)[1]" x-text="status(s)[0]"></p>
+        <p class="help" x-show="!s.editable" x-text="`Not editable here: ${s.why}.`"></p>
+
+        <div x-progress="jobFor(s)"></div>
+        <!-- started, then the server restarted (or it failed): nothing is building -->
+        <template x-if="s.old_schedule && s.old_schedule.interrupted">
+          <div class="block">
+            <p class="has-text-danger" x-text="`A rebuild of this schedule was started but is not running now (the server was restarted, or it stopped with a problem). The old schedule is still playing, until ${W.fmtWhen(s.old_schedule.cut)}.`"></p>
+            <div class="buttons"><button type="button" class="button is-primary" :disabled="!editable" @click="build(s.name, 7, true, false, true)">Resume the rebuild</button></div>
+          </div>
+        </template>
+        <!-- a rebuild is in progress or has just finished: the channel stays on air -->
+        <p class="help" x-show="s.old_schedule && !s.old_schedule.interrupted"
+           x-text="s.old_schedule && s.old_schedule.finished ? `Playing the old schedule until ${W.fmtWhen(s.old_schedule.cut)}, then the new one starts.` : 'Playing the old schedule while the new one is built.'"></p>
+
+        <div class="buttons">
+          <a class="button" x-show="s.editable" :href="`/station.html?name=${encodeURIComponent(s.name)}`">Edit</a>
+          <a class="button" x-show="s.type !== 'web'" :href="`/watch.html?ch=${encodeURIComponent(s.number)}`">Watch</a>
+          <a class="button" x-show="!live(s)" :href="`/settings.html?name=${encodeURIComponent(s.name)}#schedule`">Schedule</a>
+          <!-- a guide or a menu has nothing to schedule or build: its two rare buttons sit here -->
+          <button type="button" class="button" x-show="live(s)" :disabled="!editable || busy(s)" @click="rename(s)">Rename</button>
+          <button type="button" class="button is-danger is-outlined" x-show="live(s)" :disabled="!editable || busy(s)" @click="remove(s)">Delete</button>
+        </div>
+        <details x-show="!live(s)">
+          <summary class="has-text-grey">More</summary>
+          <div class="buttons">
+            <button type="button" class="button" :disabled="!editable || busy(s)" @click="build(s.name, 7, false)">Add 7 days</button>
+            <a class="button" x-show="s.editable" :href="`/station.html?copy=${encodeURIComponent(s.name)}`" title="A new station that starts as a copy of this one">Duplicate</a>
+            <button type="button" class="button" :disabled="!editable || busy(s)" @click="build(s.name, 1, false, true)" title="New videos only: they are used the next time days are added, and the schedule is not touched">Update videos</button>
+            <button type="button" class="button" :disabled="!editable || busy(s)" @click="rebuild(s)">Rebuild schedule</button>
+            <button type="button" class="button" :disabled="!editable || busy(s)" @click="rename(s)">Rename</button>
+            <button type="button" class="button is-danger is-outlined" :disabled="!editable || busy(s)" @click="remove(s)">Delete</button>
+          </div>
+        </details>
       </div>
-      <p id="k-status" class="dim"></p>
-    </details>
-    <details class="panel" id="caption-language" aria-label="Captions">
-      <summary><h2>Captions</h2><span id="c-short" class="fold-summary"></span></summary>
-      <p class="dim">The language of the captions your videos are asked for: a <code>.srt</code>, <code>.vtt</code> or <code>.ass</code> file beside a video with the language in its name (<code>Show - 01.en.srt</code>), or a text track inside it. Stations carry them as a track a player can switch on; a block of a station's calendar can draw them on the picture instead.</p>
-      <div class="ta-row">
-        <label>Caption language
-          <select id="c-lang" aria-label="Caption language">
-            <option value="en">English</option><option value="ja">Japanese</option><option value="es">Spanish</option><option value="fr">French</option>
-            <option value="de">German</option><option value="it">Italian</option><option value="pt">Portuguese</option><option value="ko">Korean</option>
-            <option value="zh">Chinese</option><option value="ru">Russian</option>
-          </select>
-        </label>
-        <button type="button" class="btn primary" id="c-save">Save</button>
-      </div>
-      <p id="c-status" class="dim"></p>
-    </details>
-    <section id="cards" class="cards" aria-label="Stations"></section>
-  </main>
-  <script src="/common.js"></script>
-  <script src="/stations.js"></script>
+    </template>
+  </section>
+</div>
+</main>
+<script src="/common.js"></script>
+<script src="/stations.js"></script>
+<script defer src="/vendor/alpine-3.17.5.min.js"></script>
 </body>
 </html>

@@ -1,53 +1,90 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Station Wrapper 43 -- Watch</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/views.css">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/vendor/bulma-1.0.4.min.css">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/player.css">
 </head>
 <body>
-  <main id="app">
-    <div id="screen">
-      <video id="video" autoplay muted playsinline></video>
-      <div id="banner" class="hidden">
-        <span id="banner-num"></span>
-        <span id="banner-name"></span>
-        <span id="banner-title"></span>
+<div id="shell" data-page="watch"></div>
+<main class="section" x-data="watchPage">
+<div class="container is-max-desktop">
+  <div id="screen">
+    <video id="video" x-ref="video" autoplay muted playsinline x-show="!unsupported" @volumechange="showVolume()"></video>
+    <p class="has-text-danger p-5" x-show="unsupported" x-cloak>This browser does not support MSE-based MPEG-TS playback. Try a recent desktop Chrome, Firefox or Edge.</p>
+    <div id="banner" :class="!banner.show && 'is-gone'">
+      <span class="num" x-text="banner.num"></span>
+      <span class="name" x-text="banner.name"></span>
+      <span class="what" x-text="banner.title"></span>
+    </div>
+    <div id="captions" aria-live="off" x-show="ccLines.length" x-cloak>
+      <template x-for="(line, i) in ccLines" :key="i"><div><span x-text="line"></span></div></template>
+    </div>
+    <div id="toast" class="notification is-danger" role="status" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
+  </div>
+
+  <div class="box controls">
+    <div class="field is-grouped is-grouped-multiline">
+      <div class="control">
+        <div class="field has-addons">
+          <div class="control"><button type="button" class="button" aria-label="Channel down" title="Channel down (down arrow)" @click="channelStep(-1)">&#9660;</button></div>
+          <div class="control"><span class="button is-static chan-display" x-text="current || '--'"></span></div>
+          <div class="control"><button type="button" class="button" aria-label="Channel up" title="Channel up (up arrow)" @click="channelStep(1)">&#9650;</button></div>
+        </div>
       </div>
-      <div id="captions" class="hidden" aria-live="off"></div>
-      <div id="toast" class="hidden"></div>
+      <div class="control">
+        <button type="button" class="button" :aria-label="silent ? 'Unmute' : 'Mute'" title="Mute (M)" @click="toggleMute()" x-text="volumeIcon"></button>
+      </div>
+      <div class="control volume">
+        <input id="volume" x-ref="volume" type="range" min="0" max="100" step="1" aria-label="Volume" title="Volume (left and right arrow keys)"
+               :value="volume" :style="silent ? 'opacity:0.6' : ''" @input="setVolume(Number($el.value) / 100)">
+      </div>
+      <div class="control">
+        <div class="select">
+          <select aria-label="Quality" :title="qualityTitle" @change="setQuality(Number($el.value))">
+            <template x-for="q in qualities" :key="q.kbps"><option :value="q.kbps" x-text="q.name" :selected="q.kbps === kbps"></option></template>
+          </select>
+        </div>
+      </div>
+      <div class="control" x-show="cc.tracks.length" x-cloak>
+        <button type="button" class="button" :class="cc.track >= 0 && 'is-primary is-outlined'" aria-label="Captions" title="Captions (C)" @click="ccNext()"
+                x-text="cc.tracks[cc.track] ? 'CC: ' + cc.tracks[cc.track].label : 'CC'"></button>
+      </div>
+      <div class="control" x-show="cc.track >= 0" x-cloak>
+        <div class="field has-addons">
+          <div class="control"><button type="button" class="button" aria-label="Show captions earlier" title="Captions show too late: show them earlier" @click="nudge(-0.5)">&minus;</button></div>
+          <div class="control"><span class="button is-static" x-text="cc.nudge.toFixed(1) + 's'"></span></div>
+          <div class="control"><button type="button" class="button" aria-label="Show captions later" title="Captions show too early: show them later" @click="nudge(0.5)">+</button></div>
+        </div>
+      </div>
+      <div class="control"><button type="button" class="button" :class="guideOpen && 'is-primary is-outlined'" :aria-expanded="guideOpen" @click="guideOpen = !guideOpen">Guide</button></div>
+      <div class="control push-right">
+        <form class="field has-addons" autocomplete="off" @submit.prevent="enter()">
+          <div class="control"><input class="input chan-input" x-ref="entry" inputmode="numeric" placeholder="Channel #" aria-label="Channel number" autocomplete="off" x-model="entry"></div>
+          <div class="control"><button type="submit" class="button">Go</button></div>
+        </form>
+      </div>
     </div>
+  </div>
 
-    <div id="controls">
-      <button id="chan-down" aria-label="Channel down">&#9660;</button>
-      <div id="chan-display">--</div>
-      <button id="chan-up" aria-label="Channel up">&#9650;</button>
-      <form id="chan-entry" autocomplete="off">
-        <input id="chan-input" inputmode="numeric" placeholder="Channel #" autocomplete="off">
-        <button type="submit">Go</button>
-      </form>
-      <button id="mute-btn" aria-label="Mute" title="Mute (M)">&#128263;</button>
-      <input id="volume" type="range" min="0" max="100" step="1" value="100" aria-label="Volume" title="Volume (left and right arrow keys)">
-      <select id="quality" aria-label="Quality" title="Picture quality: pick a lower one on a slow connection"></select>
-      <button id="cc-btn" class="hidden" aria-label="Captions" title="Captions (C)">CC</button>
-      <span id="cc-sync" class="hidden">
-        <button id="cc-earlier" aria-label="Show captions earlier" title="Captions show too late: show them earlier">&minus;</button>
-        <span id="cc-offset">0.0s</span>
-        <button id="cc-later" aria-label="Show captions later" title="Captions show too early: show them later">+</button>
-      </span>
-      <button id="guide-toggle">Guide</button>
-    </div>
-
-    <section id="guide" class="hidden" aria-label="Channel guide">
-      <div id="guide-grid"></div>
-    </section>
-  </main>
-
-  <script src="/mpegts.min.js"></script>
-  <script src="/common.js"></script>
-  <script src="/app.js"></script>
+  <section aria-label="Channel guide" x-show="guideOpen" x-cloak>
+    <template x-for="c in guide" :key="c.number">
+      <a href="#" class="box inner guide-row" :class="c.number === current && 'is-current'" @click.prevent="tune(c.number); guideOpen = false">
+        <span class="chan"><strong x-text="c.number"></strong><small x-text="c.name"></small></span>
+        <span class="now" x-text="c.now || '—'"></span>
+        <span class="next" x-text="c.next ? 'Next: ' + c.next : ''"></span>
+      </a>
+    </template>
+  </section>
+</div>
+</main>
+<script src="/mpegts.min.js"></script>
+<script src="/common.js"></script>
+<script src="/app.js"></script>
+<script defer src="/vendor/alpine-3.17.5.min.js"></script>
 </body>
 </html>

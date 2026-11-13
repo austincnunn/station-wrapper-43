@@ -1,229 +1,153 @@
+// The Stations page: every station as a card (what it plays, whether it is on air, its buttons), with the schedule
+// keeper and the caption language folded away above them.
 (function () {
   "use strict";
-  const { el, call, fmtWhen } = W;
-  W.nav("stations");
+  const { call, fmtWhen, say, run } = W;
 
-  const $ = (id) => document.getElementById(id);
-  const jobs = new Map();            // station name -> the message of a build in progress
-  let editable = true;
-  let loadedKeeper = false;
   const SHOWN_LISTS = 6;             // a card names this many lists; the rest fold away
-  const opened = new Set();          // the folds you opened ("<station>|lists", "<station>|more"), kept across the reload every few seconds
+  const LANGUAGES = [["en", "English"], ["ja", "Japanese"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["it", "Italian"],
+    ["pt", "Portuguese"], ["ko", "Korean"], ["zh", "Chinese"], ["ru", "Russian"]];
 
-  function fold(key, label, ...kids) {
-    const d = el("details", { className: "more", open: opened.has(key) }, el("summary", { textContent: label }), ...kids);
-    d.addEventListener("toggle", () => { if (d.open) opened.add(key); else opened.delete(key); });
-    return d;
-  }
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("stationsPage", () => ({
+      SHOWN_LISTS,
+      stations: [], editable: true, loaded: false,
+      jobs: {},                          // station name -> the build this page started and is following
+      keeper: { enabled: false, days: 7, options: [3, 7, 14, 30], text: "", cls: "has-text-grey", short: "", bad: false, loaded: false },
+      captions: { language: "en", options: LANGUAGES, short: "" },
 
-  function say(text, kind) {
-    $("msg").textContent = text || "";
-    $("msg").className = "msg" + (kind ? " " + kind : "");
-  }
-  const run = (fn) => fn().catch((e) => say(e.message, "err"));
+      init() {
+        run(() => this.load());
+        // a build started elsewhere, or before this page was reloaded, shows up too: each station carries its job
+        setInterval(() => { if (document.visibilityState === "visible") this.load().catch(() => {}); }, 4000);
+      },
 
-  function status(s) {
-    if (s.type === "guide") return ["On air. The guide is drawn live: nothing needs scheduling.", "ok"];
-    if (s.type === "web") return ["On air on your players (not in Emby or Jellyfin): a menu, nothing needs scheduling.", "ok"];
-    if (!s.scheduled_until) return ["Off air: nothing is scheduled yet. Use Build to make a schedule.", "bad"];
-    if (!s.on_air) return [`Off air: the schedule ended ${fmtWhen(s.scheduled_until)}. Add days to put it back on.`, "bad"];
-    if (s.low) return [`On air, but the schedule ends ${fmtWhen(s.scheduled_until)}. Add days soon.`, "warn"];
-    return [`On air. Scheduled until ${fmtWhen(s.scheduled_until)}.`, "ok"];
-  }
+      async load() {
+        const data = await call("/api/stations");
+        this.editable = data.edit;
+        this.stations = data.stations;
+        this.loaded = true;
+        this.loadKeeper().catch(() => {});
+        if (!this.captions.short) this.loadCaptions().catch(() => {});
+      },
 
-  function card(s) {
-    const c = el("div", { className: "card" });
-    c.append(el("h2", {}, el("span", { className: "num", textContent: `#${s.number}` }), el("span", { textContent: s.name }),
-      el("span", { className: "type", textContent: s.type })));
-    const chips = (lists) => el("div", { className: "chips" }, ...lists.map((l) => el("span", { className: "chip", textContent: l })));
-    if (s.lists.length) c.append(chips(s.lists.slice(0, SHOWN_LISTS)));
-    if (s.lists.length > SHOWN_LISTS) c.append(fold(`${s.name}|lists`, `${s.lists.length - SHOWN_LISTS} more lists`, chips(s.lists.slice(SHOWN_LISTS))));
-    if (s.number === 0) c.append(el("p", { className: "why", textContent: "Channel 0 doesn't work in Jellyfin and some other IPTV clients: Edit the station and give it a number from 1 up." }));
-    const [text, kind] = status(s);
-    c.append(el("p", { className: "status " + kind, textContent: text }));
-    if (!s.editable) c.append(el("p", { className: "why", textContent: `Not editable here: ${s.why}.` }));
-    const busy = jobs.get(s.name) || (s.job && s.job.message);
-    const actions = el("div", { className: "actions" });
-    const btn = (label, cls, fn, disabled) => {
-      const b = el("button", { type: "button", className: "btn " + (cls || ""), textContent: label, disabled: !!disabled });
-      b.addEventListener("click", fn);
-      return b;
-    };
-    const live = s.type === "guide" || s.type === "web";      // drawn live (the guide) or by a player (pay-per-view): no schedule
-    const rare = live ? actions : el("div", { className: "actions" });      // what is seldom wanted folds under More
-    if (s.editable) actions.append(el("a", { className: "btn", href: `/station.html?name=${encodeURIComponent(s.name)}`, textContent: "Edit" }));
-    if (s.type !== "web") actions.append(el("a", { className: "btn", href: `/watch.html?ch=${encodeURIComponent(s.number)}`, textContent: "Watch" }));
-    if (!live) {                               // a guide or a menu has nothing to schedule or build
-      actions.append(el("a", { className: "btn", href: `/schedule.html?name=${encodeURIComponent(s.name)}`, textContent: "Schedule" }));
-      rare.append(btn("Add 7 days", "", () => run(() => build(s.name, 7, false)), !editable || busy));
-      if (s.editable) rare.append(el("a", { className: "btn", href: `/station.html?copy=${encodeURIComponent(s.name)}`, textContent: "Duplicate", title: "A new station that starts as a copy of this one" }));
-      rare.append(btn("Update videos", "", () => run(() => refresh(s)), !editable || busy));
-      rare.append(btn("Rebuild schedule", "", () => run(() => rebuild(s)), !editable || busy));
-    }
-    rare.append(btn("Rename", "", () => run(() => rename(s)), !editable || busy));
-    rare.append(btn("Delete", "danger", () => run(() => remove(s)), !editable || busy));
-    c.append(actions);
-    if (rare !== actions) c.append(fold(`${s.name}|more`, "More", rare));
-    if (busy) c.append(el("p", { className: "job", textContent: busy }));
-    if (s.old_schedule && s.old_schedule.interrupted) {      // started, then the server restarted (or it failed): nothing is building
-      c.append(el("p", { className: "job err", textContent: `A rebuild of this schedule was started but is not running now (the server was restarted, or it stopped with a problem). The old schedule is still playing, until ${fmtWhen(s.old_schedule.cut)}.` }));
-      c.append(btn("Resume the rebuild", "primary", () => run(() => build(s.name, 7, true, false, true)), !editable));
-    } else if (s.old_schedule) {                // a rebuild is in progress or has just finished: the channel stays on air
-      c.append(el("p", { className: "job", textContent: s.old_schedule.finished
-        ? `Playing the old schedule until ${fmtWhen(s.old_schedule.cut)}, then the new one starts.`
-        : "Playing the old schedule while the new one is built." }));
-    }
-    return c;
-  }
+      live: (s) => s.type === "guide" || s.type === "web",      // drawn live (the guide) or by a player (pay-per-view): no schedule
+      jobFor(s) { return this.jobs[s.name] || s.job || null; },
+      busy(s) { return !!this.jobFor(s); },
+      status(s) {
+        if (s.type === "guide") return ["On air. The guide is drawn live: nothing needs scheduling.", "has-text-success"];
+        if (s.type === "web") return ["On air on your players (not in Emby or Jellyfin): a menu, nothing needs scheduling.", "has-text-success"];
+        if (!s.scheduled_until) return ["Off air: nothing is scheduled yet. Use Build to make a schedule.", "has-text-danger"];
+        if (!s.on_air) return [`Off air: the schedule ended ${fmtWhen(s.scheduled_until)}. Add days to put it back on.`, "has-text-danger"];
+        if (s.low) return [`On air, but the schedule ends ${fmtWhen(s.scheduled_until)}. Add days soon.`, "has-text-warning"];
+        return [`On air. Scheduled until ${fmtWhen(s.scheduled_until)}.`, "has-text-success"];
+      },
 
-  // ---- the schedule keeper
-  async function loadKeeper(first) {
-    const k = await call("/api/keeper");
-    if (first) {
-      $("k-on").checked = k.settings.enabled;
-      const opts = [...$("k-days").options].map((o) => Number(o.value));
-      if (!opts.includes(k.settings.days_ahead)) {
-        $("k-days").append(el("option", { value: k.settings.days_ahead, textContent: `${k.settings.days_ahead} days` }));
-      }
-      $("k-days").value = String(k.settings.days_ahead);
-    }
-    $("k-on").disabled = $("k-days").disabled = $("k-save").disabled = !editable;
-    const st = k.status, box = $("k-status");
-    let text = "", cls = "dim";
-    if (!k.settings.enabled) {
-      text = "Off. Stations will go off air when their schedule runs out.";
-      cls = "dim";
-    } else if (st.error) {
-      text = `Could not check the stations: ${st.error}`;
-      cls = "err";
-    } else if (!st.last_pass) {
-      text = "On. It checks a little after the dashboard starts, then every 30 minutes.";
-    } else {
-      text = `On. Last checked ${fmtWhen(st.last_pass)}.`;
-      if (st.last_action) {
-        text += " Last topped up: " + st.last_action.added.map((a) => `${a.station} (+${a.days} day${a.days === 1 ? "" : "s"})`).join(", ") + ` at ${fmtWhen(st.last_action.at)}.`;
-      } else {
-        text += " Nothing has needed topping up yet.";
-      }
-      if (st.more) text += " Still catching up on a long gap.";
-      cls = "ok";
-    }
-    box.textContent = text;
-    box.className = cls;
-    // the folded panel's one line; a keeper that is off or failing is worth a look, so it says so in red
-    const bad = !k.settings.enabled || !!st.error;
-    $("k-short").textContent = st.error ? "could not check the stations" : k.settings.enabled ? `on \u00b7 ${k.settings.days_ahead} days ahead` : "off: stations go off air when their schedule runs out";
-    $("k-short").classList.toggle("warn", bad);
-  }
-
-  async function saveKeeper() {
-    await call("/api/keeper/settings", { enabled: $("k-on").checked, days_ahead: Number($("k-days").value) });
-    await loadKeeper(true);
-  }
-  $("k-on").addEventListener("change", () => run(async () => {
-    try {
-      await saveKeeper();
-      say($("k-on").checked ? "Schedules will be kept topped up." : "Switched off: stations will go off air when their schedule runs out.", "ok");
-    } catch (e) {
-      $("k-on").checked = !$("k-on").checked;
-      throw e;
-    }
-  }));
-  $("k-save").addEventListener("click", () => run(async () => { await saveKeeper(); say("Saved.", "ok"); }));
-
-  // ---- the caption language
-  async function loadCaptions() {
-    const c = await call("/api/captions");
-    const sel = $("c-lang");
-    if (![...sel.options].some((o) => o.value === c.settings.language)) sel.append(el("option", { value: c.settings.language, textContent: c.settings.language }));
-    sel.value = c.settings.language;
-    $("c-short").textContent = sel.selectedOptions[0].textContent;
-    sel.disabled = $("c-save").disabled = !editable;
-  }
-  $("c-save").addEventListener("click", () => run(async () => {
-    await call("/api/captions/settings", { language: $("c-lang").value });
-    await loadCaptions();
-    say("Saved. The caption language is used from the next programme.", "ok");
-  }));
-
-  async function load() {
-    const data = await call("/api/stations");
-    editable = data.edit;
-    $("new-btn").hidden = !editable;
-    const box = $("cards");
-    box.replaceChildren();
-    if (!data.stations.length) {
-      const qs = W.quickStart(() => run(load));
-      box.append(el("p", { className: "empty-state", textContent: "No stations yet. Make one with New station, or let it pick something to play:" }),
-        el("p", {}, qs.button, " ", qs.note));
-    }
-    for (const s of data.stations) box.append(card(s));
-    loadKeeper(!loadedKeeper).then(() => { loadedKeeper = true; }).catch(() => {});
-    loadCaptions().catch(() => {});
-    if (!editable) say("Changing stations is switched off on this server (DASHBOARD_EDIT=0). You can still look.", "err");
-  }
-
-  async function build(name, days, rebuild, refresh = false, resume = false) {
-    say("");
-    const job = await call("/api/stations/build", { name, days, rebuild, refresh, resume });
-    await follow(name, job);
-  }
-
-  // watch a background job until it ends, keeping the card's progress line current
-  async function follow(name, job) {
-    jobs.set(name, job.message);
-    try {
-      await load();
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 1500));
-        const j = await call(`/api/stations/job?id=${encodeURIComponent(job.id)}`);
-        if (j.state === "running") {
-          jobs.set(name, j.message);
-          await load();
-          continue;
+      // ---- the schedule keeper
+      async loadKeeper() {
+        const k = await call("/api/keeper");
+        const kp = this.keeper;
+        if (!kp.loaded) {                 // the boxes are filled once: a reload every few seconds must not undo what you are choosing
+          kp.enabled = k.settings.enabled;
+          if (!kp.options.includes(k.settings.days_ahead)) kp.options = [...kp.options, k.settings.days_ahead].sort((a, b) => a - b);
+          kp.days = k.settings.days_ahead;
+          kp.loaded = true;
         }
-        jobs.delete(name);
-        await load();
-        say(`${name}: ${j.message}`, j.state === "done" ? "ok" : "err");
-        return;
-      }
-    } finally {
-      jobs.delete(name);          // never leave a station looking busy after an error
-    }
-  }
+        const st = k.status;
+        let text, cls = "has-text-grey";
+        if (!k.settings.enabled) {
+          text = "Off. Stations will go off air when their schedule runs out.";
+        } else if (st.error) {
+          text = `Could not check the stations: ${st.error}`;
+          cls = "has-text-danger";
+        } else if (!st.last_pass) {
+          text = "On. It checks a little after the dashboard starts, then every 30 minutes.";
+        } else {
+          text = `On. Last checked ${fmtWhen(st.last_pass)}.`;
+          text += st.last_action
+            ? " Last topped up: " + st.last_action.added.map((a) => `${a.station} (+${a.days} day${a.days === 1 ? "" : "s"})`).join(", ") + ` at ${fmtWhen(st.last_action.at)}.`
+            : " Nothing has needed topping up yet.";
+          if (st.more) text += " Still catching up on a long gap.";
+          cls = "has-text-success";
+        }
+        kp.text = text;
+        kp.cls = cls;
+        // the folded panel's one line; a keeper that is off or failing is worth a look, so it says so in red
+        kp.bad = !k.settings.enabled || !!st.error;
+        kp.short = st.error ? "could not check the stations" : k.settings.enabled ? `on · ${k.settings.days_ahead} days ahead` : "off: stations go off air when their schedule runs out";
+      },
+      async saveKeeper(tell) {
+        try {
+          await call("/api/keeper/settings", { enabled: this.keeper.enabled, days_ahead: Number(this.keeper.days) });
+          this.keeper.loaded = false;
+          await this.loadKeeper();
+          if (tell) say("Saved.", "ok");
+          return true;
+        } catch (e) {
+          say(e.message, "err");
+          return false;
+        }
+      },
+      async toggleKeeper() {
+        if (await this.saveKeeper(false)) say(this.keeper.enabled ? "Schedules will be kept topped up." : "Switched off: stations will go off air when their schedule runs out.", "ok");
+        else this.keeper.enabled = !this.keeper.enabled;
+      },
 
-  // new videos only: they are used the next time days are added, and the schedule is not touched
-  async function refresh(s) {
-    await build(s.name, 1, false, true);
-  }
+      // ---- the caption language
+      async loadCaptions() {
+        const c = await call("/api/captions");
+        const lang = c.settings.language;
+        if (!this.captions.options.some((o) => o[0] === lang)) this.captions.options = [...this.captions.options, [lang, lang]];
+        this.captions.language = lang;
+        this.captions.short = this.captions.options.find((o) => o[0] === lang)[1];
+      },
+      saveCaptions() {
+        return run(async () => {
+          await call("/api/captions/settings", { language: this.captions.language });
+          await this.loadCaptions();
+          say("Saved. The caption language is used from the next programme.", "ok");
+        });
+      },
 
-  async function rebuild(s) {
-    if (!confirm(`Rebuild the whole schedule of “${s.name}”? This throws its schedule away and makes a new one from scratch (7 days). The channel keeps playing the old schedule until the new one is ready.\n\nTo just bring in videos you added, use Update videos instead: it leaves the schedule alone.`)) return;
-    await build(s.name, 7, true);
-  }
-
-  async function rename(s) {
-    const to = prompt(`New name for “${s.name}”?`, s.name);
-    if (!to || to.trim() === s.name) return;
-    if (!confirm(`Rename “${s.name}” to “${to.trim()}”? FieldStation42 keeps a station's schedule under its name, so the old schedule is cleared and a new catalog and 7 days are built under the new name. It is off air for a moment.`)) return;
-    say("");
-    const out = await call("/api/stations/rename", { name: s.name, to: to.trim() });
-    await load();
-    if (out.job) {
-      await follow(out.name, out.job);
-    } else {
-      say(`Renamed to “${out.name}”.`, "ok");
-    }
-  }
-
-  async function remove(s) {
-    if (!confirm(`Delete the station “${s.name}”? Its lists and your media are not touched.`)) return;
-    await call("/api/stations/delete", { name: s.name });
-    await load();
-    say(`Deleted “${s.name}”.`, "ok");
-  }
-
-  run(load);
-  // a build started elsewhere, or before this page was reloaded, shows up too: look often while one runs
-  setInterval(() => { if (!jobs.size) load().catch(() => {}); }, 4000);
+      // ---- builds: the card shows a bar until the job ends
+      build(name, days, rebuild, refresh = false, resume = false) {
+        return run(async () => this.follow(name, await call("/api/stations/build", { name, days, rebuild, refresh, resume })));
+      },
+      async follow(name, job) {
+        this.jobs[name] = job;
+        try {
+          const last = await W.followJob(job.id, (j) => { this.jobs[name] = j; });
+          say(`${name}: ${last.message}`, last.state === "done" ? "ok" : "err");
+        } finally {
+          delete this.jobs[name];          // never leave a station looking busy after an error
+          await this.load().catch(() => {});
+        }
+      },
+      rebuild(s) {
+        return run(async () => {
+          if (!await W.confirm(`Rebuild the whole schedule of “${s.name}”? This throws its schedule away and makes a new one from scratch (7 days). The channel keeps playing the old schedule until the new one is ready. To just bring in videos you added, use Update videos instead: it leaves the schedule alone.`, { ok: "Rebuild", danger: true })) return;
+          await this.build(s.name, 7, true);
+        });
+      },
+      rename(s) {
+        return run(async () => {
+          const to = await W.prompt(`New name for “${s.name}”?`, s.name, { ok: "Rename" });
+          if (!to || to === s.name) return;
+          if (!await W.confirm(`Rename “${s.name}” to “${to}”? FieldStation42 keeps a station's schedule under its name, so the old schedule is cleared and a new catalog and 7 days are built under the new name. It is off air for a moment.`, { ok: "Rename" })) return;
+          const out = await call("/api/stations/rename", { name: s.name, to });
+          await this.load();
+          if (out.job) await this.follow(out.name, out.job);
+          else say(`Renamed to “${out.name}”.`, "ok");
+        });
+      },
+      remove(s) {
+        return run(async () => {
+          if (!await W.confirm(`Delete the station “${s.name}”? Its lists and your media are not touched.`, { ok: "Delete", danger: true })) return;
+          await call("/api/stations/delete", { name: s.name });
+          await this.load();
+          say(`Deleted “${s.name}”.`, "ok");
+        });
+      },
+    }));
+  });
 })();

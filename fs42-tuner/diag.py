@@ -125,7 +125,7 @@ def checks(report):
         out.append(row)
     con = report.get("console", {})
     if not con.get("reachable"):
-        add("error", f"FieldStation42's console is not reachable ({con.get('error', 'no answer')}). Stations can't be changed or built until it is back; check the container log for [console] lines.", "/status.html", "Look again")
+        add("error", f"FieldStation42's console is not reachable ({con.get('error', 'no answer')}). Stations can't be changed or built until it is back; check the container log for [console] lines.", "/settings.html#status", "Look again")
     for s in report.get("stations", []):
         if s.get("type") == "guide":
             continue
@@ -139,10 +139,10 @@ def checks(report):
             add("warn", f"Station {s['name']} is on channel 0, which Jellyfin ignores: give it a number from 1 up.", "/stations.html", "Open Stations")
     for src in report.get("sources", []):
         if src.get("enabled") and src.get("error"):
-            add("error", f"Source {src['name']} could not be read: {src['error']}", "/iptv.html", "Open Sources")
+            add("error", f"Source {src['name']} could not be read: {src['error']}", "/settings.html#sources", "Open Sources")
     media = report.get("media", {})
     if media.get("present") is False:
-        add("error", f"The media folder {media.get('path')} is missing or empty: is the share mounted?", "/files.html", "Open Lists & files")
+        add("error", f"The media folder {media.get('path')} is missing or empty: is the share mounted?", "/settings.html#files", "Open Lists & files")
     for name, d in (report.get("disk") or {}).items():
         if d.get("free_mb") is not None and d["free_mb"] < 1024:
             add("warn", f"Only {d['free_mb']} MB free on the {name} volume.")
@@ -151,7 +151,7 @@ def checks(report):
         add("warn", f"The guide took {g['last_build']['seconds']:.0f}s to build: a listings source is slow.")
     for k, v in (g.get("sources") or {}).items():
         if isinstance(v, dict) and v.get("error"):
-            add("warn", f"Guide source {k} failed: {v['error']}", "/iptv.html", "Open Sources")
+            add("warn", f"Guide source {k} failed: {v['error']}", "/settings.html#sources", "Open Sources")
     for pl in report.get("players") or []:                       # player PCs in client mode (syncfeed.py)
         if pl.get("gone"):
             add("warn", f"Player {pl['name']} has not checked in for {pl['age'] // 60} minutes: is it on?")

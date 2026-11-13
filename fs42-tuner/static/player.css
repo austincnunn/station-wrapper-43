@@ -1,0 +1,34 @@
+/* the Watch page (watch.html, app.js): the picture, what is drawn over it, and the guide under the controls */
+#screen { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(--bulma-radius-large) var(--bulma-radius-large) 0 0; overflow: hidden; }
+#video { width: 100%; height: 100%; display: block; background: #000; }
+
+#banner { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: baseline; gap: 0.6em; padding: 0.7em 1em;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0)); transition: opacity 0.4s ease; color: #fff; }
+#banner.is-gone { opacity: 0; pointer-events: none; }
+#banner .num { font-size: 1.4em; font-weight: 700; color: var(--bulma-primary); }
+#banner .name { font-weight: 600; }
+#banner .what { color: #c3c8d0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#toast { position: absolute; top: 0.8em; left: 50%; transform: translateX(-50%); margin: 0; padding: 0.4em 0.9em; font-size: 0.9em; white-space: nowrap; }
+
+#captions { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); max-width: 80%; text-align: center; pointer-events: none;
+  color: #fff; font-size: clamp(11px, 1.6vw, 21px); line-height: 1.25; white-space: pre-line; text-shadow: 0 0 4px #000, 0 0 4px #000, 1px 1px 2px #000; }
+#captions span { background: rgba(0, 0, 0, 0.55); padding: 0.05em 0.35em; border-radius: 0.2em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+
+.box.controls { border-radius: 0 0 var(--bulma-radius-large) var(--bulma-radius-large); border-top: 0; padding: 0.75rem; }
+.controls .chan-display { min-width: 4rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bulma-text-strong); }
+.controls .volume { display: flex; align-items: center; }
+#volume { width: 7em; accent-color: var(--bulma-primary); cursor: pointer; }
+.controls .chan-input { width: 7rem; }
+
+.guide-row { display: grid; grid-template-columns: 6em 1fr; gap: 0.2em 1em; padding: 0.6rem 0.8rem; margin-bottom: 0.4rem !important; color: var(--bulma-text); }
+.guide-row:hover, .guide-row.is-current { border-color: var(--bulma-primary); }
+.guide-row.is-current { background: hsl(174, 28%, 14%); }
+.guide-row .chan strong { font-size: 1.1em; }
+.guide-row .chan small { display: block; color: var(--dim); font-size: 0.75em; }
+.guide-row .now { font-weight: 600; }
+.guide-row .next { grid-column: 2; color: var(--dim); font-size: 0.85em; }
+@media (min-width: 700px) {
+  .guide-row { grid-template-columns: 8em 1fr auto; }
+  .guide-row .next { grid-column: auto; }
+}

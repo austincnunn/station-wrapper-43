@@ -33,7 +33,7 @@ jobs:
 
       - name: Secret scan (detect-secrets, against the reviewed baseline)
         run: |
-          git ls-files -z | grep -zvE '^(fieldstation42/src/|\.secrets\.baseline$|assets/)|\.(mp4|jpg|png)$' \
+          git ls-files -z | grep -zvE '^(fieldstation42/src/|\.secrets\.baseline$|assets/|fs42-tuner/static/vendor/)|\.(mp4|jpg|png)$' \
             | xargs -0 detect-secrets-hook --baseline .secrets.baseline
 
   repo:

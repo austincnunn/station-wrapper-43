@@ -1,215 +1,417 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Station Wrapper 43 -- Station</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/dashboard.css">
-<link rel="stylesheet" href="/files.css">
-<link rel="stylesheet" href="/views.css">
+<link rel="stylesheet" href="/vendor/bulma-1.0.4.min.css">
+<link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/calendar.css">
 </head>
 <body>
-  <main id="dash">
-    <div class="view-head">
-      <h1 id="title">New station</h1>
+<div id="shell" data-page="stations"></div>
+<main class="section" x-data="stationPage">
+<div class="container">
+  <header class="page-head">
+    <div>
+      <h1 class="title" x-text="title">New station</h1>
+      <p class="subtitle">What the station is, what it plays and when. Nothing changes on air until you build.</p>
     </div>
-    <p id="msg" class="msg" role="status" aria-live="polite"></p>
-    <div id="locked" class="panel" hidden></div>
+    <div class="buttons"><a class="button" href="/stations.html">Back to stations</a></div>
+  </header>
 
-    <form id="form" autocomplete="off">
-      <div class="panel">
-        <h2>The station</h2>
-        <div class="field" id="template-field" hidden>
-          <label for="f-template">Start from</label>
-          <select id="f-template"></select>
-          <span class="hint" id="template-hint">Fills in the slot length and the week for you. Everything can still be changed, and nothing is saved until you press Save.</span>
+  <article class="message is-warning" x-show="!edit" x-cloak>
+    <div class="message-body">Changing stations is switched off on this server (DASHBOARD_EDIT=0).</div>
+  </article>
+
+  <div class="box" x-show="locked" x-cloak>
+    <h2 class="title is-5">This station can't be edited here</h2>
+    <p class="block" x-text="locked ? `It ${locked}.` : ''"></p>
+    <p class="block has-text-grey">Edit it in the FieldStation42 console, which understands every setting. Nothing here will change it.</p>
+    <div class="buttons">
+      <a class="button" :href="consoleHref" target="_blank" rel="noopener" title="No login, so it answers only on the server itself unless FS42_CONSOLE_BIND=0.0.0.0 is set in .env">Open the FieldStation42 console ↗</a>
+      <a class="button" href="/stations.html">Back to stations</a>
+    </div>
+  </div>
+
+  <form autocomplete="off" x-show="loaded && !locked" x-cloak @submit.prevent="saveOnly()">
+    <div class="box">
+      <h2 class="title is-5">The station</h2>
+      <div class="field" x-show="showTemplates">
+        <label class="label" for="f-template">Start from</label>
+        <div class="control"><div class="select">
+          <select id="f-template" x-model="template" @change="applyTemplate(template)">
+            <template x-for="t in TEMPLATES" :key="t.id"><option :value="t.id" x-text="t.label"></option></template>
+          </select>
+        </div></div>
+        <p class="help" x-text="templateHint"></p>
+      </div>
+      <div class="field">
+        <label class="label" for="f-name">Name</label>
+        <div class="control"><input class="input" id="f-name" x-ref="name" type="text" maxlength="100" x-model="form.name" :disabled="!!original"></div>
+        <p class="help" x-show="original">To rename a station, use Rename on the Stations page: it also rebuilds the schedule under the new name.</p>
+      </div>
+      <div class="field">
+        <label class="label" for="f-number">Channel number</label>
+        <div class="control"><input class="input num" id="f-number" type="number" min="0" max="9999" step="1" x-model="form.number"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="f-logo">Channel logo (optional)</label>
+        <div class="control"><input class="input" id="f-logo" type="text" maxlength="300" placeholder="logos/my-channel.png" x-model="form.logo"></div>
+        <p class="help">A picture inside your media folder (a .png, .jpg or .webp), shown beside the channel in Jellyfin's guide. Left empty, one is drawn from the channel's number and name. Jellyfin picks it up at its next Refresh Guide.</p>
+      </div>
+      <div class="field" x-show="!live">
+        <label class="checkbox"><input id="f-captrack" type="checkbox" x-model="form.captrack"> Carry captions as a track viewers can switch</label>
+        <p class="help">When the video on air has captions (a <code>.srt</code>/<code>.vtt</code>/<code>.ass</code> file beside it with the same name, or a text track inside it), they go out in the stream as a caption track (CEA-608), which a player lists under its captions button, in the language set on the Stations page. To draw them on the picture instead, always visible, switch that on for a block of the calendar.</p>
+      </div>
+      <div class="field">
+        <span class="label">Type</span>
+        <div class="radios" role="radiogroup" aria-label="Type">
+          <label class="radio"><input type="radio" name="kind" value="standard" x-model="form.kind"> Scheduled from your lists</label>
+          <label class="radio"><input type="radio" name="kind" value="loop" x-model="form.kind"> Repeats one list all day</label>
+          <label class="radio"><input type="radio" name="kind" value="guide" x-model="form.kind"> A scrolling guide of every channel</label>
+          <label class="radio"><input type="radio" name="kind" value="ppv" x-model="form.kind"> Pay-per-view: pick a movie with the remote</label>
         </div>
-        <div class="field">
-          <label for="f-name">Name</label>
-          <input id="f-name" type="text" maxlength="100">
-          <span class="hint" id="name-hint"></span>
+      </div>
+    </div>
+
+    <!-- ================= scheduled from your lists ================= -->
+    <div x-show="form.kind === 'standard'">
+      <div class="box">
+        <h2 class="title is-5">What plays, and when</h2>
+        <p class="block has-text-grey">Draw slots on the week: drag on a day to make one, drag its top or bottom edge to resize it, drag the slot itself to move it (to another time or another day), click it to choose what plays, press Delete to remove the selected slot, and use Ctrl+C, Ctrl+X and Ctrl+V to copy, cut and paste it (it pastes where the pointer is). Time you leave unassigned plays the test pattern, so a week can be built up a little at a time. Seasons change the whole week for part of the year; special days change just the days (or slots) you choose.</p>
+
+        <div class="tabs is-toggle is-small">
+          <ul role="tablist" aria-label="Schedule">
+            <template x-for="t in SCHEDULE_TABS" :key="t[0]">
+              <li :class="tab === t[0] && 'is-active'" role="presentation"><a href="#" role="tab" :aria-selected="tab === t[0]" @click.prevent="tab = t[0]; redraw()" x-text="t[1]"></a></li>
+            </template>
+          </ul>
         </div>
-        <div class="field">
-          <label for="f-number">Channel number</label>
-          <input id="f-number" type="number" min="0" max="9999" step="1">
-        </div>
-        <div class="field">
-          <label for="f-logo">Channel logo (optional)</label>
-          <input id="f-logo" type="text" maxlength="300" placeholder="logos/my-channel.png">
-          <span class="hint">A picture inside your media folder (a .png, .jpg or .webp), shown beside the channel in Jellyfin's guide. Left empty, one is drawn from the channel's number and name. Jellyfin picks it up at its next Refresh Guide.</span>
-        </div>
-        <div class="field" id="f-captions-field">
-          <label class="check"><input id="f-captrack" type="checkbox" checked> Carry captions as a track viewers can switch</label>
-          <span class="hint">When the video on air has captions (a <code>.srt</code>/<code>.vtt</code>/<code>.ass</code> file beside it with the same name, or a text track inside it), they go out in the stream as a caption track (CEA-608), which a player lists under its captions button, in the language set on the Stations page. To draw them on the picture instead, always visible, switch that on for a block of the calendar.</span>
-        </div>
-        <div class="field">
-          <span class="label">Type</span>
-          <div class="radios" role="radiogroup" aria-label="Type">
-            <label><input type="radio" name="kind" value="standard" checked> Scheduled from your lists</label>
-            <label><input type="radio" name="kind" value="loop"> Repeats one list all day</label>
-            <label><input type="radio" name="kind" value="guide"> A scrolling guide of every channel</label>
-            <label><input type="radio" name="kind" value="ppv"> Pay-per-view: pick a movie with the remote</label>
+
+        <p class="block has-text-grey" x-show="tab === 'default'">The normal week. It plays whenever no season or special day says otherwise.</p>
+
+        <template x-if="schedule && SEASONS.includes(tab)">
+          <div class="field is-grouped is-grouped-multiline season-opts">
+            <div class="control"><label class="checkbox"><input type="checkbox" :checked="schedule.seasons[tab] === null" @change="inheritSeason($el.checked)"> Same as the default schedule</label></div>
+            <div class="control"><span x-text="`${cap(tab)} starts`"></span></div>
+            <div class="control"><div class="select is-small"><select :aria-label="`${cap(tab)} starts in`" @change="setSeasonStart(Number($el.value), md(schedule.seasons.dates[tab])[1])">
+              <template x-for="(name, i) in MONTHS" :key="name"><option :value="i + 1" x-text="name" :selected="md(schedule.seasons.dates[tab])[0] === i + 1"></option></template>
+            </select></div></div>
+            <div class="control"><input class="input is-small num" type="number" min="1" max="31" :aria-label="`${cap(tab)} starts on day`" :value="md(schedule.seasons.dates[tab])[1]" @change="setSeasonStart(md(schedule.seasons.dates[tab])[0], Number($el.value) || 1)"></div>
+            <div class="control"><span class="has-text-grey" x-text="`runs until ${seasonRange(tab)}`"></span></div>
           </div>
+        </template>
+
+        <!-- special days -->
+        <template x-if="schedule && tab === 'special'">
+          <div class="block">
+            <p class="has-text-grey" x-show="!schedule.events.length">No special days yet. Add one for something like Shark Week or a Thanksgiving lineup.</p>
+            <ul class="rows events">
+              <template x-for="e in schedule.events" :key="e.id">
+                <li :class="e.id === eventId && 'is-current'" :aria-current="e.id === eventId ? 'true' : null" @click="eventId = e.id; redraw()">
+                  <strong x-text="e.name || '(unnamed)'"></strong>
+                  <span class="name has-text-grey" x-text="whenText(e) + (e.replace ? ' · replaces the whole day' : ' · only the slots drawn')"></span>
+                  <button type="button" class="button is-small is-danger is-outlined" @click.stop="deleteEvent(e)">Delete</button>
+                </li>
+              </template>
+            </ul>
+            <div class="buttons"><button type="button" class="button is-small" @click="addEvent()">Add a special day</button></div>
+
+            <template x-if="ev">
+              <div class="box inner event-form">
+                <div class="field">
+                  <label class="label" for="ev-name">Name</label>
+                  <div class="control"><input class="input" id="ev-name" type="text" maxlength="60" x-model="ev.name"></div>
+                </div>
+                <div class="field">
+                  <label class="label" for="ev-kind">Dates</label>
+                  <div class="control"><div class="select"><select id="ev-kind" @change="setWhenType($el.value)">
+                    <option value="range" :selected="ev.when.type === 'range'">Certain dates</option>
+                    <option value="nth" :selected="ev.when.type === 'nth'">A day like “the 4th Thursday of November”</option>
+                  </select></div></div>
+                </div>
+                <template x-if="ev.when.type === 'range'">
+                  <div class="field is-grouped is-grouped-multiline">
+                    <div class="control"><span>From</span></div>
+                    <div class="control"><div class="select is-small"><select aria-label="From month" @change="setEvDate('start', Number($el.value), md(ev.when.start)[1])">
+                      <template x-for="(name, i) in MONTHS" :key="name"><option :value="i + 1" x-text="name" :selected="md(ev.when.start)[0] === i + 1"></option></template>
+                    </select></div></div>
+                    <div class="control"><input class="input is-small num" type="number" min="1" max="31" aria-label="From day" :value="md(ev.when.start)[1]" @change="setEvDate('start', md(ev.when.start)[0], Number($el.value))"></div>
+                    <div class="control"><span>to</span></div>
+                    <div class="control"><div class="select is-small"><select aria-label="To month" @change="setEvDate('end', Number($el.value), md(ev.when.end)[1])">
+                      <template x-for="(name, i) in MONTHS" :key="name"><option :value="i + 1" x-text="name" :selected="md(ev.when.end)[0] === i + 1"></option></template>
+                    </select></div></div>
+                    <div class="control"><input class="input is-small num" type="number" min="1" max="31" aria-label="To day" :value="md(ev.when.end)[1]" @change="setEvDate('end', md(ev.when.end)[0], Number($el.value))"></div>
+                    <div class="control"><label class="checkbox"><input type="checkbox" :checked="!ev.when.year" @change="ev.when.year = $el.checked ? null : new Date().getFullYear()"> Every year</label></div>
+                    <div class="control" x-show="ev.when.year"><input class="input is-small num" type="number" min="2000" max="2100" aria-label="Year" :value="ev.when.year" @change="ev.when.year = Number($el.value) || new Date().getFullYear()"></div>
+                  </div>
+                </template>
+                <template x-if="ev.when.type === 'nth'">
+                  <div class="field is-grouped is-grouped-multiline">
+                    <div class="control"><span>The</span></div>
+                    <div class="control"><div class="select is-small"><select aria-label="Which one" @change="ev.when.nth = Number($el.value)">
+                      <template x-for="n in NTHS" :key="n[0]"><option :value="n[0]" x-text="n[1]" :selected="ev.when.nth === n[0]"></option></template>
+                    </select></div></div>
+                    <div class="control"><div class="select is-small"><select aria-label="Weekday" @change="ev.when.weekday = $el.value">
+                      <template x-for="d in DAYS" :key="d"><option :value="d" x-text="cap(d)" :selected="ev.when.weekday === d"></option></template>
+                    </select></div></div>
+                    <div class="control"><span>of</span></div>
+                    <div class="control"><div class="select is-small"><select aria-label="Month" @change="ev.when.month = Number($el.value)">
+                      <template x-for="(name, i) in MONTHS" :key="name"><option :value="i + 1" x-text="name" :selected="ev.when.month === i + 1"></option></template>
+                    </select></div></div>
+                    <div class="control"><span>for how many days</span></div>
+                    <div class="control"><input class="input is-small num" type="number" min="1" max="31" aria-label="For how many days" :value="ev.when.days" @change="ev.when.days = Math.max(1, Math.min(31, Number($el.value) || 1))"></div>
+                  </div>
+                </template>
+                <div class="field">
+                  <label class="label" for="ev-mode">Lineup</label>
+                  <div class="control"><div class="select"><select id="ev-mode" x-ref="evmode" @change="setEvMode($el.value)">
+                    <option value="same" :selected="ev.mode === 'same'">The same lineup every day</option>
+                    <option value="weekday" :selected="ev.mode === 'weekday'">A different lineup for each weekday</option>
+                  </select></div></div>
+                </div>
+                <div class="field">
+                  <label class="checkbox"><input type="checkbox" :checked="ev.replace" @change="setEvReplace($el.checked)"> Replace the whole day (otherwise only the slots you draw change, and the rest of the day plays as normal)</label>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- the calendar and the slot under the pointer -->
+        <div x-show="hasView">
+          <div class="tabs is-small">
+            <ul role="tablist" aria-label="What to edit">
+              <template x-for="t in LAYERS" :key="t[0]">
+                <li :class="layer === t[0] && 'is-active'" role="presentation"><a href="#" role="tab" :aria-selected="layer === t[0]" @click.prevent="layer = t[0]; redraw()" x-text="t[1]"></a></li>
+              </template>
+            </ul>
+          </div>
+          <p class="block has-text-grey" x-text="layerNote"></p>
+          <div id="calendar" x-ref="calendar"></div>
+          <p class="help is-danger" role="status" x-text="problem"></p>
+
+          <template x-for="s in (sel ? [sel] : [])" :key="slotKey">
+            <div class="box inner slot-editor">
+              <h3 class="title is-6" x-text="slotTitle"></h3>
+
+              <template x-if="layer === 'videos'">
+                <div>
+                  <div class="field">
+                    <span class="label">Plays from these (one is picked at random each time)</span>
+                    <p class="help">Lists are folders like any other: open one, or a series, a season or a folder of your media, and add it or one video.</p>
+                    <div x-data="chooser({ multi: true, pool: 'playable', get: () => blk.lists || [], set: (v) => setSlotLists(v) })"></div>
+                    <p class="help" x-show="(blk.lists || []).some((n) => shows.includes(n))">A show plays in order: each airing is the next episode, picking up after the last one scheduled, and starting over after the final one. A new show needs Save and build.</p>
+                  </div>
+                  <div class="field">
+                    <span class="label">Intro card at the start of each hour of this slot</span>
+                    <p class="help">A folder of short clips: one is picked at random each time.</p>
+                    <div x-data="chooser({ folders: true, none: 'No intro card.', get: () => blk.intro || '', set: (v) => setSlotIntro(v) })"></div>
+                  </div>
+                  <div class="field">
+                    <span class="label">Mid cards for this show here, at the start of a break</span>
+                    <div x-data="chooser({ combine: true, none: '(the time period\'s cards, or the channel\'s)', get: () => blk.start || '', set: (v) => setSlotCard('start', v) })"></div>
+                  </div>
+                  <div class="field">
+                    <span class="label">and at its end</span>
+                    <div x-data="chooser({ combine: true, none: '(the time period\'s cards, or the channel\'s)', get: () => blk.end || '', set: (v) => setSlotCard('end', v) })"></div>
+                  </div>
+                  <div class="field">
+                    <label class="checkbox"><input type="checkbox" :checked="blk.burn === true" @change="setSlotBurn($el.checked)"> Draw the captions on the picture while this plays</label>
+                    <p class="help">Always visible, in the language chosen on the Stations page; a video without that language is left alone. Off, they are only the caption track a player can switch on.</p>
+                  </div>
+                </div>
+              </template>
+
+              <!-- a new block starts with nothing chosen (it is not a copy of the station's defaults or of the block before it) -->
+              <template x-if="layer === 'cards'">
+                <div>
+                  <div class="field">
+                    <span class="label">At the start of a break during these hours</span>
+                    <div x-data="chooser({ combine: true, none: 'Nothing chosen yet: choose what plays at this end of the break.', get: () => blk.start || '', set: (v) => setLayerCard('start', v) })"></div>
+                  </div>
+                  <div class="field">
+                    <span class="label">and at its end</span>
+                    <div x-data="chooser({ combine: true, none: 'Nothing chosen yet: choose what plays at this end of the break.', get: () => blk.end || '', set: (v) => setLayerCard('end', v) })"></div>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="layer === 'commercials'">
+                <div class="field">
+                  <span class="label">Commercials from this during these hours</span>
+                  <p class="help">A list, a series, a season, a folder, a video or a playlist; add as many as you like.</p>
+                  <div x-data="chooser({ combine: true, none: 'Nothing chosen yet: choose what plays in these hours.', get: () => blk.list || '', set: (v) => setAds(v) })"></div>
+                </div>
+              </template>
+
+              <div class="buttons are-small">
+                <button type="button" class="button is-danger is-outlined" @click="removeSlot()">Delete</button>
+                <button type="button" class="button" @click="copySlot()">Copy</button>
+                <span class="has-text-grey same-time" x-show="columns.length > 1">Same time on:</span>
+                <button type="button" class="button" x-show="columns.length > 1" @click="pasteOn('weekdays')">Weekdays</button>
+                <button type="button" class="button" x-show="columns.length > 1" @click="pasteOn('weekend')">Weekend</button>
+                <button type="button" class="button" x-show="columns.length > 1" @click="pasteOn('all')">All days</button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="tags preview" aria-label="Which schedule applies each day">
+          <span class="has-text-grey" x-text="previewError ? `Next days: ${previewError}` : 'Next 14 days:'"></span>
+          <template x-for="d in preview" :key="d.date">
+            <span class="tag" :class="d.layer === 'event' ? 'is-warning is-light' : d.layer === 'season' ? 'is-success is-light' : ''" :title="`${cap(d.weekday)} ${d.date}`" x-text="previewLabel(d)"></span>
+          </template>
         </div>
       </div>
 
-      <div id="standard">
-        <div class="panel" id="sched">
-          <h2>What plays, and when</h2>
-          <p class="dim">Draw slots on the week: drag on a day to make one, drag its top or bottom edge to resize it, drag the slot itself to move it (to another time or another day), click it to choose what plays, press Delete to remove the selected slot, and use Ctrl+C, Ctrl+X and Ctrl+V to copy, cut and paste it (it pastes where the pointer is). Time you leave unassigned plays the test pattern, so a week can be built up a little at a time. Seasons change the whole week for part of the year; special days change just the days (or slots) you choose.</p>
-          <div id="season-tabs" class="tabs" role="tablist" aria-label="Schedule"></div>
-          <div id="season-opts" class="sched-opts"></div>
-          <div id="special" hidden>
-            <div id="event-list" class="event-list"></div>
-            <div class="form-actions"><button type="button" class="btn" id="add-event">Add a special day</button></div>
-            <div id="event-form" class="event-form" hidden></div>
-          </div>
-          <div id="editor">
-            <div id="layer-tabs" class="tabs layer-tabs" role="tablist" aria-label="What to edit"></div>
-            <p id="layer-note" class="dim"></p>
-            <div id="calendar"></div>
-            <p id="cal-problem" class="msg err" role="status"></p>
-            <div id="slot-editor" class="slot-editor" hidden></div>
-          </div>
-          <div id="preview" class="preview" aria-label="Which schedule applies each day"></div>
+      <div class="box">
+        <h2 class="title is-5">Details</h2>
+        <div class="field">
+          <label class="label" for="f-inc">Time slot length</label>
+          <div class="control"><div class="select"><select id="f-inc" x-model.number="form.increment">
+            <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option>
+          </select></div></div>
+          <p class="help">Programs start on these marks, and breaks fill the gap to the next one. Pick 5 for a movie channel, so a movie is rounded up to the next 5 minutes instead of the next half hour.</p>
         </div>
-        <div class="panel">
-          <h2>Details</h2>
-          <div class="field">
-            <label for="f-inc">Time slot length</label>
-            <select id="f-inc"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">60 minutes</option></select>
-            <span class="hint">Programs start on these marks, and breaks fill the gap to the next one. Pick 5 for a movie channel, so a movie is rounded up to the next 5 minutes instead of the next half hour.</span>
-          </div>
-          <div class="field">
-            <label for="f-breaks">Where the break time goes</label>
-            <select id="f-breaks"><option value="end" selected>All after the show</option><option value="standard">Inside the show (at its own break points)</option><option value="center">One break in the middle</option></select>
-            <span class="hint">A show rarely fills its slot exactly: a 22 minute show in a 30 minute slot leaves 8 minutes to fill. This chooses where that time goes. Inside the show uses the chapter marks in the video, or its black frames, and falls back to spreading the breaks out if it has neither. A show that fills its slot gets no break at all.</span>
-          </div>
-          <div class="field">
-            <label><input type="checkbox" id="f-pack" checked> Fit short videos several to a time slot</label>
-            <span class="hint">A video that fits more than once into the slot shares it: with 30 minute slots an 11 minute video gets a 15 minute block (two to the half hour), a 9 minute one gets 10 (three), under 7.5 gets four, and 1 minute clips run back to back. Only the time left over in each block is filled with commercials. Off, every video gets a whole slot, however short.</span>
-          </div>
-          <div class="field">
-            <label><input type="checkbox" id="f-snap"> Better break points (EDL files, or marks moved onto real scene changes)</label>
-            <span class="hint">If a video has an .edl file beside it (as Comskip writes), its breaks are used. Otherwise, for videos whose chapter marks are not exact: when the catalog is built or updated, each mark is moved to the nearest black frame or silence (up to 90 seconds away); a mark with none nearby stays where it is. It reads each video once, so the first build takes longer.</span>
-          </div>
-          <div class="field">
-            <label class="check"><input type="checkbox" id="f-cards"> Default mid cards</label>
-            <span class="hint">Off (the default for a new station): a break is commercials only, with no card before or after, except where you gave cards to a time of day (the calendar's <b>Mid cards</b> tab) or to a show (below): choosing cards there is the opt in for those videos. On: the two lists below play at every break that has none of its own.</span>
-          </div>
-          <div class="field">
-            <label for="f-bump">Default start-of-break mid cards</label>
-            <input type="hidden" id="f-bump"><div id="f-bump-box"></div>
-            <span class="hint">Short clips (a few seconds, like a "we'll be right back") played at the start of each commercial break. They are only used when breaks with commercials are on.</span>
-          </div>
-          <div class="field">
-            <label for="f-bumpend">Default end-of-break mid cards</label>
-            <input type="hidden" id="f-bumpend"><div id="f-bumpend-box"></div>
-            <span class="hint">Short clips (like a "welcome back") played at the end of each break, just before the show returns. It can be the same list as the start cards.</span>
-          </div>
-          <div class="field">
-            <label class="check"><input type="checkbox" id="f-com"> Default commercials</label>
-            <input type="hidden" id="f-comlist"><div id="f-comlist-box" hidden></div>
-            <span class="hint">Off (the default for a new station): there are no breaks. Videos play back to back, the next one starting as soon as one ends, and the time slots are only a soft target that the day is filled to with videos from the lists, except in hours where you gave the calendar's <b>Commercials</b> tab a list: choosing one there is the opt in for those hours. On: the spare time in each slot is filled with clips from the list chosen here, at the breaks set above, in every hour that has none of its own.</span>
-          </div>
+        <div class="field">
+          <label class="label" for="f-breaks">Where the break time goes</label>
+          <div class="control"><div class="select"><select id="f-breaks" x-model="form.breaks">
+            <option value="end">All after the show</option><option value="standard">Inside the show (at its own break points)</option><option value="center">One break in the middle</option>
+          </select></div></div>
+          <p class="help">A show rarely fills its slot exactly: a 22 minute show in a 30 minute slot leaves 8 minutes to fill. This chooses where that time goes. Inside the show uses the chapter marks in the video, or its black frames, and falls back to spreading the breaks out if it has neither. A show that fills its slot gets no break at all.</p>
+        </div>
+        <div class="field">
+          <label class="checkbox"><input type="checkbox" id="f-pack" x-model="form.pack"> Fit short videos several to a time slot</label>
+          <p class="help">A video that fits more than once into the slot shares it: with 30 minute slots an 11 minute video gets a 15 minute block (two to the half hour), a 9 minute one gets 10 (three), under 7.5 gets four, and 1 minute clips run back to back. Only the time left over in each block is filled with commercials. Off, every video gets a whole slot, however short.</p>
+        </div>
+        <div class="field">
+          <label class="checkbox"><input type="checkbox" id="f-snap" x-model="form.snap"> Better break points (EDL files, or marks moved onto real scene changes)</label>
+          <p class="help">If a video has an .edl file beside it (as Comskip writes), its breaks are used. Otherwise, for videos whose chapter marks are not exact: when the catalog is built or updated, each mark is moved to the nearest black frame or silence (up to 90 seconds away); a mark with none nearby stays where it is. It reads each video once, so the first build takes longer.</p>
+        </div>
+        <div class="field">
+          <label class="checkbox"><input type="checkbox" id="f-cards" x-model="form.cards"> Default mid cards</label>
+          <p class="help">Off (the default for a new station): a break is commercials only, with no card before or after, except where you gave cards to a time of day (the calendar's <b>Mid cards</b> tab) or to a show (below): choosing cards there is the opt in for those videos. On: the two lists below play at every break that has none of its own.</p>
+        </div>
+        <!-- the defaults are opt in: their choices are only shown while they are on -->
+        <div class="field" x-show="form.cards">
+          <span class="label">Default start-of-break mid cards</span>
+          <div x-data="chooser({ combine: true, pool: 'lists', get: () => form.bump, set: (v) => { form.bump = v; } })"></div>
+          <p class="help">Short clips (a few seconds, like a "we'll be right back") played at the start of each commercial break. They are only used when breaks with commercials are on.</p>
+        </div>
+        <div class="field" x-show="form.cards">
+          <span class="label">Default end-of-break mid cards</span>
+          <div x-data="chooser({ combine: true, pool: 'lists', get: () => form.bumpEnd, set: (v) => { form.bumpEnd = v; } })"></div>
+          <p class="help">Short clips (like a "welcome back") played at the end of each break, just before the show returns. It can be the same list as the start cards.</p>
+        </div>
+        <div class="field">
+          <label class="checkbox"><input type="checkbox" id="f-com" x-model="form.com"> Default commercials</label>
+          <div x-show="form.com" x-data="chooser({ combine: true, pool: 'lists', get: () => form.comlist, set: (v) => { form.comlist = v; } })"></div>
+          <p class="help">Off (the default for a new station): there are no breaks. Videos play back to back, the next one starting as soon as one ends, and the time slots are only a soft target that the day is filled to with videos from the lists, except in hours where you gave the calendar's <b>Commercials</b> tab a list: choosing one there is the opt in for those hours. On: the spare time in each slot is filled with clips from the list chosen here, at the breaks set above, in every hour that has none of its own.</p>
         </div>
       </div>
+    </div>
 
-      <div id="loop" class="panel" hidden>
-        <h2>What repeats</h2>
-        <div class="field">
-          <label>Plays</label>
-          <input type="hidden" id="f-looplist"><div id="f-looplist-box"></div>
-          <span class="hint">A list, or a series, a season, a folder, a video or a YouTube playlist: add as many as you like, and they play as one.</span>
-        </div>
-        <label class="check"><input type="checkbox" id="f-shuffle"> Shuffle the order</label>
+    <!-- ================= repeats one list ================= -->
+    <div class="box" x-show="form.kind === 'loop'">
+      <h2 class="title is-5">What repeats</h2>
+      <div class="field">
+        <span class="label">Plays</span>
+        <div x-data="chooser({ combine: true, pool: 'playable', get: () => form.looplist, set: (v) => { form.looplist = v; } })"></div>
+        <p class="help">A list, or a series, a season, a folder, a video or a YouTube playlist: add as many as you like, and they play as one.</p>
       </div>
+      <div class="field"><label class="checkbox"><input type="checkbox" id="f-shuffle" x-model="form.shuffle"> Shuffle the order</label></div>
+    </div>
 
-      <div id="guide-panel" class="panel" hidden>
-        <h2>The guide channel</h2>
-        <p class="dim">A scrolling grid of what is on every channel, drawn live (the classic TV guide channel). Nothing needs scheduling or building: it is on air as soon as it is saved.</p>
-        <div class="field">
-          <label for="g-title">Title</label>
-          <input id="g-title" type="text" maxlength="40" value="Channel Guide">
-        </div>
-        <div class="field">
-          <label for="g-hours">Time shown</label>
-          <select id="g-hours"><option value="2">The next 2 hours</option><option value="3" selected>The next 3 hours</option><option value="4">The next 4 hours</option><option value="6">The next 6 hours</option></select>
-        </div>
-        <div class="field">
-          <label for="g-theme">Style</label>
-          <select id="g-theme"><option value="modern-blue" selected>Modern blue</option><option value="midnight">Midnight</option><option value="classic-prevue">Classic cable</option><option value="emerald">Emerald</option><option value="sunset">Sunset</option><option value="cable-box">Cable box</option></select>
-        </div>
-        <div class="field">
-          <label for="g-aspect">Picture shape</label>
-          <select id="g-aspect"><option value="16:9" selected>Widescreen (16:9)</option><option value="4:3">Standard, for an old TV (4:3)</option></select>
-          <span class="hint">Standard draws the guide in the middle of the picture with black bars at the sides, like any 4:3 programme: a 4:3 TV that crops the sides shows all of it, edge to edge.</span>
-        </div>
-        <div class="field">
-          <label for="g-textsize">Text size</label>
-          <select id="g-textsize"><option value="small">Small</option><option value="normal" selected>Normal</option><option value="large">Large</option><option value="x-large">Extra large</option></select>
-          <span class="hint">Bigger text is easier to read on a small or old TV, with fewer channels on screen at once (the rest scroll up). Showing fewer hours gives each programme more room.</span>
-        </div>
-        <div class="field">
-          <label for="g-speed">Scroll speed</label>
-          <select id="g-speed"><option value="0.6">Slow</option><option value="1" selected>Normal</option><option value="1.8">Fast</option></select>
-          <span class="hint">The channels scroll up when there are more than fit on the screen, and the messages scroll along the bottom.</span>
-        </div>
-        <div class="field">
-          <label for="g-messages">Messages along the bottom (one per line)</label>
-          <textarea id="g-messages" rows="4" maxlength="2000" placeholder="Tonight: Shark Week begins at 8"></textarea>
-        </div>
-        <div class="field">
-          <label class="check"><input type="checkbox" id="g-comingup"> Add what's coming up later to the messages</label>
-          <span class="hint">Lines like "Coming up at 9:00 PM: Friends on Channel 117", picked from the guide's own listings for the next few hours. Picked again every hour, after your own messages.</span>
-        </div>
-        <div class="field">
-          <label class="check"><input type="checkbox" id="g-episodes" checked> Show the episode's name too</label>
-          <span class="hint">Small, after the time in this guide (8:00 – 8:30 PM · The Pilot); a YouTube video shows its channel's name big and the video's title small. Anywhere that has one line (the banner, the schedule, other guides) reads "Friends: The Pilot". Off, only the show's or channel's name is shown. This is one setting for the whole system, kept when you save this page. Every name too long for its slot scrolls.</span>
-        </div>
-        <div class="field">
-          <label for="g-music">Background music (a folder, or one file, inside your media)</label>
-          <input id="g-music" type="text" list="g-music-hints" placeholder="/mnt/media/music">
-          <datalist id="g-music-hints"></datalist>
-          <span class="hint">It plays every mp3, flac, ogg, m4a, wav or opus file in that folder, shuffled, over and over. Leave it empty for no music.</span>
-        </div>
-        <p class="dim">Save takes effect the next time the channel starts (when nobody is watching, or within the hour). “Save and apply now” restarts it right away for anyone watching.</p>
+    <!-- ================= the guide channel ================= -->
+    <div class="box" x-show="form.kind === 'guide'">
+      <h2 class="title is-5">The guide channel</h2>
+      <p class="block has-text-grey">A scrolling grid of what is on every channel, drawn live (the classic TV guide channel). Nothing needs scheduling or building: it is on air as soon as it is saved.</p>
+      <div class="field">
+        <label class="label" for="g-title">Title</label>
+        <div class="control"><input class="input" id="g-title" type="text" maxlength="40" x-model="form.guide.title"></div>
       </div>
+      <div class="field">
+        <label class="label" for="g-hours">Time shown</label>
+        <div class="control"><div class="select"><select id="g-hours" x-model.number="form.guide.hours"><option value="2">The next 2 hours</option><option value="3">The next 3 hours</option><option value="4">The next 4 hours</option><option value="6">The next 6 hours</option></select></div></div>
+      </div>
+      <div class="field">
+        <label class="label" for="g-theme">Style</label>
+        <div class="control"><div class="select"><select id="g-theme" x-model="form.guide.theme"><option value="modern-blue">Modern blue</option><option value="midnight">Midnight</option><option value="classic-prevue">Classic cable</option><option value="emerald">Emerald</option><option value="sunset">Sunset</option><option value="cable-box">Cable box</option></select></div></div>
+      </div>
+      <div class="field">
+        <label class="label" for="g-aspect">Picture shape</label>
+        <div class="control"><div class="select"><select id="g-aspect" x-model="form.guide.aspect"><option value="16:9">Widescreen (16:9)</option><option value="4:3">Standard, for an old TV (4:3)</option></select></div></div>
+        <p class="help">Standard draws the guide in the middle of the picture with black bars at the sides, like any 4:3 programme: a 4:3 TV that crops the sides shows all of it, edge to edge.</p>
+      </div>
+      <div class="field">
+        <label class="label" for="g-textsize">Text size</label>
+        <div class="control"><div class="select"><select id="g-textsize" x-model="form.guide.text_size"><option value="small">Small</option><option value="normal">Normal</option><option value="large">Large</option><option value="x-large">Extra large</option></select></div></div>
+        <p class="help">Bigger text is easier to read on a small or old TV, with fewer channels on screen at once (the rest scroll up). Showing fewer hours gives each programme more room.</p>
+      </div>
+      <div class="field">
+        <label class="label" for="g-speed">Scroll speed</label>
+        <div class="control"><div class="select"><select id="g-speed" x-model.number="form.guide.scroll_speed"><option value="0.6">Slow</option><option value="1">Normal</option><option value="1.8">Fast</option></select></div></div>
+        <p class="help">The channels scroll up when there are more than fit on the screen, and the messages scroll along the bottom.</p>
+      </div>
+      <div class="field">
+        <label class="label" for="g-messages">Messages along the bottom (one per line)</label>
+        <div class="control"><textarea class="textarea" id="g-messages" rows="4" maxlength="2000" placeholder="Tonight: Shark Week begins at 8" x-model="form.guide.messages"></textarea></div>
+      </div>
+      <div class="field">
+        <label class="checkbox"><input type="checkbox" id="g-comingup" x-model="form.guide.coming_up"> Add what's coming up later to the messages</label>
+        <p class="help">Lines like "Coming up at 9:00 PM: Friends on Channel 117", picked from the guide's own listings for the next few hours. Picked again every hour, after your own messages.</p>
+      </div>
+      <div class="field">
+        <label class="checkbox"><input type="checkbox" id="g-episodes" x-model="form.episodes"> Show the episode's name too</label>
+        <p class="help">Small, after the time in this guide (8:00 – 8:30 PM · The Pilot); a YouTube video shows its channel's name big and the video's title small. Anywhere that has one line (the banner, the schedule, other guides) reads "Friends: The Pilot". Off, only the show's or channel's name is shown. This is one setting for the whole system, kept when you save this page. Every name too long for its slot scrolls.</p>
+      </div>
+      <div class="field">
+        <label class="label" for="g-music">Background music (a folder, or one file, inside your media)</label>
+        <div class="control"><input class="input" id="g-music" type="text" list="media-hints" placeholder="/mnt/media/music" x-model="form.guide.music"></div>
+        <p class="help">It plays every mp3, flac, ogg, m4a, wav or opus file in that folder, shuffled, over and over. Leave it empty for no music.</p>
+      </div>
+      <p class="has-text-grey">Save takes effect the next time the channel starts (when nobody is watching, or within the hour). “Save and apply now” restarts it right away for anyone watching.</p>
+    </div>
 
-      <div id="ppv-panel" class="panel" hidden>
-        <h2>Pay-per-view</h2>
-        <p class="dim">A menu of movies on your TV players: page through the posters with the remote's up and down, and press Enter to watch one from the start. Each player draws it itself (in client mode), so it is not in Emby or Jellyfin. Titles, plots and posters come from your media server when it knows the movie, otherwise from the folder names. New movies show up within half an hour.</p>
-        <div class="field">
-          <label for="p-folder">Movies (a folder inside your media)</label>
-          <input id="p-folder" type="text" list="p-folder-hints" placeholder="/mnt/media/movies">
-          <datalist id="p-folder-hints"></datalist>
-          <span class="hint">Every video in it and in the folders inside it, one per movie.</span>
-        </div>
-        <div class="field">
-          <label for="p-theme">Style</label>
-          <select id="p-theme"><option value="modern" selected>Modern</option><option value="retro">Retro</option><option value="terminal">Terminal</option></select>
-        </div>
-        <div class="field">
-          <label for="p-seconds">Each movie stays on screen for</label>
-          <select id="p-seconds"><option value="5">5 seconds</option><option value="10" selected>10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select>
-        </div>
+    <!-- ================= pay-per-view ================= -->
+    <div class="box" x-show="form.kind === 'ppv'">
+      <h2 class="title is-5">Pay-per-view</h2>
+      <p class="block has-text-grey">A menu of movies on your TV players: page through the posters with the remote's up and down, and press Enter to watch one from the start. Each player draws it itself (in client mode), so it is not in Emby or Jellyfin. Titles, plots and posters come from your media server when it knows the movie, otherwise from the folder names. New movies show up within half an hour.</p>
+      <div class="field">
+        <label class="label" for="p-folder">Movies (a folder inside your media)</label>
+        <div class="control"><input class="input" id="p-folder" type="text" list="media-hints" placeholder="/mnt/media/movies" x-model="form.ppv.folder"></div>
+        <p class="help">Every video in it and in the folders inside it, one per movie.</p>
       </div>
+      <div class="field">
+        <label class="label" for="p-theme">Style</label>
+        <div class="control"><div class="select"><select id="p-theme" x-model="form.ppv.theme"><option value="modern">Modern</option><option value="retro">Retro</option><option value="terminal">Terminal</option></select></div></div>
+      </div>
+      <div class="field">
+        <label class="label" for="p-seconds">Each movie stays on screen for</label>
+        <div class="control"><div class="select"><select id="p-seconds" x-model.number="form.ppv.seconds"><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select></div></div>
+      </div>
+    </div>
+    <datalist id="media-hints"><template x-for="d in mediaDirs" :key="d"><option :value="`/mnt/media/${d}`"></option></template></datalist>
 
-      <div class="form-actions">
-        <button type="submit" class="btn primary" id="save">Save</button>
-        <button type="button" class="btn primary" id="save-build">Save and build</button>
-        <button type="button" class="btn primary" id="save-apply" hidden>Save and apply now</button>
-        <a class="btn" href="/stations.html">Back to stations</a>
+    <div class="box">
+      <p class="block has-text-grey" role="status" x-show="summary" x-text="summary"></p>
+      <p class="block has-text-grey" x-show="!live">Saving only keeps your choices. Building makes the catalog and a new week of schedule from them; if the station already has a schedule, it keeps playing until the new one is ready. Changes to seasons or special days are used for days added from now on, so build when you want them to apply to the days already scheduled.</p>
+      <div x-progress="job"></div>
+      <div class="buttons is-right sticky-actions">
+        <button type="submit" class="button" :class="saving === 'save' && 'is-loading'" :disabled="!edit || !!saving">Save</button>
+        <button type="button" class="button is-primary" x-show="form.kind === 'guide'" :class="saving === 'apply' && 'is-loading'" :disabled="!edit || !!saving" @click="saveApply()">Save and apply now</button>
+        <button type="button" class="button is-primary" x-show="!live" :disabled="!edit || !!saving" @click="saveBuild()">Save and build</button>
       </div>
-      <p class="dim" id="plan-summary" role="status"></p>
-      <p class="dim" id="build-note">Saving only keeps your choices. Building makes the catalog and a new week of schedule from them; if the station already has a schedule, it keeps playing until the new one is ready. Changes to seasons or special days are used for days added from now on, so build when you want them to apply to the days already scheduled.</p>
-    </form>
-  </main>
-  <script src="/common.js"></script>
-  <script src="/calendar.js"></script>
-  <script src="/station.js"></script>
+    </div>
+  </form>
+</div>
+</main>
+<script src="/common.js"></script>
+<script src="/calendar.js"></script>
+<script src="/station.js"></script>
+<script defer src="/vendor/alpine-3.17.5.min.js"></script>
 </body>
 </html>

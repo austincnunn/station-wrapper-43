@@ -38,7 +38,7 @@ How I want you to work, in this order:
    /api/stations/save creates or edits a station, /api/stations/build builds
    its catalog and schedule. You don't know the request bodies in advance, so
    learn them rather than guess: read the page scripts the dashboard serves
-   (station.js, stations.js, files.js under the site root) and GET an existing
+   (station.js, stations.js, files.js under the site root; the pages are Alpine.js components, so the request bodies are in their call(...) lines) and GET an existing
    station to see the shape. Build one channel fully and check it before doing
    the rest, so a wrong assumption costs one channel and not ten.
 

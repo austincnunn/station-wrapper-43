@@ -1,27 +1,582 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Station Wrapper 43 -- Settings</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/dashboard.css">
-<link rel="stylesheet" href="/views.css">
-<link rel="stylesheet" href="/iptv.css">
+<link rel="stylesheet" href="/vendor/bulma-1.0.4.min.css">
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <main id="dash">
-    <div class="view-head"><h1>Settings</h1></div>
-    <p class="dim">Settings from the compose file, changed here. A value set here wins over the compose file's; leave a
-      box empty (or pick "as the compose file") to go back to it. Saving restarts only the part that uses it. The schedule
-      keeper, episode names and captions are on the <a href="/stations.html">Stations</a> page.</p>
-    <p id="msg" class="msg" role="status" aria-live="polite"></p>
-    <section id="machine" class="panel" aria-label="This machine"></section>
-    <section id="server" class="panel" aria-label="This server"></section>
-    <section id="players" class="panel" aria-label="Players"></section>
-  </main>
-  <script src="/common.js"></script>
-  <script src="/settings.js"></script>
+<div id="shell" data-page="settings"></div>
+<main class="section" x-data="settingsPage">
+<div class="container">
+  <header class="page-head">
+    <div>
+      <h1 class="title">Settings</h1>
+      <p class="subtitle" x-text="tabs.find((t) => t.id === tab).about"></p>
+    </div>
+  </header>
+
+  <div class="tabs is-boxed">
+    <ul role="tablist">
+      <template x-for="t in tabs" :key="t.id">
+        <li :class="tab === t.id && 'is-active'" role="presentation">
+          <a :href="'#' + t.id" role="tab" :aria-selected="tab === t.id" x-text="t.label"></a>
+        </li>
+      </template>
+    </ul>
+  </div>
+
+  <!-- ================= General and Players: the compose file's settings ================= -->
+  <section x-show="tab === 'general' || tab === 'players'" role="tabpanel" x-cloak>
+    <article class="message is-warning" x-show="r && !r.edit">
+      <div class="message-body">Changing settings is switched off (DASHBOARD_EDIT=0): this page only shows them.</div>
+    </article>
+
+    <template x-if="r">
+      <div>
+        <div x-show="tab === 'general'">
+          <p class="block has-text-grey">A value set here wins over the compose file's; leave a box empty (or pick "as the compose
+            file") to go back to it. Saving restarts only the part that uses it. The schedule keeper, episode names and
+            captions are on the <a href="/stations.html">Stations</a> page.</p>
+          <div class="box">
+            <h2 class="title is-5">This machine</h2>
+            <table class="table is-fullwidth facts">
+              <tbody>
+                <tr><th>Role</th><td x-text="`${r.machine.role} (FS42_ROLE in the compose file; a player PC runs the client compose file)`"></td></tr>
+                <tr><th>Time zone</th><td x-text="r.machine.tz || '(the container\'s)'"></td></tr>
+                <tr><th>Version</th><td x-text="r.machine.version || '?'"></td></tr>
+                <tr><th>Login</th>
+                  <td>
+                    <span x-show="r.machine.login">on · <a href="/login.html?change=1">Change the password</a></span>
+                    <span x-show="!r.machine.login">OFF (DASHBOARD_LOGIN)</span>
+                  </td></tr>
+                <tr><th>Changes from the dashboard</th><td x-text="r.machine.edit ? 'on' : 'OFF (DASHBOARD_EDIT)'"></td></tr>
+                <tr><th>Secrets (in .env; the sync token can be made here)</th><td x-text="secrets"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div x-show="tab === 'players'">
+          <p class="block has-text-grey" x-show="!r.sync_on">No player PCs: client sync is off (this server could not make its sync
+            token; set FS42_SYNC_TOKEN in its .env).</p>
+          <div class="box" x-show="r.sync_on">
+            <h2 class="title is-5">Connect a player PC</h2>
+            <p class="block">Put this server's sync token (<span x-text="r.sync_token_from === 'env' ? 'set in this server\'s .env' : 'made by this server'"></span>)
+              in the player's .env as FS42_SYNC_TOKEN.</p>
+            <div class="field has-addons" x-show="r.edit">
+              <div class="control"><button type="button" class="button" @click="showToken()">Show and copy the token</button></div>
+              <div class="control is-expanded" x-show="token">
+                <input class="input" type="text" readonly x-ref="token" :value="token" aria-label="Sync token line for the player's .env">
+              </div>
+            </div>
+            <p class="has-text-grey" x-show="!r.players.length">No player has checked in in the last day.</p>
+          </div>
+        </div>
+
+        <template x-for="f in forms" :key="f.id">
+          <form class="box" x-show="f.tab === tab" x-data="settingsForm" @submit.prevent="save()">
+            <h2 class="title is-5" x-text="f.title"></h2>
+            <template x-for="g in groups" :key="g.name">
+              <fieldset class="block">
+                <legend class="title is-6" x-text="g.name"></legend>
+                <template x-for="s in g.rows" :key="s.key">
+                  <div class="field">
+                    <label class="label" :for="f.id + s.key" x-text="s.label"></label>
+                    <div class="control">
+                      <template x-if="isSelect(s)">
+                        <div class="select">
+                          <select :id="f.id + s.key" x-model="values[s.key]" :disabled="!r.edit">
+                            <option value="" x-text="`As the compose file (${fallback(s).replace(/^.*: /, '')})`"></option>
+                            <template x-for="o in options(s)" :key="o[0]">
+                              <option :value="o[0]" x-text="o[1]" :selected="values[s.key] === o[0]"></option>
+                            </template>
+                          </select>
+                        </div>
+                      </template>
+                      <template x-if="!isSelect(s)">
+                        <input class="input" :id="f.id + s.key" :type="s.kind[0] === 'text' ? 'text' : 'number'" x-model="values[s.key]"
+                               :placeholder="fallback(s)" :disabled="!r.edit" :min="s.kind[0] === 'text' ? null : s.kind[1]"
+                               :max="s.kind[0] === 'text' ? null : s.kind[2]" :step="s.kind[0] === 'text' ? null : s.kind[0] === 'float' ? '0.05' : '1'">
+                      </template>
+                    </div>
+                    <p class="help" x-text="hint(s)"></p>
+                  </div>
+                </template>
+              </fieldset>
+            </template>
+            <div class="buttons is-right sticky-actions" x-show="r.edit">
+              <button type="submit" class="button is-primary" :class="busy && 'is-loading'" :disabled="busy">Save</button>
+            </div>
+          </form>
+        </template>
+      </div>
+    </template>
+  </section>
+
+  <!-- ================= Sources ================= -->
+  <template x-if="seen.sources">
+    <section x-show="tab === 'sources'" role="tabpanel" x-data="sourcesTab">
+      <div class="buttons is-right">
+        <button type="button" class="button is-primary" :disabled="!edit" @click="openForm(null)">Add a source</button>
+      </div>
+
+      <form class="box" x-show="form.open" x-ref="form" @submit.prevent="save()">
+        <h2 class="title is-5" x-text="form.editing ? `Change ${form.title}` : 'Add a source'"></h2>
+        <div class="field">
+          <label class="label" for="f-type">What it is</label>
+          <div class="control"><div class="select">
+            <select id="f-type" x-model="form.type" :disabled="!!form.editing" @change="typeChanged()">
+              <option value="stream">A single stream (a camera, one channel)</option>
+              <option value="m3u">A playlist of channels (an .m3u or .m3u8 address)</option>
+              <option value="hdhomerun">Another HDHomeRun tuner</option>
+            </select>
+          </div></div>
+        </div>
+        <div class="field">
+          <label class="label" for="f-name">Name</label>
+          <div class="control"><input class="input" id="f-name" x-ref="name" type="text" maxlength="80" required placeholder="Front door" x-model="form.name"></div>
+        </div>
+        <div class="field">
+          <label class="label" for="f-url">Address</label>
+          <div class="control"><input class="input" id="f-url" type="text" required autocomplete="off" x-model="form.url" :placeholder="urlPlaceholder"></div>
+          <p class="help" x-text="HINTS[form.type]"></p>
+        </div>
+        <div class="field">
+          <label class="label" for="f-mode">How to play it</label>
+          <div class="control"><div class="select">
+            <select id="f-mode" x-model="form.mode">
+              <option value="convert">Convert it so a web browser can play it (uses more CPU)</option>
+              <option value="relay">Pass it on as it is (cheap; a browser may not be able to play it)</option>
+              <option value="guide" :hidden="form.type !== 'hdhomerun'" :disabled="form.type !== 'hdhomerun'">Guide only: its listings go in our guide, but Jellyfin plays the tuner's channels itself (tuners only)</option>
+            </select>
+          </div></div>
+        </div>
+        <div class="field" x-show="form.type !== 'hdhomerun'">
+          <label class="label" for="f-base">First channel number</label>
+          <div class="control"><input class="input" id="f-base" type="number" min="1" max="99999" placeholder="automatic" x-model="form.base"></div>
+          <p class="help">Its channels are numbered from here (a tuner keeps its own numbers).</p>
+        </div>
+        <p class="help block" role="status" x-text="form.result"></p>
+        <div class="buttons is-right">
+          <button type="button" class="button" @click="form.open = false">Cancel</button>
+          <button type="button" class="button" :class="form.testing && 'is-loading'" :disabled="form.testing" @click="test()">Test the address</button>
+          <button type="submit" class="button is-primary" :class="form.saving && 'is-loading'" :disabled="form.saving">Save</button>
+        </div>
+      </form>
+
+      <div class="box" x-show="legacy">
+        <h2 class="title is-5">An older setting: one HDHomeRun in the config file</h2>
+        <p class="block has-text-grey" x-text="legacy ? `The config file still has a single passthrough device (${legacy.url}, ${legacy.mode} mode). Sources on this page replace it: they feed the guide and the lineup the same way, with the numbers kept stable.` : ''"></p>
+        <div class="buttons is-right"><button type="button" class="button is-primary" @click="importLegacy()">Move it onto this page</button></div>
+      </div>
+
+      <div class="box" x-show="clashes.length">
+        <h2 class="title is-5">Numbers that were taken</h2>
+        <p class="block has-text-grey">These channels asked for a number another channel already has, so they were given the next free one. Change a number below if you want a particular one.</p>
+        <div class="content"><ul>
+          <template x-for="c in clashes" :key="c.channel + c.source"><li x-text="`${c.channel} (${c.source}) wanted ${c.wanted}`"></li></template>
+        </ul></div>
+      </div>
+
+      <p class="block has-text-grey" x-show="loaded && !sources.length">No sources yet. Add one: a camera, a playlist, or another tuner.</p>
+
+      <template x-for="s in sources" :key="s.id">
+        <div class="box" :class="!s.enabled && 'is-off'">
+          <h2 class="title is-5 with-tags">
+            <span x-text="s.name"></span>
+            <span class="tag" x-text="KINDS[s.type] || s.type"></span>
+            <span class="tag" x-text="MODES[s.mode] || s.mode"></span>
+          </h2>
+          <p class="addr has-text-grey" x-text="s.url"></p>
+          <p class="block" :class="s.error ? 'has-text-danger' : 'has-text-success'" x-text="stateText(s)"></p>
+          <div x-progress="reading === s.id ? { message: `Reading ${s.name}…` } : null"></div>
+          <div class="buttons">
+            <button type="button" class="button" :disabled="!edit" @click="toggle(s)" x-text="s.enabled ? 'Switch off' : 'Switch on'"></button>
+            <button type="button" class="button" x-show="s.type !== 'stream'" :disabled="!edit || reading === s.id" @click="refresh(s)">Read the channels again</button>
+            <button type="button" class="button" :disabled="!edit" @click="openForm(s)">Edit</button>
+            <button type="button" class="button is-danger is-outlined" :disabled="!edit" @click="remove(s)">Delete</button>
+          </div>
+          <details x-show="s.channels.length" :open="open.includes(s.id)" @toggle="noteOpen(s.id, $el.open)">
+            <summary x-text="`Channels (${s.channels.length})`"></summary>
+            <div class="table-container">
+              <table class="table is-fullwidth is-narrow chan-table">
+                <thead><tr><th>On</th><th>Number</th><th>Name</th><th>Group</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="ch in s.channels" :key="ch.key">
+                    <tr :class="!chOn(ch) && 'is-off'">
+                      <td><input type="checkbox" :checked="chOn(ch)" :disabled="!edit" :aria-label="`${ch.name} on air`" @change="saveChannel(s, ch, { enabled: $el.checked })"></td>
+                      <td><input class="input is-small num" type="text" :value="(ch.override || {}).number || ch.number || ''" placeholder="auto" :disabled="!edit" :aria-label="`${ch.name} number`" @change="saveChannel(s, ch, { number: $el.value })"></td>
+                      <td><input class="input is-small" type="text" :value="(ch.override || {}).name || ch.name" :disabled="!edit" :aria-label="`${ch.name} name`" @change="saveChannel(s, ch, { name: $el.value === ch.name ? '' : $el.value })"></td>
+                      <td x-text="ch.group || ''"></td>
+                      <td><a class="button is-small" x-show="ch.number && chOn(ch) && s.enabled && s.mode !== 'guide'" :href="`/watch.html?ch=${encodeURIComponent(ch.number)}`">Watch</a></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </template>
+
+      <!-- Emby and Jellyfin servers -->
+      <div class="box" x-data="embyPanel">
+        <h2 class="title is-5">Emby and Jellyfin servers</h2>
+        <p class="block has-text-grey">Sign in with Emby Connect and say which of your servers to use, or add an Emby or Jellyfin server by its
+          address. Each server's libraries of shows, movies and music videos are then read, and each becomes a list (“Server -
+          Library”) on the Lists &amp; files tab, ready to put on a channel and kept up to date. Untick a server or a library to leave
+          it out. No video is read from a server until a channel plays it.</p>
+
+        <template x-if="data">
+          <div>
+            <form class="field is-grouped is-grouped-multiline" x-show="!data.signed_in" @submit.prevent="signin()">
+              <div class="control"><input class="input" type="text" autocomplete="username" placeholder="Emby Connect name or email" aria-label="Emby Connect name or email" x-model="connect.name" :disabled="!data.edit"></div>
+              <div class="control"><input class="input" type="password" autocomplete="current-password" placeholder="password" aria-label="Emby Connect password" x-model="connect.password" :disabled="!data.edit"></div>
+              <div class="control"><button type="submit" class="button is-primary" :class="busy === 'signin' && 'is-loading'" :disabled="!data.edit">Sign in</button></div>
+            </form>
+            <p class="help block" x-show="!data.signed_in">The password is only passed on to Emby Connect; it is never saved.</p>
+
+            <div class="notification" x-show="ask">
+              <h3 class="title is-6">Which servers do you want to use?</h3>
+              <p class="block">Each server you tick is read now, and its libraries of shows, movies and music videos become lists. The first
+                read of a big server far away can take a quarter of an hour. You can switch a server on or off below at any time.</p>
+              <div class="field is-grouped is-grouped-multiline">
+                <template x-for="s in (ask ? ask.servers : [])" :key="s.id">
+                  <label class="checkbox control"><input type="checkbox" :checked="want.includes(s.id)" @change="tick(s.id, $el.checked)"> <span x-text="s.name"></span></label>
+                </template>
+              </div>
+              <div class="buttons is-right">
+                <button type="button" class="button" @click="ask = null">None for now</button>
+                <button type="button" class="button is-primary" @click="use(want)">Use these servers</button>
+              </div>
+            </div>
+
+            <form class="field is-grouped is-grouped-multiline" @submit.prevent="add()">
+              <div class="control"><div class="select"><select aria-label="Kind of server" x-model="direct.kind" :disabled="!data.edit">
+                <option value="emby">Emby</option><option value="jellyfin">Jellyfin</option>
+              </select></div></div>
+              <div class="control is-expanded"><input class="input" type="text" placeholder="address, like http://192.168.1.20:8096" aria-label="Server address" x-model="direct.url" :disabled="!data.edit"></div>
+              <div class="control"><input class="input" type="text" autocomplete="off" placeholder="user name on that server" aria-label="User name on that server" x-model="direct.name" :disabled="!data.edit"></div>
+              <div class="control"><input class="input" type="password" autocomplete="off" placeholder="password" aria-label="Password on that server" x-model="direct.password" :disabled="!data.edit"></div>
+              <div class="control"><button type="submit" class="button" :class="busy === 'add' && 'is-loading'" :disabled="!data.edit">Add a server by its address</button></div>
+            </form>
+
+            <p class="block has-text-grey" x-text="summary"></p>
+            <p class="block has-text-danger" x-show="status.error" x-text="status.error"></p>
+            <div x-progress="status.syncing ? syncJob : null"></div>
+            <div class="buttons">
+              <button type="button" class="button is-primary" :disabled="!data.edit || status.syncing" @click="sync()">Read the servers now</button>
+              <button type="button" class="button" x-show="data.signed_in" :disabled="!data.edit" @click="lookAgain()">Look for Emby servers again</button>
+              <button type="button" class="button" x-show="data.signed_in" :disabled="!data.edit" @click="signout()">Sign out of Emby Connect</button>
+            </div>
+
+            <p class="has-text-grey" x-show="!data.servers.length">No servers yet.</p>
+            <template x-for="s in data.servers" :key="s.id">
+              <div class="box inner" :class="!s.on && 'is-off'">
+                <h3 class="title is-6 with-tags">
+                  <label class="checkbox"><input type="checkbox" :checked="s.on" :disabled="!data.edit || s.gone" @change="switchServer(s, $el.checked)"> <span x-text="s.name"></span></label>
+                  <span class="tag" x-text="where(s)"></span>
+                  <span class="tag is-warning" x-show="s.gone">no longer on the account</span>
+                </h3>
+                <p class="block has-text-danger" x-show="s.error" x-text="s.error"></p>
+                <div class="field is-horizontal cap">
+                  <label class="label" :for="'cap-' + s.id" x-text="s.direct ? 'Ask this server to make' : 'Over the internet, ask this server to make'"></label>
+                  <div class="control"><input class="input is-small num" :id="'cap-' + s.id" type="number" min="0" max="100000" step="500" :value="s.cap_kbps ?? 6000" :disabled="!data.edit" @change="setCap(s, $el.value)"></div>
+                  <p class="help" x-text="s.direct ? 'kbps (0 = the original file; anything else uses the server\'s CPU, for a server far away).' : 'kbps (0 = the original file; uses the server\'s CPU). On the LAN the original file is always read.'"></p>
+                </div>
+                <div class="buttons">
+                  <button type="button" class="button" :class="busy === 'libs:' + s.id && 'is-loading'" :disabled="s.gone" @click="pickLibraries(s)" x-text="libsLabel(s)"></button>
+                  <button type="button" class="button is-danger is-outlined" x-show="s.direct" :disabled="!data.edit" @click="removeServer(s)">Remove</button>
+                </div>
+                <div class="field is-grouped is-grouped-multiline" x-show="libs[s.id]">
+                  <template x-for="lib in (libs[s.id] || [])" :key="lib.id">
+                    <label class="checkbox control"><input type="checkbox" :checked="s.libraries.includes(lib.id)" :disabled="!data.edit" @change="chooseLibrary(s, lib, $el.checked)"> <span x-text="`${lib.name} (${lib.kind})`"></span></label>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </section>
+  </template>
+
+  <!-- ================= Schedule ================= -->
+  <template x-if="seen.schedule">
+    <section x-show="tab === 'schedule'" role="tabpanel" x-data="scheduleTab">
+      <div class="field is-grouped is-grouped-multiline">
+        <div class="control"><div class="select">
+          <select aria-label="Station" x-model="name" @change="pick()">
+            <template x-for="s in stations" :key="s.name"><option :value="s.name" x-text="`#${s.number}  ${s.name}`" :selected="s.name === name"></option></template>
+          </select>
+        </div></div>
+        <div class="control"><div class="field has-addons">
+          <div class="control"><button type="button" class="button" aria-label="Previous day" @click="shift(-1)">◀</button></div>
+          <div class="control"><input class="input" type="date" aria-label="Day" x-model="date" @change="load()"></div>
+          <div class="control"><button type="button" class="button" aria-label="Next day" @click="shift(1)">▶</button></div>
+        </div></div>
+        <div class="control"><button type="button" class="button" @click="today()">Today</button></div>
+        <div class="control push-right"><button type="button" class="button is-primary" :disabled="!edit || busy || !name" @click="extend()">Add 7 days</button></div>
+      </div>
+      <div x-progress="job"></div>
+      <p class="block" :class="noteClass" x-text="note"></p>
+
+      <div class="table-container" x-show="blocks.length">
+        <table class="table is-fullwidth is-hoverable sched">
+          <thead><tr><th>Time</th><th>Playing</th></tr></thead>
+          <template x-for="b in blocks" :key="b.start">
+            <tbody>
+              <tr :class="b.now && 'is-selected'">
+                <td x-text="when(b)"></td>
+                <td>
+                  <button type="button" class="button is-small is-ghost twisty" title="Show the files" :aria-expanded="b.open" @click="flip(b)" x-text="b.open ? '▾' : '▸'"></button>
+                  <span x-text="b.title + (b.now ? '  (on now)' : '')"></span>
+                </td>
+              </tr>
+              <tr class="detail" x-show="b.open">
+                <td colspan="2">
+                  <ul class="files">
+                    <template x-for="(e, i) in b.entries" :key="i">
+                      <li :class="'kind-' + e.type">
+                        <span class="when" x-text="W.fmtTime(e.at)"></span>
+                        <span class="kind" x-text="TYPE[e.type] || e.type"></span>
+                        <span class="what" :title="e.file"><span x-text="shownTitle(e)"></span><span class="fname" x-show="hasTitle(e)" x-text="'  ' + e.file"></span></span>
+                        <span class="len" x-text="fmtLen(e.duration)"></span>
+                      </li>
+                    </template>
+                  </ul>
+                  <p class="has-text-grey" x-show="b.loaded && !b.total">This block lists no files.</p>
+                  <button type="button" class="button is-small" x-show="b.entries.length < b.total" @click="more(b)" x-text="`Show more (${b.entries.length} of ${b.total})`"></button>
+                </td>
+              </tr>
+            </tbody>
+          </template>
+          <tfoot x-show="truncated"><tr><td colspan="2" class="has-text-grey">Only the first part of this day is shown.</td></tr></tfoot>
+        </table>
+      </div>
+      <p class="block has-text-grey" x-show="empty" x-text="empty"></p>
+    </section>
+  </template>
+
+  <!-- ================= Lists & files ================= -->
+  <template x-if="seen.files">
+    <section x-show="tab === 'files'" role="tabpanel" x-data="filesTab">
+      <article class="message is-warning" x-show="warning"><div class="message-body" x-text="warning"></div></article>
+
+      <details class="box" x-show="inUse && (inUse.sources.length || idle.length)" @toggle="$el.open && loadSources()">
+        <summary><strong>Sources made for stations</strong> <span class="has-text-grey" x-text="inUseCount"></span></summary>
+        <p class="block has-text-grey">A series, a season, a video, or several of them together that a slot, a mid card or a commercial block uses. One that no station uses any more can be removed here (your media is never touched).</p>
+        <ul class="rows">
+          <template x-for="s in (inUse ? inUse.sources : [])" :key="s.tag">
+            <li>
+              <span class="name" x-text="describeSource(s)"></span>
+              <button type="button" class="button is-small is-danger is-outlined" x-show="!s.used_by.length && edit && inUse.known_stations !== undefined" @click="removeSource(s)">Remove</button>
+            </li>
+          </template>
+        </ul>
+        <p class="block has-text-grey" x-show="idle.length">Lists with no videos that no station uses (a template makes one for each part of the day):</p>
+        <ul class="rows">
+          <template x-for="name in idle" :key="name">
+            <li><span class="name" x-text="name"></span>
+              <button type="button" class="button is-small is-danger is-outlined" x-show="edit" @click="deleteIdle(name)">Delete</button></li>
+          </template>
+        </ul>
+      </details>
+
+      <div class="columns">
+        <div class="column is-half">
+          <div class="box" aria-label="Your media">
+            <h2 class="title is-5">Your media</h2>
+            <nav class="breadcrumb" aria-label="Folder">
+              <ul>
+                <template x-for="c in crumbs(LABEL, src.path)" :key="c.to">
+                  <li><a href="#" @click.prevent="openSrc(c.to)" x-text="c.label"></a></li>
+                </template>
+              </ul>
+            </nav>
+            <div class="buttons">
+              <button type="button" class="button is-small" @click="srcPick = srcEntries.filter(selectable).map((e) => e.name)">Select all</button>
+              <button type="button" class="button is-small" @click="srcPick = []">Clear</button>
+              <label class="checkbox" title="A folder you add stays linked: new videos that appear in it later are added to the list on their own (checked about every 30 minutes).">
+                <input type="checkbox" x-model="followOn"> Keep folders up to date</label>
+            </div>
+            <div class="block" x-show="kinds.length">
+              <p class="has-text-grey">This channel, by kind:</p>
+              <ul class="rows">
+                <template x-for="k in kinds" :key="k">
+                  <li>
+                    <span class="name" x-text="KIND_LABEL[k]"></span>
+                    <button type="button" class="button is-small" :disabled="!(edit && tag) || !!job" :title="tag ? `Every season of ${KIND_NAMES[k]}, kept up to date as new ones appear (if “Keep folders up to date” is ticked)` : 'Pick a list first'"
+                            @click="addSources([{ root: ROOT, path: src.path, types: [k] }])">Add all</button>
+                    <button type="button" class="button is-small" :disabled="!edit" title="A source of its own that a station can play without a list being made first" @click="useKind(k)">Use as a source</button>
+                  </li>
+                </template>
+              </ul>
+            </div>
+            <ul class="rows scroll">
+              <li class="has-text-grey" x-show="srcLoaded && !srcEntries.length">Nothing here.</li>
+              <template x-for="e in srcEntries" :key="e.name">
+                <li :class="!selectable(e) && 'has-text-grey'">
+                  <input type="checkbox" :value="e.name" x-model="srcPick" :disabled="!selectable(e)" :aria-label="`Select ${e.name}`">
+                  <span class="name" :title="e.label ? e.name : null">
+                    <a href="#" x-show="e.kind === 'dir'" @click.prevent="openSrc(join(src.path, e.name))" x-text="e.name + '/'"></a>
+                    <span x-show="e.kind !== 'dir'" x-text="e.label || e.name"></span>
+                  </span>
+                  <span class="meta" x-text="e.kind === 'dir' ? '' : fmtSize(e.size)"></span>
+                  <span class="tag" x-show="e.show">show</span>
+                  <button type="button" class="button is-small" x-show="e.show" @click="toggleShow(e)" x-text="e.source ? 'Stop using as a source' : 'Use as a source'"
+                          :title="e.source ? 'Stations stop being able to pick this show' : 'Stations can pick this show directly, apart from your lists. New episodes are added on their own.'"></button>
+                </li>
+              </template>
+              <li class="has-text-grey" x-show="srcTruncated">Only the first part of this folder is shown. Open a sub-folder.</li>
+            </ul>
+            <div x-progress="job"></div>
+            <div class="buttons is-right sticky-actions">
+              <button type="button" class="button is-primary" :disabled="!(edit && tag && srcPick.length) || !!job" @click="addPicked()" x-text="addLabel"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="column is-half">
+          <div class="box" aria-label="Lists">
+            <h2 class="title is-5">Lists</h2>
+            <form class="field has-addons" @submit.prevent="createTag()">
+              <div class="control is-expanded"><input class="input" type="text" placeholder="New list name" maxlength="100" aria-label="New list name" x-model="newName"></div>
+              <div class="control"><button type="submit" class="button is-primary" :disabled="!edit">Create</button></div>
+            </form>
+            <aside class="menu tag-list">
+              <p class="has-text-grey" x-show="tagsLoaded && !tags.length">No lists yet. Create one above.</p>
+              <ul class="menu-list">
+                <template x-for="t in tags" :key="t.name">
+                  <li><a href="#" :class="t.name === tag && 'is-active'" :aria-current="t.name === tag ? 'true' : null" @click.prevent="openTag(t.name, '')">
+                    <span x-text="t.name"></span><span class="count" x-text="countText(t.name)"></span></a></li>
+                </template>
+              </ul>
+            </aside>
+
+            <div x-show="tag">
+              <hr>
+              <nav class="breadcrumb" aria-label="Inside the list">
+                <ul>
+                  <template x-for="c in crumbs(tag, tagPath)" :key="c.to">
+                    <li><a href="#" @click.prevent="openTag(tag, c.to)" x-text="c.label"></a></li>
+                  </template>
+                </ul>
+              </nav>
+              <div class="buttons">
+                <button type="button" class="button is-small" @click="tagPick = tagEntries.map((e) => e.name)">Select all</button>
+                <button type="button" class="button is-small" @click="tagPick = []">Clear</button>
+                <button type="button" class="button is-small" :disabled="!edit" @click="renameTag()">Rename list</button>
+                <button type="button" class="button is-small is-danger is-outlined" :disabled="!edit" @click="deleteTag()">Delete list</button>
+              </div>
+              <div class="field has-addons" x-show="refs.length">
+                <div class="control"><span class="button is-static is-small">Put another list inside this one</span></div>
+                <div class="control"><div class="select is-small"><select aria-label="List to put inside this one" x-model="refChoice">
+                  <template x-for="n in refs" :key="n"><option :value="n" x-text="n" :selected="n === refChoice"></option></template>
+                </select></div></div>
+                <div class="control"><button type="button" class="button is-small" :disabled="!edit" @click="addRef()">Add list</button></div>
+              </div>
+              <div class="block" x-show="follows.length">
+                <h3 class="title is-6">Kept up to date</h3>
+                <p class="help">New videos in these folders are added to this list on their own. Take a video out of the list and it stays out.</p>
+                <ul class="rows">
+                  <template x-for="f in follows" :key="f.root + f.path">
+                    <li :class="f.error && 'has-text-danger'">
+                      <span class="name" x-text="f.root === 'tags' ? `the list “${f.path}”` : f.path"></span>
+                      <span class="meta" x-text="followMeta(f)"></span>
+                      <button type="button" class="button is-small" :disabled="!edit" @click="unfollow(f)">Stop</button>
+                    </li>
+                  </template>
+                </ul>
+              </div>
+              <ul class="rows scroll">
+                <li class="has-text-grey" x-show="!tagEntries.length">This list is empty. Pick videos on the left and add them.</li>
+                <template x-for="e in tagEntries" :key="e.name">
+                  <li :class="e.link && !e.ok && 'has-text-danger'">
+                    <input type="checkbox" :value="e.name" x-model="tagPick" :aria-label="`Select ${e.name}`">
+                    <span class="name">
+                      <a href="#" x-show="e.kind === 'dir' && !e.link" @click.prevent="openTag(tag, join(tagPath, e.name))" x-text="e.name + '/'"></a>
+                      <span x-show="!(e.kind === 'dir' && !e.link)" x-text="e.name"></span>
+                    </span>
+                    <span class="meta" x-text="e.link ? (e.ok ? 'link' : 'dead link') : e.kind === 'file' ? 'real file' : ''"></span>
+                  </li>
+                </template>
+              </ul>
+              <div class="buttons is-right sticky-actions">
+                <button type="button" class="button is-danger is-outlined" :disabled="!(edit && tagPick.length)" @click="removePicked()">Remove from list</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <!-- ================= Status ================= -->
+  <template x-if="seen.status">
+    <section x-show="tab === 'status'" role="tabpanel" x-data="statusTab">
+      <div class="buttons is-right">
+        <button type="button" class="button" :disabled="testing" @click="speed()">Test media speed</button>
+        <a class="button" href="/api/system/diagnostics" download>Download diagnostics</a>
+      </div>
+      <div x-progress="testing ? { message: 'Reading part of a video from your media…' } : null"></div>
+      <article class="message" :class="speedBad ? 'is-danger' : 'is-success'" x-show="speedText"><div class="message-body" x-text="speedText"></div></article>
+
+      <template x-if="r">
+        <div>
+          <div class="box">
+            <h2 class="title is-5">Checks</h2>
+            <ul class="rows">
+              <template x-for="(c, i) in r.checks" :key="i">
+                <li>
+                  <span class="tag" :class="c.level === 'error' ? 'is-danger' : c.level === 'ok' ? 'is-success' : 'is-warning'" x-text="MARK[c.level]"></span>
+                  <span class="name wrap" x-text="c.text"></span>
+                  <a class="button is-small" x-show="c.href" :href="c.href" x-text="c.fix || 'Fix it'"></a>
+                </li>
+              </template>
+            </ul>
+          </div>
+          <div class="box">
+            <h2 class="title is-5">Stations</h2>
+            <p class="has-text-grey" x-show="!stationRows.length">No stations (or the console can't be reached).</p>
+            <table class="table is-fullwidth is-hoverable facts" x-show="stationRows.length"><tbody>
+              <template x-for="row in stationRows" :key="row[0]"><tr><th x-text="row[0]"></th><td x-text="row[1]"></td></tr></template>
+            </tbody></table>
+          </div>
+          <div class="box">
+            <h2 class="title is-5">System</h2>
+            <table class="table is-fullwidth is-hoverable facts"><tbody>
+              <template x-for="row in systemRows" :key="row[0]"><tr><th x-text="row[0]"></th><td x-text="row[1] == null || row[1] === '' ? '—' : row[1]"></td></tr></template>
+            </tbody></table>
+          </div>
+          <div class="box" x-show="r.players">
+            <h2 class="title is-5">Players</h2>
+            <p class="has-text-grey" x-show="!playerRows.length">No player has checked in yet.</p>
+            <table class="table is-fullwidth is-hoverable facts" x-show="playerRows.length"><tbody>
+              <template x-for="row in playerRows" :key="row[0]"><tr><th x-text="row[0]"></th><td x-text="row[1]"></td></tr></template>
+            </tbody></table>
+          </div>
+          <div class="box">
+            <h2 class="title is-5">Recent problems the container printed</h2>
+            <p class="has-text-grey" x-show="!r.recent_problems.length">None since it started.</p>
+            <pre x-show="r.recent_problems.length" x-text="recent"></pre>
+          </div>
+        </div>
+      </template>
+    </section>
+  </template>
+</div>
+</main>
+<script src="/common.js"></script>
+<script src="/settings.js"></script>
+<script src="/iptv.js"></script>
+<script src="/emby.js"></script>
+<script src="/schedule.js"></script>
+<script src="/files.js"></script>
+<script src="/status.js"></script>
+<script defer src="/vendor/alpine-3.17.5.min.js"></script>
 </body>
 </html>

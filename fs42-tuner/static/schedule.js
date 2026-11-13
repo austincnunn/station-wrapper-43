@@ -1,173 +1,118 @@
+// The Schedule tab of the Settings page: what a station plays on a day, block by block, and the files inside a block.
+// /settings.html?name=<station>#schedule opens on that station.
 (function () {
   "use strict";
-  const { el, call, fmtWhen, fmtTime } = W;
-  W.nav("schedule");
-
-  const $ = (id) => document.getElementById(id);
-  const params = new URLSearchParams(location.search);
-  const state = { stations: [], edit: true, busy: false };
-
-  function say(text, kind) {
-    $("msg").textContent = text || "";
-    $("msg").className = "msg" + (kind ? " " + kind : "");
-  }
-  const run = (fn) => fn().catch((e) => say(e.message, "err"));
-
-  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  function shift(days) {
-    const d = new Date($("date").value + "T00:00:00");
-    d.setDate(d.getDate() + days);
-    $("date").value = iso(d);
-    run(load);
-  }
-
-  async function load() {
-    const name = $("station").value;
-    if (!name) return;
-    const s = await call(`/api/schedule?name=${encodeURIComponent(name)}&date=${encodeURIComponent($("date").value)}`);
-    const note = $("note");
-    if (!s.scheduled_until) {
-      note.textContent = "Nothing is scheduled for this station yet. Build it from the Stations page.";
-      note.className = "sched-note bad";
-    } else if (!s.on_air) {
-      note.textContent = `Off air: the schedule ended ${fmtWhen(s.scheduled_until)}.`;
-      note.className = "sched-note bad";
-    } else if (s.low) {
-      note.textContent = `Scheduled until ${fmtWhen(s.scheduled_until)}: that is less than a day away, so add days soon.`;
-      note.className = "sched-note warn";
-    } else {
-      note.textContent = `Scheduled until ${fmtWhen(s.scheduled_until)}.`;
-      note.className = "sched-note";
-    }
-    if (s.notes && s.notes.length) {                    // hours that play the test pattern because their lists are empty
-      note.textContent += " " + s.notes.join(" ");
-      if (note.className === "sched-note") note.className = "sched-note warn";
-    }
-    const rows = $("rows");
-    rows.replaceChildren();
-    $("table").hidden = !s.blocks.length;
-    $("empty").hidden = !!s.blocks.length;
-    $("empty").textContent = s.beyond ? "That is further ahead than the schedule is shown." : "Nothing is scheduled on this day.";
-    for (const b of s.blocks) {
-      const tr = el("tr", { className: "block-row" + (b.now ? " now" : "") });
-      const hours = (new Date(b.end) - new Date(b.start)) / 3600000;
-      const toggle = el("button", { type: "button", className: "twisty", textContent: "▸", title: "Show the files", ariaExpanded: "false" });
-      const title = el("td", {}, toggle, el("span", { textContent: " " + b.title + (b.now ? "  (on now)" : "") }));
-      tr.append(el("td", { textContent: hours >= 23 ? "All day (repeats)" : `${fmtTime(b.start)} – ${fmtTime(b.end)}` }), title);
-      rows.append(tr);
-      let open = null;                                    // the detail row, once it has been opened
-      const flip = () => run(async () => {
-        if (open) {
-          open.hidden = !open.hidden;
-          toggle.textContent = open.hidden ? "▸" : "▾";
-          toggle.setAttribute("aria-expanded", String(!open.hidden));
-          return;
-        }
-        open = el("tr", { className: "detail" }, el("td", { colSpan: 2 }));
-        tr.after(open);
-        toggle.textContent = "▾";
-        toggle.setAttribute("aria-expanded", "true");
-        await showFiles(s.name, b, open.firstChild, 0);
-      });
-      toggle.addEventListener("click", flip);
-    }
-    if (s.truncated) {
-      rows.append(el("tr", {}, el("td", { colSpan: 2, className: "dim", textContent: "Only the first part of this day is shown." })));
-    }
-    $("extend").disabled = !state.edit || state.busy;
-  }
+  const { call, fmtWhen, fmtTime, say, run } = W;
 
   const TYPE = { feature: "program", commercial: "commercial", bump: "mid card", stream: "stream" };
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-  // the files inside one block, a page at a time: a looping station's day holds thousands of repeats
-  async function showFiles(name, block, cell, offset) {
-    const url = `/api/schedule/block?name=${encodeURIComponent(name)}&start=${encodeURIComponent(block.start)}&offset=${offset}&limit=200`;
-    const data = await call(url);
-    let list = cell.querySelector("ul.files");
-    if (!list) {
-      cell.replaceChildren();
-      list = el("ul", { className: "files" });
-      cell.append(list);
-    }
-    cell.querySelector(".more")?.remove();
-    for (const e of data.entries) {
-      list.append(el("li", { className: "kind-" + e.type }, el("span", { className: "when", textContent: fmtTime(e.at) }),
-        el("span", { className: "kind", textContent: TYPE[e.type] || e.type }),
-        titleOf(e),
-        el("span", { className: "len", textContent: fmtLen(e.duration) })));
-    }
-    const shown = offset + data.entries.length;
-    if (!data.total) cell.append(el("p", { className: "dim", textContent: "This block lists no files." }));
-    if (shown < data.total) {
-      const more = el("button", { type: "button", className: "btn more", textContent: `Show more (${shown} of ${data.total})` });
-      more.addEventListener("click", () => run(() => showFiles(name, block, cell, shown)));
-      cell.append(more);
-    }
-  }
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("scheduleTab", () => ({
+      TYPE,
+      stations: [], edit: true, busy: false,
+      name: "", date: iso(new Date()),
+      note: "", noteClass: "", blocks: [], truncated: false, empty: "",
+      job: null,                        // the build that "Add 7 days" started, for its progress bar
 
-  // FieldStation42's own title for the file when its catalog has one; the file name goes beside it, dimmer
-  function titleOf(e) {
-    const stem = e.file.replace(/\.[^.]+$/, "");
-    const span = el("span", { className: "file", title: e.file });
-    if (e.title && e.title !== stem) {
-      span.append(e.title, el("span", { className: "fname", textContent: "  " + e.file }));
-    } else {
-      span.textContent = e.file;
-    }
-    return span;
-  }
+      init() {
+        run(async () => {
+          const data = await call("/api/stations");
+          this.edit = data.edit;
+          this.stations = data.stations.filter((s) => s.type !== "guide" && s.type !== "web");
+          if (!this.stations.length) {
+            this.empty = "There are no stations yet. Make one on the Stations page.";
+            return;
+          }
+          const wanted = new URLSearchParams(location.search).get("name");
+          this.name = wanted && this.stations.some((s) => s.name === wanted) ? wanted : this.stations[0].name;
+          await this.load();
+        });
+      },
 
-  function fmtLen(sec) {
-    sec = Math.round(sec);
-    const m = Math.floor(sec / 60), s = sec % 60;
-    return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
-  }
+      pick() {
+        history.replaceState(null, "", `?name=${encodeURIComponent(this.name)}${location.hash}`);
+        return this.load();
+      },
+      shift(days) {
+        const d = new Date(this.date + "T00:00:00");
+        d.setDate(d.getDate() + days);
+        this.date = iso(d);
+        return this.load();
+      },
+      today() {
+        this.date = iso(new Date());
+        return this.load();
+      },
 
-  async function extend() {
-    const name = $("station").value;
-    state.busy = true;
-    $("extend").disabled = true;
-    try {
-      const job = await call("/api/stations/build", { name, days: 7, rebuild: false });
-      for (;;) {
-        say(job.message, "ok");
-        await new Promise((r) => setTimeout(r, 1500));
-        const j = await call(`/api/stations/job?id=${encodeURIComponent(job.id)}`);
-        say(j.message, j.state === "error" ? "err" : "ok");
-        if (j.state !== "running") break;
-      }
-    } finally {
-      state.busy = false;
-    }
-    await load();
-  }
+      load() {
+        return run(async () => {
+          if (!this.name) return;
+          const s = await call(`/api/schedule?name=${encodeURIComponent(this.name)}&date=${encodeURIComponent(this.date)}`);
+          let cls = "";
+          if (!s.scheduled_until) {
+            this.note = "Nothing is scheduled for this station yet. Build it from the Stations page.";
+            cls = "has-text-danger";
+          } else if (!s.on_air) {
+            this.note = `Off air: the schedule ended ${fmtWhen(s.scheduled_until)}.`;
+            cls = "has-text-danger";
+          } else if (s.low) {
+            this.note = `Scheduled until ${fmtWhen(s.scheduled_until)}: that is less than a day away, so add days soon.`;
+            cls = "has-text-warning";
+          } else {
+            this.note = `Scheduled until ${fmtWhen(s.scheduled_until)}.`;
+          }
+          if (s.notes && s.notes.length) {                    // hours that play the test pattern because their lists are empty
+            this.note += " " + s.notes.join(" ");
+            cls = cls || "has-text-warning";
+          }
+          this.noteClass = cls || "has-text-grey";
+          this.blocks = s.blocks.map((b) => ({ ...b, open: false, loaded: false, entries: [], total: 0 }));
+          this.truncated = !!s.truncated;
+          this.empty = s.blocks.length ? "" : s.beyond ? "That is further ahead than the schedule is shown." : "Nothing is scheduled on this day.";
+        });
+      },
 
-  $("station").addEventListener("change", () => {
-    history.replaceState(null, "", `?name=${encodeURIComponent($("station").value)}`);
-    run(load);
-  });
-  $("date").addEventListener("change", () => run(load));
-  $("prev").addEventListener("click", () => shift(-1));
-  $("next").addEventListener("click", () => shift(1));
-  $("today").addEventListener("click", () => { $("date").value = iso(new Date()); run(load); });
-  $("extend").addEventListener("click", () => run(extend));
+      when(b) {
+        const hours = (new Date(b.end) - new Date(b.start)) / 3600000;
+        return hours >= 23 ? "All day (repeats)" : `${fmtTime(b.start)} – ${fmtTime(b.end)}`;
+      },
+      flip(b) {
+        b.open = !b.open;
+        if (b.open && !b.loaded) return this.more(b);
+      },
+      // the files inside one block, a page at a time: a looping station's day holds thousands of repeats
+      more(b) {
+        return run(async () => {
+          const data = await call(`/api/schedule/block?name=${encodeURIComponent(this.name)}&start=${encodeURIComponent(b.start)}&offset=${b.entries.length}&limit=200`);
+          b.entries.push(...data.entries);
+          b.total = data.total;
+          b.loaded = true;
+        });
+      },
+      // FieldStation42's own title for the file when its catalog has one; the file name goes beside it, dimmer
+      hasTitle: (e) => !!e.title && e.title !== e.file.replace(/\.[^.]+$/, ""),
+      shownTitle(e) { return this.hasTitle(e) ? e.title : e.file; },
+      fmtLen(sec) {
+        sec = Math.round(sec);
+        const m = Math.floor(sec / 60), s = sec % 60;
+        return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+      },
 
-  run(async () => {
-    const data = await call("/api/stations");
-    state.stations = data.stations;
-    state.edit = data.edit;
-    $("date").value = iso(new Date());
-    const sel = $("station");
-    const stations = data.stations.filter((s) => s.type !== "guide" && s.type !== "web");
-    for (const s of stations) sel.append(el("option", { value: s.name, textContent: `#${s.number}  ${s.name}` }));
-    if (!stations.length) {
-      $("empty").hidden = false;
-      $("empty").textContent = "There are no stations yet. Make one on the Stations page.";
-      $("extend").disabled = true;
-      return;
-    }
-    const wanted = params.get("name");
-    if (wanted && stations.some((s) => s.name === wanted)) sel.value = wanted;
-    await load();
+      extend() {
+        return run(async () => {
+          this.busy = true;
+          try {
+            this.job = await call("/api/stations/build", { name: this.name, days: 7, rebuild: false });
+            const job = await W.followJob(this.job.id, (j) => { this.job = j; });
+            say(job.message, job.state === "error" ? "err" : "ok");
+          } finally {
+            this.busy = false;
+            this.job = null;
+          }
+          await this.load();
+        });
+      },
+    }));
   });
 })();

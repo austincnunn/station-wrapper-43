@@ -23,6 +23,7 @@ python3 -c "import sys; sys.path.insert(0, '/opt/supervisor'); import supervisor
 ffmpeg -version | head -1
 ffprobe -version | head -1
 test -s /opt/tuner/static/mpegts.min.js && echo "player script present"
+ls /opt/tuner/static/vendor/bulma-*.min.css /opt/tuner/static/vendor/alpine-*.min.js > /dev/null && echo "Bulma and Alpine present"
 test -x /usr/bin/tini && echo "tini present"
 python3 -c "import json; json.load(open('/opt/tuner-config.default.json')); print('default tuner config is valid json')"
 test ! -e /app/confs && test ! -e /app/runtime && echo "confs and runtime are left for the config volume's links"

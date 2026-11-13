@@ -36,9 +36,10 @@ Endpoints:
   /auto/v{channel}    MPEG-TS -- encoded from FS42, or proxied from the real tuner
   /status.json        encoder + viewer + passthrough occupancy
 
-The portal is plain static files (static/index.html, app.js, style.css, and a
+The portal is plain static files (static/*.html, their scripts, app.css, and a
 vendored mpegts.min.js) served straight off disk -- no template engine, no
-build step. /discover.json, /lineup.json and friends are HDHomeRun emulation
+build step. The pages are Alpine.js components styled with Bulma; both are in
+static/vendor (see its README), never fetched from a CDN. /discover.json, /lineup.json and friends are HDHomeRun emulation
 for a Jellyfin/NextPVR/etc. front end; they cost nothing to leave in and the
 portal doesn't use them (it reads /lineup.json for the channel list and
 /xmltv.xml for the guide directly, same as any other client would).
@@ -169,7 +170,9 @@ def follow_loop(interval_minutes, first_delay):
 # false in this config) turns it off, for anyone who puts their own login in front. See auth.py.
 LOGIN_ON     = bool(CONF.get("login", True)) and os.environ.get("DASHBOARD_LOGIN", "1").lower() not in ("0", "false", "no", "off")
 AUTH         = authmod.Auth(os.environ.get("FS42_AUTH") or os.path.join(os.path.dirname(settings.PATH), "auth.json"), enabled=LOGIN_ON)
-PROTECTED_PAGES = {"/stations.html", "/station.html", "/schedule.html", "/files.html", "/iptv.html", "/status.html", "/settings.html"}
+PROTECTED_PAGES = {"/stations.html", "/station.html", "/settings.html"}
+# Pages that became tabs of the Settings page: an old link or bookmark lands on its tab (a ?name= is kept).
+MOVED_PAGES = {"/iptv.html": "sources", "/schedule.html": "schedule", "/files.html": "files", "/status.html": "status"}
 SESSION_COOKIE = "sw43_session"
 if LOGIN_ON and os.environ.get("DASHBOARD_PASSWORD") and not AUTH.has_password():
     try:
@@ -1720,10 +1723,12 @@ class Handler(BaseHTTPRequestHandler):
         except OSError as e:
             return self._json({"error": f"could not save the password: {e.strerror}"}, 500)
 
-    def _bytes(self, body, ctype, code=200):
+    def _bytes(self, body, ctype, code=200, cache=None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if cache:
+            self.send_header("Cache-Control", cache)
         self.end_headers()
         self.wfile.write(body)
 
@@ -2150,6 +2155,12 @@ class Handler(BaseHTTPRequestHandler):
         p = urlparse(self.path).path
         if p.startswith("/sync/"):
             return self._sync("GET")
+        if p in MOVED_PAGES:
+            query = urlparse(self.path).query
+            self.send_response(302)
+            self.send_header("Location", "/settings.html" + (f"?{query}" if query else "") + "#" + MOVED_PAGES[p])
+            self.send_header("Content-Length", "0")
+            return self.end_headers()
         if self._gate(p, urlparse(self.path).query):
             return
         if p == "/api/auth/status":
@@ -2366,8 +2377,10 @@ class Handler(BaseHTTPRequestHandler):
         if os.path.commonpath([full, STATIC_DIR]) != STATIC_DIR or not os.path.isfile(full):
             return False
         ctype = STATIC_TYPES.get(os.path.splitext(full)[1], "application/octet-stream")
+        # static/vendor holds Bulma and Alpine with the version in the file name: a browser keeps them for good
+        cache = "public, max-age=31536000, immutable" if rel.startswith("vendor/") else None
         with open(full, "rb") as f:
-            self._bytes(f.read(), ctype)
+            self._bytes(f.read(), ctype, cache=cache)
         return True
 
     def _captions(self, rest):
