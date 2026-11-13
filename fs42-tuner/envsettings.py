@@ -53,6 +53,10 @@ REGISTRY = [
     _s("LIBRARY_SCAN_MINUTES", "Lists", "Rescan the Library card every (minutes)", ("int", 5, 1440), "60", ["tuner"]),
     _s("KEEPER_INTERVAL_MINUTES", "Schedule keeper", "Check the schedules every (minutes)", ("int", 5, 1440), "30", ["tuner"]),
     _s("KEEPER_TOPUP_HOUR", "Schedule keeper", "Add the next day at (hour, 0-23)", ("int", 0, 23), "4", ["tuner"]),
+    _s("MAX_ENCODERS", "Encoders", "Channels encoded at once", ("int", 1, 64), "", ["tuner"],
+       note="How many different channels can be watched at the same moment; a lower-quality copy of a channel in the "
+            "web player counts as one. Each takes about a CPU core (less when a graphics card encodes). Empty: the "
+            "tuner config file's max_encoders, which is 4 unless you changed it."),
     _s("PREFETCH", "Prefetch", "Copy what plays next off the share ahead of time", "bool", "1", ["tuner"]),
     _s("PREFETCH_RAM", "Prefetch", "Only in RAM (the /cache RAM disk)", "bool", "1", ["tuner"]),
     _s("PREFETCH_MAX_MB", "Prefetch", "At most (MB)", ("int", 100, 1000000), "6144", ["tuner"]),

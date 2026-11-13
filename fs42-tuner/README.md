@@ -21,7 +21,7 @@ A real HDHomeRun burns one physical tuner per viewer. That doesn't apply here: a
 
 | setting | default | what it caps |
 |---|---|---|
-| `max_encoders` | 4 | distinct channels live at once (the real CPU cost, about one core per 720p encode) |
+| `max_encoders` | 4 | distinct channels live at once (the real CPU cost, about one core per 720p encode). `MAX_ENCODERS` in the environment, or under Advanced on the Settings page, wins over it |
 | `tuner_count` | 12 | client connections, advertised to Jellyfin as `TunerCount` |
 
 With 4 and 12, twelve people can watch in any mix as long as they are on four or fewer distinct channels: a fifth *distinct* channel gets a 503, while a thirteenth viewer on a running channel is refused only by `tuner_count`. A channel's encoder stops `linger_seconds` (10) after its last viewer leaves. This is why it presents as an HDHomeRun rather than a plain M3U: `discover.json` carries `TunerCount`, which is how a client learns the limit.

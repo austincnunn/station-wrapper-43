@@ -224,7 +224,9 @@ def guide_conf(station):
         _GUIDE_CONFS["at"] = time.time()
     return _GUIDE_CONFS["confs"].get(station)
 CHANNELS.update(DISCOVERED)
-MAX_ENCODERS = int(CONF.get("max_encoders", 4))
+# How many distinct channels encode at once. MAX_ENCODERS (the Settings page's Advanced, or the compose file) wins over
+# the config file's max_encoders, so it can be changed without editing that file.
+MAX_ENCODERS = int(os.environ.get("MAX_ENCODERS") or CONF.get("max_encoders", 4))
 TUNER_COUNT  = int(CONF.get("tuner_count", 12))
 GUIDE_HOURS  = int(CONF.get("guide_hours", 48))
 LINGER       = float(CONF.get("linger_seconds", 10))

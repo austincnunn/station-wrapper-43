@@ -50,6 +50,20 @@ class SettingsApi(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=10) as resp:
             self.assertEqual(json.load(resp), {"settings": {"FS42_GAMMA": "12"}})
 
+    def test_the_number_of_encoders_can_be_set_without_the_config_file(self):
+        self.start(MAX_ENCODERS="7")
+        self.assertEqual(self.srv.get("/status.json")[1]["encoders"]["max"], 7)          # wins over the file's max_encoders
+        row = {s["key"]: s for s in self.srv.get("/api/settings")[1]["settings"]}["MAX_ENCODERS"]
+        self.assertEqual((row["restarts"], row["default"]), (["tuner"], ""))             # saved here, the supervisor restarts the tuner
+        self.assertEqual(self.srv.post("/api/settings", {"values": {"MAX_ENCODERS": "9"}})[0], 200)
+        self.assertEqual(json.load(open(self.path))["env"], {"MAX_ENCODERS": "9"})
+        for bad in ("0", "65", "many"):
+            self.assertEqual(self.srv.post("/api/settings", {"values": {"MAX_ENCODERS": bad}})[0], 400, bad)
+
+    def test_without_it_the_config_file_decides_the_number_of_encoders(self):
+        self.start()
+        self.assertEqual(self.srv.get("/status.json")[1]["encoders"]["max"], 4)
+
     def test_the_weather_page_follows_the_place_saved_on_the_settings_page_without_a_restart(self):
         self.start()
         page = urllib.request.urlopen(self.srv.base + "/weather", timeout=10).read().decode()

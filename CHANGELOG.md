@@ -13,6 +13,9 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   settings, a read-only file system, no privileges, and limits on connections and on streams for each viewer. The
   Players tab says whether it is running and can switch logins off and on at once. Port 5004 still plays everything to
   anyone who reaches it, so keep that one private.
+- **The number of encoders is a setting.** "Channels encoded at once" under Advanced on the Settings page (or
+  `MAX_ENCODERS`) says how many different channels can be watched at the same moment, without editing the tuner's
+  config file. Empty, the file's `max_encoders` (4) still decides.
 - **Emby and Jellyfin: sign in and the lists make themselves.** Signing in with Emby Connect, or adding a server by its
   address, is now the whole setup. An Emby Connect account with more than one server is first asked which of them to
   use. A server you use has its libraries of shows, movies and music videos chosen and read at once, and each library becomes a list on the Lists & files page ("Server - Library"),
