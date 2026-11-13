@@ -72,6 +72,15 @@ pkg() {            # pkg <Debian/Ubuntu name> <Fedora/Arch name>
   else die "install $1 with your package manager, then run this again"; fi
 }
 
+# Compose pulls the image of every service in its file, even one switched off with scale 0: the two weather containers
+# (ws4channels is a large amd64-only image). So the services to pull and start are named: all of them, less those two
+# until WEATHER_CHANNEL=1 is in .env. Run in the install folder, by this script and by the update timer ($Q: --quiet).
+UPDATE='set -e
+only=""
+grep -qs "^WEATHER_CHANNEL=1" .env || only=$(docker compose config --services | grep -vx -e ws4kp -e ws4channels || true)
+docker compose pull $Q $only
+docker compose up -d $only'
+
 in_fstab() { awk -v m="$1" '$1 !~ /^#/ && $2 == m { f = 1 } END { exit !f }' /etc/fstab; }
 has_systemd() { [ -d /run/systemd/system ]; }
 
@@ -142,10 +151,10 @@ install_docker() {
       die "Docker's installer did not work here: install Docker Engine and its compose plugin yourself, then run this again"
   fi
   if docker info > /dev/null 2>&1; then
-    DOCKER="docker"
+    DOCKER="docker" AS=""
   else                                        # not running yet, or this user may not use it
     if has_systemd; then $SUDO systemctl enable --now docker > /dev/null 2>&1 || true; fi
-    DOCKER="$SUDO docker"
+    DOCKER="$SUDO docker" AS=$SUDO
   fi
   $DOCKER info > /dev/null 2>&1 || die "Docker is installed but not running (try: sudo systemctl start docker)"
   $DOCKER compose version > /dev/null 2>&1 || die "this Docker has no 'docker compose': install the docker-compose-plugin package, then run this again"
@@ -165,13 +174,22 @@ auto_update() {    # a systemd timer: pull the newest image, restart only if it 
   if [ "$FS42_AUTO_UPDATE" = no ]; then
     if [ -e /etc/systemd/system/fs42-update.timer ]; then
       $SUDO systemctl disable --now fs42-update.timer > /dev/null 2>&1 || true
-      $SUDO rm -f /etc/systemd/system/fs42-update.timer /etc/systemd/system/fs42-update.service
+      $SUDO rm -f /etc/systemd/system/fs42-update.timer /etc/systemd/system/fs42-update.service /usr/local/sbin/fs42-update
       ok "automatic updates are off"
     fi
     return 0
   fi
   case $FS42_AUTO_UPDATE in daily) when='*-*-* 04:30' ;; *) when='Sun 04:30' ;; esac
   bin=$(command -v docker)
+  $SUDO mkdir -p /usr/local/sbin
+  $SUDO tee /usr/local/sbin/fs42-update > /dev/null << EOF
+#!/bin/sh
+# Station Wrapper 43's update, run in the install folder by fs42-update.service (written by install.sh).
+PATH=${bin%/*}:\$PATH Q=--quiet
+$UPDATE
+docker image prune -f --filter "label=org.opencontainers.image.title=Station Wrapper 43"
+EOF
+  $SUDO chmod 755 /usr/local/sbin/fs42-update
   $SUDO tee /etc/systemd/system/fs42-update.service > /dev/null << EOF
 [Unit]
 Description=Station Wrapper 43: install the newest version
@@ -181,9 +199,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=$DIR
-ExecStart=$bin compose pull --quiet
-ExecStart=$bin compose up -d
-ExecStart=$bin image prune -f --filter "label=org.opencontainers.image.title=Station Wrapper 43"
+ExecStart=/usr/local/sbin/fs42-update
 EOF
   # Persistent: a machine that was off at 04:30 (a player PC) updates when it is next switched on.
   $SUDO tee /etc/systemd/system/fs42-update.timer > /dev/null << EOF
@@ -342,8 +358,7 @@ EOF
     curl -fsSL "$RAW/$compose" -o docker-compose.yml || die "could not download $RAW/$compose"
     [ -z "${FS42_IMAGE-}" ] || sed -i "s#$STOCK_IMAGE#$FS42_IMAGE#" docker-compose.yml
   fi
-  $DOCKER compose pull
-  $DOCKER compose up -d
+  Q="" $AS sh -c "$UPDATE"
   ok "started"
 
   auto_update
