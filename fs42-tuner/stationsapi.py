@@ -54,8 +54,17 @@ def _has_video(folder):
     return False
 
 
+def catalog_percent(seen, chapters, total):
+    """How far a catalog build is, 0 to 100, for the page's progress bar: two passes over the videos (lengths, then
+    chapter marks). None when there is no count to go by (the total is unknown, or nothing new is being read)."""
+    if not total or not seen:
+        return None
+    return min(100, (min(seen, total) + min(chapters, total)) * 100 // (2 * total))
+
+
 class Jobs:
-    """Background builds. One per station at a time; the page polls get()."""
+    """Background builds. One per station at a time; the page polls get(). A job's "percent" is how far its
+    current step is (None: no count to show, so the page draws a moving bar)."""
 
     on_built = None          # optional: called with a station's name when its build has finished (the guide is made again)
 
@@ -109,7 +118,7 @@ class Jobs:
             last = str(last).strip().splitlines()[-1][:120] if last else ""
             note = "the schedule is kept" if job.get("refresh") else "this clears the station's schedule"
             self._set(job, message=text + f" ({note}; you can leave this page)",
-                      checked=seen, total=total, chapters=chapters, detail=last)
+                      checked=seen, total=total, chapters=chapters, detail=last, percent=catalog_percent(seen, chapters, total))
         return progress
 
     def list(self):
@@ -131,7 +140,7 @@ class Jobs:
                     raise sf.FormError(f"'{name}' is already being built: it is still working (see the progress on the Stations page), "
                                        "so there is no need to start it again")
             job_id = uuid.uuid4().hex[:12]
-            job = {"id": job_id, "station": name, "state": "running", "message": "Starting…", "days": days,
+            job = {"id": job_id, "station": name, "state": "running", "message": "Starting…", "days": days, "percent": None,
                    "rebuild": rebuild, "refresh": refresh, "resume": bool(resume), "done_days": 0, "started": time.time()}
             self._jobs[job_id] = job
             for old in sorted(self._jobs.values(), key=lambda j: j["started"])[:-20]:
@@ -193,8 +202,8 @@ class Jobs:
                 self._set(job, message="Looking for new videos (the schedule is kept as it is)…")
                 self.console.update_catalog(
                     name, progress=self._progress_for(job, base, self._count_videos(name), base_ch, "Updating the catalog"),
-                    on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…"))
-                self._set(job, state="done", message="Done: the new videos are in the catalog. They are used the next time "
+                    on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…", percent=None))
+                self._set(job, state="done", percent=100, detail="", message="Done: the new videos are in the catalog. They are used the next time "
                           "days are added to the schedule (the schedule keeper does that each morning); days already scheduled are unchanged.")
                 return
             if job["rebuild"]:
@@ -209,22 +218,23 @@ class Jobs:
                     # carry on from the days not built yet instead of reading every video again
                     start_day = min(job["days"], resolver.days_built(self.db_path, name))
                     self._set(job, message=f"The catalog was already built: picking up at day {start_day + 1} of {job['days']}…", done_days=start_day)
-                    self.console.snap_breaks(name, on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…"))
+                    self.console.snap_breaks(name, on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…", percent=None))
                 else:
                     self._set(job, message="Building the catalog (this clears the station's schedule)…")
                     self.console.rebuild_catalog(
                         name, progress=self._progress_for(job, base, self._count_videos(name), base_ch),
-                        on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…"))
+                        on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…", percent=None))
             for i in range(start_day, job["days"]):
-                self._set(job, message=f"Adding day {i + 1} of {job['days']} to the schedule…", done_days=i)
+                self._set(job, message=f"Adding day {i + 1} of {job['days']} to the schedule…", done_days=i,
+                          percent=i * 100 // job["days"], detail="")
                 self.console.add_day(
-                    name, on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…"))
+                    name, on_wait=lambda: self._set(job, message="Waiting for another schedule change to finish first…", percent=None))
             text = f"Done: {job['days']} day{'s' if job['days'] != 1 else ''} of schedule."
             if kept:
                 at = legacy.handover(name)
                 if at is not None and at > datetime.now():
                     text += f" The old schedule keeps playing until {at:%H:%M}, then the new one starts."
-            self._set(job, state="done", done_days=job["days"], message=text)
+            self._set(job, state="done", done_days=job["days"], message=text, percent=100, detail="")
         except console_client.ConsoleError as e:
             self._set(job, state="error", message=str(e) + (" The old schedule keeps playing until it ends." if kept else ""))
         except Exception as e:      # a job must always end in done or error, never hang the page

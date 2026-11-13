@@ -114,6 +114,11 @@ class ScanTest(unittest.TestCase):
         self.assertFalse(scan["found"])
         self.assertEqual(scan["tags"], [])
 
+    def test_a_scan_says_how_far_it_is_one_list_at_a_time(self):
+        seen = []
+        library.scan(self.farm, progress=lambda done, total, tag: seen.append((done, total, tag)))
+        self.assertEqual(seen, [(0, 3, "Comedy"), (1, 3, "Mine"), (2, 3, "commercials"), (3, 3, "")])
+
     def test_status_is_cached_until_it_expires_or_is_forgotten(self):
         first = library.status(self.farm, now=1000)
         touch(os.path.join(self.farm, "Comedy", "new.mp4"))
@@ -247,6 +252,19 @@ class LoopTest(unittest.TestCase):
         got = library.cached(self.farm)
         self.assertTrue(got["never"])
         self.assertEqual(got["tags"], [])
+        self.assertIsNone(got["scan"])                                 # no scan is running
+
+    def test_a_running_scan_is_reported_with_how_far_it_is(self):
+        real, during = library.scan_tag, []
+        library.scan_tag = lambda path: during.append(library.cached(self.farm)) or real(path)
+        try:
+            library.scan_now(self.farm)
+        finally:
+            library.scan_tag = real
+        self.assertTrue(during and all(d["scanning"] for d in during))
+        self.assertEqual([d["scan"]["done"] for d in during], list(range(len(during))))
+        self.assertEqual(during[0]["scan"]["total"], len(during))
+        self.assertIsNone(library.cached(self.farm)["scan"])           # and not afterwards
 
     def test_the_loop_waits_then_scans_then_waits_the_interval(self):
         slept = []

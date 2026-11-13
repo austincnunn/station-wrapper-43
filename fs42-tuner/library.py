@@ -81,16 +81,20 @@ def scan_tag(tag_dir):
     }
 
 
-def scan(root):
-    """Every tag under root, busiest first. A missing root is reported, not raised."""
+def scan(root, progress=None):
+    """Every tag under root, busiest first. A missing root is reported, not raised.
+    progress(done, total, tag) is called before each tag is read and once at the end, for the page's bar."""
     if not os.path.isdir(root):
         return {"found": False, "root": root, "tags": [], "totals": {"videos": 0, "dead": 0, "duplicates": 0}}
+    names = [n for n in sorted(os.listdir(root))
+             if not n.startswith(".") and n not in SKIP_TAGS and os.path.isdir(os.path.join(root, n))]
     tags = []
-    for name in sorted(os.listdir(root)):
-        path = os.path.join(root, name)
-        if name.startswith(".") or name in SKIP_TAGS or not os.path.isdir(path):
-            continue
-        tags.append({"tag": name, **scan_tag(path)})
+    for i, name in enumerate(names):
+        if progress:
+            progress(i, len(names), name)
+        tags.append({"tag": name, **scan_tag(os.path.join(root, name))})
+    if progress:
+        progress(len(names), len(names), "")
     tags.sort(key=lambda t: (-t["videos"], t["tag"]))
     totals = {k: sum(t[k] for t in tags) for k in ("videos", "dead", "duplicates")}
     return {"found": True, "root": root, "tags": tags, "totals": totals}
@@ -111,9 +115,9 @@ def status(root, now=None):
     return _scan_and_store(root, now)
 
 
-def _scan_and_store(root, now=None):
+def _scan_and_store(root, now=None, progress=None):
     began = time.time()
-    data = scan(root)
+    data = scan(root, progress)
     data["scanned_at"] = int(now if now is not None else began)
     with _lock:
         _cache.update(root=root, at=now if now is not None else began, data=data, took=time.time() - began)
@@ -123,7 +127,7 @@ def _scan_and_store(root, now=None):
 
 # ---- the regular scan: what the pages show is whatever the last scheduled scan found. A page view never starts one.
 SAVE_PATH = os.environ.get("FS42_LIBRARY_CACHE", "/config/library-scan.json")
-_scanning = {"on": False}
+_scanning = {"on": False, "done": 0, "total": 0, "tag": ""}      # the scan running now, and how far it is (lists read)
 
 
 def _save():
@@ -163,10 +167,11 @@ def cached(root, now=None):
         data = {**_cache["data"]} if have else None
         at = _cache["at"]
         running = _scanning["on"]
+        how_far = {k: _scanning[k] for k in ("done", "total", "tag")} if running else None
     if data is None:
-        return {"found": os.path.isdir(root), "root": root, "tags": [], "never": True, "scanning": running,
+        return {"found": os.path.isdir(root), "root": root, "tags": [], "never": True, "scanning": running, "scan": how_far,
                 "totals": {"videos": 0, "dead": 0, "duplicates": 0}, "age_seconds": None}
-    return {**data, "age_seconds": int(now - at), "scanning": running}
+    return {**data, "age_seconds": int(now - at), "scanning": running, "scan": how_far}
 
 
 def scan_now(root):
@@ -174,9 +179,13 @@ def scan_now(root):
     with _lock:
         if _scanning["on"]:
             return False
-        _scanning["on"] = True
+        _scanning.update(on=True, done=0, total=0, tag="")
+
+    def progress(done, total, tag):
+        with _lock:
+            _scanning.update(done=done, total=total, tag=tag)
     try:
-        _scan_and_store(root)
+        _scan_and_store(root, progress=progress)
     finally:
         with _lock:
             _scanning["on"] = False

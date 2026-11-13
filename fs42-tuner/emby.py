@@ -458,7 +458,7 @@ class Emby:
         A server that can't be reached keeps its placeholders (they come back when it does). Returns the counts."""
         if not self.sync_lock.acquire(blocking=False):
             raise EmbyError("already reading the servers")
-        self.status.update(syncing=True, error=None)
+        self.status.update(syncing=True, error=None, library="", read=0, total=0)
         counts = {"made": 0, "kept": 0, "removed": 0, "servers": 0, "lists": 0}
         errors, read = [], []                          # read: (server id, library id, its folder in the mirror)
         try:
@@ -474,7 +474,11 @@ class Emby:
                         if lid not in libs:
                             continue
                         read.append((sid, lid, f"{folder}/{clean_name(libs[lid])}"))
-                        for item in self._items(sid, lid):
+                        self.status.update(library=f"{s.get('name') or folder} - {libs[lid]}", read=0, total=0)   # for the page's bar
+                        items = self._items(sid, lid)
+                        self.status["total"] = len(items)
+                        for n, item in enumerate(items):
+                            self.status["read"] = n
                             rel = item_rel(item, read[-1][2])
                             if rel in keep:                          # two items with the same name: keep both
                                 rel = rel[:-4] + f" [{item['Id']}].mkv"

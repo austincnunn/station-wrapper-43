@@ -777,6 +777,31 @@ class ProgressTextTest(unittest.TestCase):
         self.assertIn("not read again", job["message"])
 
 
+class ProgressBarTest(unittest.TestCase):
+    """The number behind the page's progress bar: two passes over the videos, or nothing when there is no count."""
+
+    def test_a_catalog_build_is_half_done_when_every_video_is_checked_once(self):
+        self.assertEqual(stationsapi.catalog_percent(0, 0, 200), None)       # nothing new read: a moving bar
+        self.assertEqual(stationsapi.catalog_percent(50, 0, 200), 12)
+        self.assertEqual(stationsapi.catalog_percent(200, 0, 200), 50)
+        self.assertEqual(stationsapi.catalog_percent(200, 100, 200), 75)
+        self.assertEqual(stationsapi.catalog_percent(260, 260, 200), 100)    # never past the end
+        self.assertEqual(stationsapi.catalog_percent(5, 0, None), None)      # the total is not known
+
+    def test_the_job_carries_it(self):
+        import time
+        jobs = stationsapi.Jobs(None, None, None)
+        job = {"started": time.time(), "refresh": False}
+        stationsapi.resolver.file_meta_count, saved = (lambda db, table="file_meta": 30 if table == "file_meta" else 0), stationsapi.resolver.file_meta_count
+        try:
+            jobs.db_path = "x"
+            jobs._progress_for(job, 0, 60)({})
+        finally:
+            stationsapi.resolver.file_meta_count = saved
+        self.assertEqual(job["percent"], 25)
+        self.assertEqual((job["checked"], job["total"]), (30, 60))
+
+
 class BuiltCallbackTest(unittest.TestCase):
     def test_the_guide_is_told_when_a_build_has_finished(self):
         told = []
