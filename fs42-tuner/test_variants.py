@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("FS42_TUNER_CONF", os.path.join(tempfile.mkdtemp(), "c.json"))
 json.dump({"db_path": "none.db", "catalog_root": tempfile.mkdtemp(), "channels": {"110": "Prime"}, "media_root": "/tmp", "port": 5098,
@@ -45,6 +46,29 @@ class Variants(unittest.TestCase):
         self.assertNotIn("-vaapi_device", sw)
         self.assertEqual(arg(sw, "-preset"), "veryfast")
         self.assertTrue(tuner.vf_add(arg(sw, "-vf"), "drawtext=x").endswith("format=yuv420p,drawtext=x"))
+
+    def test_hw_decode_makes_the_picture_on_the_gpu_unless_something_is_drawn_on_it(self):
+        hw = tuner.encode_args({"vcodec": "h264_vaapi"}, 1280, 720, 30)
+        with mock.patch.object(tuner, "NORMALIZE", hw):
+            self.assertNotIn("-hwaccel", tuner.segment_cmd("a.mkv", 5, 60, False))             # off unless asked for
+            with mock.patch.object(tuner, "HW_DECODE", True):
+                cmd = tuner.segment_cmd("a.mkv", 5, 60, False)
+                self.assertLess(cmd.index("-hwaccel"), cmd.index("-i"))                        # an input option
+                self.assertTrue(arg(cmd, "-vf").startswith("format=nv12|vaapi,hwupload,scale_vaapi=w=1280:h=720"))
+                self.assertNotIn("format=yuv420p", arg(cmd, "-vf"))                            # nothing comes back to the CPU
+                for kw in ({"subs": "subtitles=x.srt"}, {"text": "OFF AIR"}, {"gpu": False}):   # drawn on the CPU, or the retry
+                    cpu = tuner.segment_cmd("a.mkv", 5, 60, False, **kw)
+                    self.assertNotIn("-hwaccel", cpu)
+                    self.assertTrue(arg(cpu, "-vf").endswith("format=nv12,hwupload"))
+
+    def test_a_file_the_gpu_gives_nothing_for_is_played_again_on_the_cpu(self):
+        ran = []
+        ch = mock.Mock(number=9, _pipe=lambda cmd, **kw: ran.append(cmd) or (0 if "-hwaccel" in cmd else 5000))
+        ch.stop.is_set.return_value = ch.reload.is_set.return_value = False
+        with mock.patch.object(tuner, "NORMALIZE", tuner.encode_args({"vcodec": "h264_vaapi"}, 1280, 720, 30)), \
+                mock.patch.object(tuner, "HW_DECODE", True):
+            self.assertEqual(tuner.Channel._segment(ch, "a.mkv", 5, 60, False, label="a"), 5000)
+        self.assertEqual(["-hwaccel" in c for c in ran], [True, False])
 
     def test_everyone_asking_the_same_rate_shares_one_copy(self):
         ch = tuner.CHANS["110"]

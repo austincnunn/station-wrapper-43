@@ -258,6 +258,13 @@ def picture_filter(w, h, fps, tail=""):
     return f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:color=black,fps={fps},format=yuv420p{tail}"
 
 
+def gpu_picture_filter(w, h, fps):
+    """picture_filter with the picture made on the GPU as well (video.hw_decode): scaled and padded there, never copied back.
+    A file the GPU cannot decode is decoded on the CPU and uploaded first (format=nv12|vaapi,hwupload takes either)."""
+    return (f"format=nv12|vaapi,hwupload,scale_vaapi=w={w}:h={h}:force_original_aspect_ratio=decrease:format=nv12,"
+            f"pad_vaapi={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,fps={fps}")
+
+
 def vf_add(vf, f):
     """`vf` with the CPU filter `f` (subtitles, a drawtext) added after the picture is made but before any GPU upload."""
     tail = hw_tail({"vcodec": "h264_vaapi"})
@@ -283,6 +290,8 @@ def encode_args(video, w, h, fps):
 
 
 NORMALIZE = encode_args(V, W, H, FPS)
+# video.hw_decode (off unless set; needs a VAAPI vcodec): a programme is decoded and scaled on the GPU too. For trying out.
+HW_DECODE = bool(V.get("hw_decode")) and bool(hw_tail(V))
 
 
 def variant_args(kbps):
@@ -364,18 +373,24 @@ def at_clock(cmd, offset):
     return out[:i] + ["-output_ts_offset", f"{offset:.3f}"] + out[i:]
 
 
-def segment_cmd(path, seek, duration, is_stream, ts_offset=None, text=None, subs=None, ordered=False, input_opts=()):
+def segment_cmd(path, seek, duration, is_stream, ts_offset=None, text=None, subs=None, ordered=False, input_opts=(), gpu=True):
     """ffmpeg for one plan entry. -ss before -i so the seek is fast, -t bounds
     it to the scheduled duration so a file that runs long can't push the
     channel off its own clock. -re paces output at realtime: without it ffmpeg
     would encode a 20-minute segment as fast as the CPU allows and the fanout
     would race ahead of the wall clock it is supposed to track."""
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-re"]
+    gpu = gpu and HW_DECODE and not subs and not text    # subtitles and the corner text are drawn on the CPU: those stay as they were
+    if gpu:
+        cmd += ["-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]      # on the device NORMALIZE's -vaapi_device opens
     if is_stream:
         cmd += ["-i", path]
     else:
         cmd += list(input_opts) + ["-ss", f"{seek:.3f}", "-i", path, "-t", f"{duration:.3f}"]
     enc = with_subtitles(NORMALIZE, subs)
+    if gpu:
+        enc = list(enc)
+        enc[enc.index("-vf") + 1] = gpu_picture_filter(W, H, FPS)
     if ordered:                                  # captions are put in frame by frame: the frames must be in the order they are shown
         enc = enc + ["-bf", "0"]
     if ts_offset is not None:                    # timestamps carry on from the last segment: one continuous stream
@@ -859,10 +874,8 @@ class Channel:
         try:
             subs = caption_filter(self.station, entry, path, local, cur.seek)
             inject = caption_injector(self.station, entry, path, cur.seek)
-            sent = self._pipe(segment_cmd(local, cur.seek, cur.remaining, entry.is_stream,
-                                          text=offair, subs=subs,
-                                          ordered=inject is not None),
-                              label=name, cached=pinned, inject=inject)
+            sent = self._segment(local, cur.seek, cur.remaining, entry.is_stream, text=offair, subs=subs,
+                                 ordered=inject is not None, label=name, cached=pinned, inject=inject)
             if sent < 1024 and not entry.is_stream and not self.stop.is_set() and not self.reload.is_set():
                 # ffmpeg gave nothing for a file that is there: it can't be read. Say so, and don't spin on it.
                 print(f"[ch{self.number}] bad file (nothing came out of it): {path}", flush=True)
@@ -896,9 +909,8 @@ class Channel:
             return
         print(f"[ch{self.number}] {cur.block_title} :: {name} @{cur.seek:.0f}s for {cur.remaining:.0f}s (from Emby)", flush=True)
         try:
-            sent = self._pipe(segment_cmd(src["url"], src["seek"], cur.remaining, False,
-                                          text=offair_reason(self.station, entry, cur.block_title), input_opts=src["opts"]),
-                              label=name)
+            sent = self._segment(src["url"], src["seek"], cur.remaining, False,
+                                 text=offair_reason(self.station, entry, cur.block_title), input_opts=src["opts"], label=name)
         finally:
             src["done"]()
         if sent < 1024 and not self.stop.is_set() and not self.reload.is_set():
@@ -965,6 +977,16 @@ class Channel:
                     os.unlink(playlist)
                 except OSError:
                     pass
+
+    def _segment(self, *args, label=None, cached=False, inject=None, **kw):
+        """One plan entry (segment_cmd) into the channel. With video.hw_decode, a file that gives nothing on the GPU is played
+        again the usual way: ffmpeg's AV1 decoder has no software fallback of its own when the GPU refuses the file."""
+        cmd = segment_cmd(*args, **kw)
+        sent = self._pipe(cmd, label=label, cached=cached, inject=inject)
+        if sent < 1024 and "-hwaccel" in cmd and not self.stop.is_set() and not self.reload.is_set():
+            print(f"[ch{self.number}] the GPU gave nothing for {label}: decoding it on the CPU", flush=True)
+            sent = self._pipe(segment_cmd(*args, gpu=False, **kw), label=label, cached=cached, inject=inject)
+        return sent
 
     def _pipe(self, cmd, label=None, cached=False, inject=None):
         """Run one ffmpeg into the channel. Returns how many bytes came out of it. With CONTINUOUS_TS its timestamps carry

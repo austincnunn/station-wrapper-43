@@ -39,6 +39,9 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 - **A quality list on the Watch page.** Low, Medium, Extra Medium and Full: 1000k up to the tuner's own rate (`video.vbitrate`, 4000k unless you changed it;
   the list goes to 5000k). Pick a lower one on a slow connection: the server makes a lower-rate copy of the channel
   (480p at 2000k and under), which takes one more encoder while it is watched. Your choice is remembered.
+- **Decoding on the GPU too, to try out.** With a VAAPI encoder (`video.vcodec` `h264_vaapi`), `"hw_decode": true` under
+  `video` in the tuner's `config.json` has the GPU decode and scale a programme as well as encode it. Off unless set.
+  A programme with burned-in subtitles or a test pattern's text is made as before, and so is one the GPU cannot decode.
 
 ### Changed
 - **The Watch page plays more smoothly.** When it falls behind it plays a little faster until it has caught up, and

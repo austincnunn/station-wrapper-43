@@ -30,7 +30,7 @@
   "_advertise_url": "Only feeds the unused HDHomeRun-emulation endpoints (lineup.json's URL field, device.xml) -- the portal itself always fetches /auto/v{n} as a relative path, so this doesn't need to be reachable from viewers' browsers for the portal to work. Still required at startup (non-optional key). Set it to this host's real address anyway so those endpoints aren't actively wrong if something ever reads them.",
   "advertise_url": "http://192.168.1.10:5004",
   "friendly_name": "Station Wrapper 43",
-  "_video": "Every segment is re-encoded to these exact parameters. Uniformity is what keeps clients alive across programme boundaries. Set vcodec to h264_vaapi to encode on an Intel/AMD GPU: pass the render node into the container (compose `devices: [/dev/dri/renderD128]`) and, if it is not the first one, set vaapi_device. Decoding and filters stay on the CPU; only the encode moves.",
+  "_video": "Every segment is re-encoded to these exact parameters. Uniformity is what keeps clients alive across programme boundaries. Set vcodec to h264_vaapi to encode on an Intel/AMD GPU: pass the render node into the container (compose `devices: [/dev/dri/renderD128]`) and, if it is not the first one, set vaapi_device. Decoding and filters stay on the CPU; only the encode moves. For trying out: add \"hw_decode\": true (with a VAAPI vcodec) to decode and scale programmes on the GPU as well; ones with burned-in subtitles or a test pattern's text, and any the GPU cannot decode, play as before.",
   "video": {
     "width": 1280,
     "height": 720,
