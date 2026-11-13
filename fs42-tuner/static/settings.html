@@ -221,7 +221,7 @@
               <div class="control"><input class="input" type="password" autocomplete="current-password" placeholder="password" aria-label="Emby Connect password" x-model="connect.password" :disabled="!data.edit"></div>
               <div class="control"><button type="submit" class="button is-primary" :class="busy === 'signin' && 'is-loading'" :disabled="!data.edit">Sign in</button></div>
             </form>
-            <p class="help block" x-show="!data.signed_in">The password is only passed on to Emby Connect; it is never saved.</p>
+            <p class="help block" x-show="!data.signed_in">The password is not saved locally: it's only sent to Emby Connect, and the sign-in token it gives back is saved.</p>
 
             <div class="notification" x-show="ask">
               <h3 class="title is-6">Which servers do you want to use?</h3>
@@ -250,7 +250,7 @@
             </form>
             <p class="help block">For the address, an IP with its port (<code>192.168.1.20:8096</code>) or a domain name
               (<code>https://emby.example.com</code>) both work: whatever you open the server with in a browser. The password is
-              passed on to that server once and never saved.</p>
+              not saved locally: it's only sent to that server, and the sign-in token it gives back is saved.</p>
 
             <p class="block has-text-grey" x-text="summary"></p>
             <p class="block has-text-danger" x-show="status.error" x-text="status.error"></p>
