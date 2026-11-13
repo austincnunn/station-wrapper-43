@@ -16,7 +16,7 @@
   document.addEventListener("alpine:init", () => {
     Alpine.data("sourcesTab", () => ({
       HINTS, KINDS, MODES,
-      sources: [], edit: true, legacy: null, clashes: [], loaded: false,
+      sources: [], edit: true, legacy: null, clashes: [],
       open: [],                         // ids of the sources whose channel table is open
       reading: null,                    // id of the source whose channels are being read again
       // the form at the bottom of the tab: a new source, or (editing: its id) the one whose Edit was pressed
@@ -37,7 +37,6 @@
         this.edit = data.edit;
         this.legacy = data.legacy || null;
         this.clashes = data.clashes || [];
-        this.loaded = true;
       },
 
       get urlPlaceholder() { return PLACEHOLDERS[this.form.type]; },

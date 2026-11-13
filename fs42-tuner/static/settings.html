@@ -152,8 +152,6 @@
         </ul></div>
       </div>
 
-      <p class="block has-text-grey" x-show="loaded && !sources.length">No sources yet. Add one below: a camera, a playlist, or another tuner.</p>
-
       <template x-for="s in sources" :key="s.id">
         <div class="box" :class="!s.enabled && 'is-off'">
           <h2 class="title is-5 with-tags">
