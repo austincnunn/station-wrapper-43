@@ -52,7 +52,8 @@ main.section { padding-top: 1.5rem; }
 .box.is-off, tr.is-off td { opacity: 0.6; }
 .box > .title:first-child, .box > summary { margin-bottom: 0.9rem; }
 details > summary { cursor: pointer; }
-details.box:not([open]) > summary { margin-bottom: 0; }
+details.box:not([open]) > summary, .box > details:not([open]) > summary { margin-bottom: 0; }
+.box > details > summary { margin-bottom: 0.9rem; }
 .title.with-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .title.with-tags .tag { font-weight: 400; }
 .push-right { margin-left: auto; }

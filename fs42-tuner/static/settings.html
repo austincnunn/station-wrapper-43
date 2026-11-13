@@ -37,10 +37,9 @@
 
     <template x-if="r">
       <div>
-        <div x-show="tab === 'general'">
-          <p class="block has-text-grey">A value set here wins over the compose file's; leave a box empty (or pick "as the compose
-            file") to go back to it. Saving restarts only the part that uses it. The schedule keeper, episode names and
-            captions are on the <a href="/stations.html">Stations</a> page.</p>
+        <div class="block" x-show="tab === 'general'">
+          <p class="block has-text-grey">The schedule keeper, episode names and captions are on the
+            <a href="/stations.html">Stations</a> page.</p>
           <div class="box">
             <h2 class="title is-5">This machine</h2>
             <table class="table is-fullwidth facts">
@@ -78,8 +77,12 @@
         </div>
 
         <template x-for="f in forms" :key="f.id">
+          <!-- this server's settings are seldom wanted: they stay folded under Advanced until opened. A player's are open. -->
           <form class="box" x-show="f.tab === tab" x-data="settingsForm" @submit.prevent="save()">
-            <h2 class="title is-5" x-text="f.title"></h2>
+            <details :open="!f.advanced">
+            <summary><span class="title is-5" x-text="f.title"></span> <span class="has-text-grey" x-show="f.advanced" x-text="changed"></span></summary>
+            <p class="block has-text-grey" x-show="f.advanced">Settings from the compose file. A value set here wins over the compose file's;
+              leave a box empty (or pick "as the compose file") to go back to it. Saving restarts only the part that uses it.</p>
             <template x-for="g in groups" :key="g.name">
               <fieldset class="block">
                 <legend class="title is-6" x-text="g.name"></legend>
@@ -111,6 +114,7 @@
             <div class="buttons is-right sticky-actions" x-show="r.edit">
               <button type="submit" class="button is-primary" :class="busy && 'is-loading'" :disabled="busy">Save</button>
             </div>
+            </details>
           </form>
         </template>
       </div>

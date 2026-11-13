@@ -7,7 +7,7 @@
   const { call, say } = W;
 
   const TABS = [
-    { id: "general", label: "General", about: "Settings from the compose file, changed here." },
+    { id: "general", label: "General", about: "This machine, and the settings that seldom need changing." },
     { id: "sources", label: "Sources", about: "Other tuners, playlists of channels, single streams such as cameras, and Emby or Jellyfin servers. Their channels get numbers of their own and join the lineup, the guide, the player and the dashboard." },
     { id: "schedule", label: "Schedule", about: "What each station plays, day by day." },
     { id: "files", label: "Lists & files", about: "Build the lists a station plays from. Nothing is copied: a list holds links, so a video can be in as many lists as you like and your media is never touched." },
@@ -48,7 +48,7 @@
       // Every settings form on the page: this server's (General), then one for each player PC (Players).
       get forms() {
         if (!this.r) return [];
-        const out = [{ id: "server-", tab: "general", title: "This server", rows: this.r.settings, applied: null,
+        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings, applied: null,
           send: (values) => call("/api/settings", { values }) }];
         for (const p of this.r.sync_on ? this.r.players : []) {
           out.push({ id: `player-${p.name}-`, tab: "players", title: `${p.name}${p.gone ? " (not seen for a while)" : ""}`,
@@ -87,6 +87,11 @@
         const values = {};
         for (const s of this.f.rows) values[s.key] = s.source === "saved" ? String(s.value) : "";
         this.values = values;
+      },
+      // the folded panel's one line: how many of these are set here rather than left to the compose file
+      get changed() {
+        const n = this.f.rows.filter((s) => s.source === "saved").length;
+        return `compose file settings \u00b7 ${n ? `${n} changed here` : "none changed here"}`;
       },
       get groups() {
         const out = [];

@@ -47,7 +47,7 @@ That is all of it: no settings file, no setup script. It makes two folders besid
 FS42_MEDIA_ROOT=/mnt/media
 ```
 
-Every other setting is optional and listed in [.env.example](.env.example); most can be changed on the dashboard's Settings page instead.
+Every other setting is optional and listed in [.env.example](.env.example); most can be changed on the dashboard's Settings page instead (General, under Advanced).
 
 ### Or let the installer do it
 
@@ -59,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/austincnunn/station-wrapper-43/main
 
 It asks a few questions, shows what it will do, and then installs Docker if it is missing, can mount your media share (SMB or NFS, read-only, at every boot), writes `.env`, and starts the container. It asks whether your videos come from an Emby or Jellyfin server, and skips the media share if they all do. On an ordinary PC it offers the weather channel and asks for your ZIP code. It can also set a timer that checks for a new version daily or weekly and installs it. It is safe to run again, and every answer can be given in the environment instead (the list, and what it changes on the machine, is in the [reference](docs/REFERENCE.md#the-installer)).
 
-Want a weather channel too? Put `COMPOSE_PROFILES=weather` in `.env` and run `docker compose up -d` again: two more small containers start and a Weather channel appears (channel 3, or the next free number). Type your ZIP code on the dashboard's **Settings** page and it shows your forecast. It is off by default because it needs an amd64 (ordinary PC) machine, not a Raspberry Pi, takes about one CPU core and 1 GB of memory all day, and covers the United States only.
+Want a weather channel too? Put `COMPOSE_PROFILES=weather` in `.env` and run `docker compose up -d` again: two more small containers start and a Weather channel appears (channel 3, or the next free number). Type your ZIP code on the dashboard's **Settings** page (General, under **Advanced**) and it shows your forecast. It is off by default because it needs an amd64 (ordinary PC) machine, not a Raspberry Pi, takes about one CPU core and 1 GB of memory all day, and covers the United States only.
 
 Prefer to write the compose file yourself, with only some media folders mounted? [docker-compose.sample.yml](docker-compose.sample.yml) is a complete one.
 
