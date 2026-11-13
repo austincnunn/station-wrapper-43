@@ -243,7 +243,7 @@
               <div class="control is-expanded"><input class="input" type="text" placeholder="address, like http://192.168.1.20:8096" aria-label="Server address" x-model="direct.url" :disabled="!data.edit"></div>
               <div class="control"><input class="input" type="text" autocomplete="off" placeholder="user name on that server" aria-label="User name on that server" x-model="direct.name" :disabled="!data.edit"></div>
               <div class="control"><input class="input" type="password" autocomplete="off" placeholder="password" aria-label="Password on that server" x-model="direct.password" :disabled="!data.edit"></div>
-              <div class="control"><button type="submit" class="button" :class="busy === 'add' && 'is-loading'" :disabled="!data.edit">Add a server by its address</button></div>
+              <div class="control"><button type="submit" class="button is-primary" :class="busy === 'add' && 'is-loading'" :disabled="!data.edit">Sign in</button></div>
             </form>
 
             <p class="block has-text-grey" x-text="summary"></p>
