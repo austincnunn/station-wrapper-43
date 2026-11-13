@@ -214,6 +214,8 @@
 
         <template x-if="data">
           <div>
+            <!-- two ways in, each under its own heading: an Emby Connect account, or one server by its address -->
+            <h3 class="title is-6" x-show="!data.signed_in">Sign in with Emby Connect</h3>
             <form class="field is-grouped is-grouped-multiline" x-show="!data.signed_in" @submit.prevent="signin()">
               <div class="control"><input class="input" type="text" autocomplete="username" placeholder="Emby Connect name or email" aria-label="Emby Connect name or email" x-model="connect.name" :disabled="!data.edit"></div>
               <div class="control"><input class="input" type="password" autocomplete="current-password" placeholder="password" aria-label="Emby Connect password" x-model="connect.password" :disabled="!data.edit"></div>
@@ -236,15 +238,19 @@
               </div>
             </div>
 
+            <h3 class="title is-6">Sign in to a server by its address</h3>
             <form class="field is-grouped is-grouped-multiline" @submit.prevent="add()">
               <div class="control"><div class="select"><select aria-label="Kind of server" x-model="direct.kind" :disabled="!data.edit">
                 <option value="emby">Emby</option><option value="jellyfin">Jellyfin</option>
               </select></div></div>
-              <div class="control is-expanded"><input class="input" type="text" placeholder="address, like http://192.168.1.20:8096" aria-label="Server address" x-model="direct.url" :disabled="!data.edit"></div>
+              <div class="control is-expanded"><input class="input" type="text" placeholder="http://192.168.1.20:8096" aria-label="Server address" x-model="direct.url" :disabled="!data.edit"></div>
               <div class="control"><input class="input" type="text" autocomplete="off" placeholder="user name on that server" aria-label="User name on that server" x-model="direct.name" :disabled="!data.edit"></div>
               <div class="control"><input class="input" type="password" autocomplete="off" placeholder="password" aria-label="Password on that server" x-model="direct.password" :disabled="!data.edit"></div>
               <div class="control"><button type="submit" class="button is-primary" :class="busy === 'add' && 'is-loading'" :disabled="!data.edit">Sign in</button></div>
             </form>
+            <p class="help block">For the address, an IP with its port (<code>192.168.1.20:8096</code>) or a domain name
+              (<code>https://emby.example.com</code>) both work: whatever you open the server with in a browser. The password is
+              passed on to that server once and never saved.</p>
 
             <p class="block has-text-grey" x-text="summary"></p>
             <p class="block has-text-danger" x-show="status.error" x-text="status.error"></p>
