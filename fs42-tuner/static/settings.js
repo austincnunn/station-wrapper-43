@@ -22,6 +22,7 @@
   W.onTab = (id) => document.visibilityState === "visible" && current() === id;
 
   const SOURCE = { saved: "set here", env: "from the compose file", default: "built-in default" };
+  const WEATHER = "WEATHER_LOCATION";       // the weather channel's place: asked for on the Sources tab, not under Advanced
   const shown = (s, v) => (s.kind === "bool" ? (v === "0" ? "off" : "on") : v === "" || v == null ? "automatic" : v);
 
   document.addEventListener("alpine:init", () => {
@@ -31,8 +32,10 @@
       seen: {},
       r: null,                    // /api/settings: this machine, this server's settings, the players
       token: "",
+      place: "", placeBusy: false,       // the weather channel's place, as typed
 
       init() {
+        this.$watch("r", () => { const w = this.weather; this.place = w && w.source === "saved" ? String(w.value) : ""; });
         this.seen[this.tab] = true;
         window.addEventListener("hashchange", () => {
           this.tab = current();
@@ -48,13 +51,32 @@
       // Every settings form on the page: this server's (General), then one for each player PC (Players).
       get forms() {
         if (!this.r) return [];
-        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings, applied: null,
+        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings.filter((s) => s.key !== WEATHER), applied: null,
           send: (values) => call("/api/settings", { values }) }];
         for (const p of this.r.sync_on ? this.r.players : []) {
           out.push({ id: `player-${p.name}-`, tab: "players", title: `${p.name}${p.gone ? " (not seen for a while)" : ""}`,
             rows: p.settings, applied: p.applied || {}, send: (values) => call("/api/settings/player", { name: p.name, values }) });
         }
         return out;
+      },
+
+      // ---- the weather channel's place (a ZIP code, or City, State): one of the compose settings, kept where channels are added
+      get weather() { return (this.r && this.r.settings.find((s) => s.key === WEATHER)) || null; },
+      get weatherHelp() {
+        const w = this.weather;
+        if (!w) return "";
+        const from = w.source === "env" ? ` Set in the compose file: ${w.value}.` : "";
+        return `${w.note}${from} The weather channel itself is switched on with COMPOSE_PROFILES=weather in .env.`;
+      },
+      async saveWeather() {
+        this.placeBusy = true;
+        try {
+          this.r = await call("/api/settings", { values: { [WEATHER]: this.place.trim() } });
+          say(this.place.trim() ? "Saved. The weather channel shows that place within a minute." : "Cleared: the weather channel goes back to the compose file's place, or asks for one.", "ok");
+        } catch (e) {
+          say(e.message, "err");
+        }
+        this.placeBusy = false;
       },
 
       // The sync token a player puts in its .env (FS42_SYNC_TOKEN): fetched only when asked for, then shown and copied.

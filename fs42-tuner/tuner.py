@@ -1276,7 +1276,7 @@ def weather_page():
     url = weather_url(weather_location())
     body = (f'<iframe src="{escape(url, {chr(34): "&quot;"})}" allow="autoplay"></iframe>' if url else
             "<div><h1>Weather Channel</h1><p>No place is set yet.</p>"
-            "<p>Open the dashboard, go to <b>Settings</b>, and type a ZIP code under <b>Weather channel</b>.</p></div>")
+            "<p>Open the dashboard, go to <b>Settings</b>, the <b>Sources</b> tab, and type a ZIP code under <b>Weather channel</b>.</p></div>")
     return f"""<!doctype html><meta charset="utf-8"><title>Weather</title>
 <style>html,body{{margin:0;height:100%;background:#102080;color:#fff;font:28px/1.5 sans-serif;overflow:hidden}}
 iframe{{border:0;width:100%;height:100%;display:block}}

@@ -49,12 +49,13 @@
   const hourLabel = (h) => `${String(h % 24).padStart(2, "0")}:00`;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // ---- messages. An error stays until it is dismissed or replaced; anything else goes away by itself.
+  // ---- messages, one at a time: the newest replaces the last (a "Saved" must not sit under the error it put right).
+  // An error stays until it is dismissed or replaced; anything else goes away by itself.
   const toast = {
     items: [],
     seq: 0,
     say(text, kind) {
-      this.items = this.items.filter((t) => t.kind !== kind);       // one of each kind: the newest replaces the last
+      this.items = [];
       if (!text) return;
       const id = ++this.seq;
       this.items.push({ id, text: String(text), kind: kind || "" });

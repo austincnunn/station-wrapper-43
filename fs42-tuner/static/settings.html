@@ -226,6 +226,18 @@
         </div>
       </template>
 
+      <!-- the weather channel's place: a setting, but it belongs with the channels that come from elsewhere -->
+      <form class="box" x-show="weather" @submit.prevent="saveWeather()">
+        <h2 class="title is-5">Weather channel</h2>
+        <label class="label" for="w-place" x-text="weather ? weather.label : ''"></label>
+        <div class="field has-addons">
+          <div class="control is-expanded"><input class="input" id="w-place" type="text" maxlength="80" x-model="place" :disabled="!r || !r.edit"
+            :placeholder="weather && weather.source === 'env' ? `compose file: ${weather.value}` : '73034, or Edmond, OK'"></div>
+          <div class="control"><button type="submit" class="button is-primary" :class="placeBusy && 'is-loading'" :disabled="placeBusy || !r || !r.edit">Save</button></div>
+        </div>
+        <p class="help" x-text="weatherHelp"></p>
+      </form>
+
       <!-- Emby and Jellyfin servers -->
       <div class="box" x-data="embyPanel">
         <h2 class="title is-5">Emby and Jellyfin servers</h2>

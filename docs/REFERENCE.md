@@ -126,7 +126,7 @@ It updates only the affected stations' catalogs, and leaves their schedules alon
 
 Off by default. Put `COMPOSE_PROFILES=weather` in `.env` (beside the compose file, where Docker Compose reads it) and run `docker compose up -d`. The compose file then runs two more containers beside the main one: `ws4kp` ([WeatherStar 4000+](https://github.com/netbymatt/ws4kp), the forecast page) and `ws4channels` ([rice9797/ws4channels](https://github.com/rice9797/ws4channels), a hidden browser that turns a page into a stream). The next start adds that stream as a source called **Weather**, on channel 3 or the next free number, whether the install is new or already has stations. It is added once: delete it on the Sources page and it stays gone (delete `config/.weather-channel-done` to have it added again).
 
-- **The place** is one setting, **Settings → General → Advanced → Weather channel**: a ZIP code, or `City, State`. Until it is set the channel shows a card saying so. Saving it restarts nothing: `ws4channels` is pointed at this server's own `/weather` page, which shows the forecast for the saved place and looks again every 30 seconds.
+- **The place** is one setting, **Settings → Sources → Weather channel**: a ZIP code, or `City, State`. Until it is set the channel shows a card saying so. Saving it restarts nothing: `ws4channels` is pointed at this server's own `/weather` page, which shows the forecast for the saved place and looks again every 30 seconds.
 - **United States only.** The forecasts come from the National Weather Service.
 - **What it costs.** The hidden browser runs all day, watched or not: about half to one CPU core and 500 MB to 1 GB of memory.
 - **amd64 only.** `ws4channels` is published for amd64 alone. On an ARM machine (a Raspberry Pi) it cannot start, which is the main reason this is off by default.
@@ -165,7 +165,7 @@ Almost nothing needs setting: the defaults work, and what you would change is in
 | `FS42_CONFIG_ROOT`, `FS42_CATALOG_ROOT` | beside `FS42_LOCAL_ROOT` | Put config or catalog somewhere else (local disk only) | variable |
 | `COMPOSE_PROFILES` | (none) | `weather` starts the weather channel's two containers and adds the channel. Docker Compose's own setting, read from `.env` | `.env` |
 | `WEATHER_CHANNEL` | off | Tells the container to add the weather channel. The compose file sets it to `1` when the profile is on; you don't set it yourself | variable |
-| `WEATHER_LOCATION` | empty | The weather channel's place: a ZIP code, or City, State (United States) | dashboard: Settings, or variable |
+| `WEATHER_LOCATION` | empty | The weather channel's place: a ZIP code, or City, State (United States) | dashboard: Settings, the Sources tab, or variable |
 | `FS42_ALLOW_NETWORK_CATALOG` | off | Only for a catalog on a share you have tested symlinks on | variable |
 | `TZ` | host's | The container's time zone: schedules are in local time | variable |
 
