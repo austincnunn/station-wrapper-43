@@ -1,5 +1,6 @@
 // The Viewers tab of the Settings page: the web viewer's accounts (viewers.py, /api/viewers*). Who may log in on the
-// viewer's port (VIEWER_PORT), and which channels each one gets.
+// web viewer (viewer.py, a container of its own), and which channels each one gets. Whether it is switched on and
+// running is the page's own `vw` (settings.js), which this tab's notices read.
 (function () {
   "use strict";
   const { call, say, run } = W;
@@ -7,8 +8,7 @@
 
   document.addEventListener("alpine:init", () => {
     Alpine.data("viewersTab", () => ({
-      data: null,                        // { on, port, error, edit, users: [{name, channels, summary}], channels: [{number, name}] }
-      link: "",                          // the viewer's address, as reached from where this page was
+      data: null,                        // { edit, users: [{name, channels, summary}], channels: [{number, name}] }
       form: blank(),                     // a new viewer, or (editing) the one whose Edit was pressed
 
       init() {
@@ -25,7 +25,6 @@
             : u.channels.length ? u.channels.map((n) => (names[n] ? `${n} ${names[n]}` : n)).join(", ") : "No channels yet";
         });
         this.data = data;
-        this.link = data.on ? `${location.protocol}//${location.hostname}:${data.port}/` : "";
       },
 
       editUser(u) {

@@ -97,6 +97,42 @@ class ViewersTest(unittest.TestCase):
         self.clock.now += auth.SESSION_SECONDS + 1
         self.assertIsNone(self.v.user(other))
 
+    def test_the_dashboard_and_the_viewer_each_write_a_file_of_their_own(self):
+        self.v.save("kid", "cartoons please")
+        with open(self.path) as f:
+            accounts = f.read()
+        token = self.v.login("kid", "cartoons please")
+        self.v.revoke(token)                                         # the viewer's side: a log out
+        self.v.beat()
+        with open(self.path) as f:
+            self.assertEqual(f.read(), accounts)                     # the accounts file was not touched
+        with open(os.path.join(self.dir, "sessions.json")) as f:
+            self.assertEqual(list(json.load(f).values()), [int(token.split(".")[0])])
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.dir, "sessions.json")).st_mode), 0o600)
+
+    def test_the_switch_is_on_until_switched_off_and_keeps_the_users(self):
+        self.assertTrue(self.v.is_on())                              # no file yet
+        self.v.save("kid", "cartoons please", ["102"])
+        self.v.switch(False)
+        self.assertFalse(self.v.is_on())
+        self.assertEqual(self.v.list(), [{"name": "kid", "channels": ["102"]}])
+        self.v.save("kid", channels=["103"])                         # saving a user leaves the switch alone
+        self.assertFalse(self.v.is_on())
+        self.v.switch(True)
+        self.assertTrue(self.v.is_on())
+        self.assertEqual(self.v.user(self.v.login("kid", "cartoons please")), "kid")
+
+    def test_running_is_a_heartbeat_younger_than_a_minute_and_a_half(self):
+        self.assertFalse(self.v.running())
+        self.v.beat()
+        self.assertTrue(self.v.running())
+        self.clock.now += 89
+        self.assertTrue(self.v.running())
+        self.clock.now += 2
+        self.assertFalse(self.v.running())
+        self.v.beat()
+        self.assertTrue(self.v.running())
+
     def test_too_many_wrong_guesses_must_wait(self):
         self.v.save("kid", "cartoons please")
         for _ in range(auth.FAIL_LIMIT):

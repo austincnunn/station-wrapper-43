@@ -26,7 +26,6 @@
     ["FS42_SYNC_TOKEN", "What player PCs sign in with. Made by this server when not set (the Players tab shows it)."],
   ]);
   const WEATHER = "WEATHER_LOCATION";       // the weather channel's place: asked for on the Sources tab, not under Advanced
-  const VIEWER = "VIEWER_ENABLED";          // the web viewer's switch: on the Players tab, not under Advanced (its port is)
   const shown = (s, v) => (s.kind === "bool" ? (v === "0" ? "off" : "on") : v === "" || v == null ? "automatic" : v);
 
   document.addEventListener("alpine:init", () => {
@@ -37,7 +36,7 @@
       r: null,                    // /api/settings: this machine, this server's settings, the players
       token: "",
       place: "", placeBusy: false,       // the weather channel's place, as typed
-      viewerBusy: false,
+      vw: null, viewerBusy: false,       // the web viewer: { on, running } (/api/viewers), for the Players and Viewers tabs
 
       init() {
         this.$watch("r", () => { const w = this.weather; this.place = w && w.source === "saved" ? String(w.value) : ""; });
@@ -45,8 +44,10 @@
         window.addEventListener("hashchange", () => {
           this.tab = current();
           this.seen[this.tab] = true;
+          if (this.tab === "players" || this.tab === "viewers") this.loadViewer();
         });
         call("/api/settings").then((r) => { this.r = r; }).catch((e) => say(e.message, "err"));
+        this.loadViewer();
       },
 
       // The secrets in .env: what each is for, and whether it is set (never its value).
@@ -57,7 +58,7 @@
       // Every settings form on the page: this server's (General), then one for each player PC (Players).
       get forms() {
         if (!this.r) return [];
-        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings.filter((s) => s.key !== WEATHER && s.key !== VIEWER), applied: null,
+        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings.filter((s) => s.key !== WEATHER), applied: null,
           send: (values) => call("/api/settings", { values }) }];
         for (const p of this.r.sync_on ? this.r.players : []) {
           out.push({ id: `player-${p.name}-`, tab: "players", title: `${p.name}${p.gone ? " (not seen for a while)" : ""}`,
@@ -85,20 +86,22 @@
         this.placeBusy = false;
       },
 
-      // ---- the web viewer's switch (VIEWER_ENABLED): one of the compose settings, kept with the other ways of watching
-      get viewer() { return (this.r && this.r.settings.find((s) => s.key === VIEWER)) || null; },
-      get viewerOn() { const v = this.viewer; return !!v && !["", "0", "false", "no", "off"].includes(String(v.value ?? "").toLowerCase()); },
+      // ---- the web viewer's switch. Its container (viewer.py) reads it with every request, so nothing restarts.
+      loadViewer() {
+        call("/api/viewers").then((v) => { this.vw = { on: v.on, running: v.running }; }).catch(() => {});
+      },
       get viewerHelp() {
-        if (!this.viewer) return "";
-        const port = (this.r.settings.find((s) => s.key === "VIEWER_PORT") || {}).value || "5005";
-        return `Its port is ${port}, which the compose file must publish too (its ports list). The port is changed under Advanced on the General tab.`;
+        if (!this.vw) return "";
+        if (!this.vw.running) return "Its container is not running. To start it, put VIEWER=1 in .env and run docker compose up -d.";
+        return this.vw.on ? "Its container is running: viewers can log in." : "Its container is running, and tells everyone the viewer is switched off.";
       },
       async toggleViewer() {
-        const on = !this.viewerOn;
+        const on = !this.vw.on;
         this.viewerBusy = true;
         try {
-          this.r = await call("/api/settings", { values: { [VIEWER]: on ? "1" : "0" } });
-          say(`The web viewer is switched ${on ? "on" : "off"}. The dashboard restarts for a moment: channels being watched pause for a few seconds.`, "ok");
+          const v = await call("/api/viewers/switch", { on });
+          this.vw = { on: v.on, running: v.running };
+          say(`The web viewer is switched ${on ? "on" : "off"}.`, "ok");
         } catch (e) {
           say(e.message, "err");
         }

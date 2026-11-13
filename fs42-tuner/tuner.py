@@ -95,7 +95,6 @@ import titles
 import viewers
 diag.RING.install()                  # the Status page shows what this process last said
 from resolver import ScheduleGap
-import guide as guidemod
 from guide import GuideBuilder
 from upstream import TunerBudget, Upstream, UpstreamError
 
@@ -178,14 +177,11 @@ PROTECTED_PAGES = {"/stations.html", "/station.html", "/settings.html"}
 # Pages that became tabs of the Settings page: an old link or bookmark lands on its tab (a ?name= is kept).
 MOVED_PAGES = {"/iptv.html": "sources", "/schedule.html": "schedule", "/files.html": "files", "/status.html": "status"}
 SESSION_COOKIE = "sw43_session"
-# The web viewer: the player on a second port, where each person logs in and gets only the channels picked for them on
-# the Settings page. Off unless VIEWER_ENABLED (the switch on the Players tab); VIEWER_PORT is its port. See viewers.py
-# and ViewerHandler. This port's watching stays open (Jellyfin, the TV apps and player PCs cannot log in), so the
-# accounts only limit people who cannot reach it.
-VIEWER_ON    = os.environ.get("VIEWER_ENABLED", "").strip().lower() not in ("", *envsettings.OFF)
-VIEWER_PORT  = int(os.environ.get("VIEWER_PORT") or 5005)
-VIEWER_ERROR = ""                   # why the viewer's port could not be opened, for the Viewers tab
-VIEWER_USERS = viewers.Viewers(os.environ.get("FS42_VIEWERS") or os.path.join(os.path.dirname(settings.PATH), "viewers.json"))
+# The web viewer: the player in a container of its own (viewer.py), where each person logs in and gets only the channels
+# picked for them on the Settings page. This program only keeps its accounts and its on/off switch, in a folder that
+# container shares (viewers.py). This port's watching stays open (Jellyfin, the TV apps and player PCs cannot log in),
+# so the accounts only limit people who cannot reach it.
+VIEWER_USERS = viewers.Viewers(os.environ.get("FS42_VIEWERS") or os.path.join(os.path.dirname(settings.PATH), "viewers", "viewers.json"))
 if LOGIN_ON and os.environ.get("DASHBOARD_PASSWORD") and not AUTH.has_password():
     try:
         AUTH.set_password(os.environ["DASHBOARD_PASSWORD"])
@@ -1656,8 +1652,9 @@ def thumbnail(num):
 
 
 def viewers_report():
-    """The Settings page's Viewers tab: the port, the users (never their hashes) and the channels there are to tick."""
-    return {"on": VIEWER_ON, "port": VIEWER_PORT, "error": VIEWER_ERROR, "edit": EDIT_FILES, "users": VIEWER_USERS.list(),
+    """The Settings page's Viewers tab and the Players tab's switch: whether the web viewer is switched on and its
+    container running, the users (never their hashes) and the channels there are to tick."""
+    return {"on": VIEWER_USERS.is_on(), "running": VIEWER_USERS.running(), "edit": EDIT_FILES, "users": VIEWER_USERS.list(),
             "channels": [{"number": str(r["GuideNumber"]), "name": r["GuideName"]} for r in merged_lineup()]}
 
 
@@ -2153,7 +2150,7 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/files/"):
             body = self._json_body()
             return None if body is None else self._files_api(p, {}, body)
-        if p in ("/api/viewers/save", "/api/viewers/remove"):
+        if p in ("/api/viewers/save", "/api/viewers/remove", "/api/viewers/switch"):
             body = self._json_body()
             if body is None:
                 return None
@@ -2162,6 +2159,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if p.endswith("/save"):
                     VIEWER_USERS.save(body.get("name"), body.get("password"), body.get("channels"))
+                elif p.endswith("/switch"):
+                    if not isinstance(body.get("on"), bool):
+                        return self._json({"error": "on must be true or false"}, 400)
+                    VIEWER_USERS.switch(body["on"])
                 else:
                     VIEWER_USERS.remove(body.get("name"))
             except authmod.AuthError as e:
@@ -2590,76 +2591,6 @@ def check_duplicates():
     return theirs
 
 
-class ViewerHandler(Handler):
-    """The web viewer's port (VIEWER_PORT): the player page and what it reads, for a logged-in viewer (viewers.py), cut down
-    to that viewer's channels. Nothing else of the dashboard answers here: what is not listed below is a 404."""
-    cookie = "sw43_viewer"
-    OPEN = {"/login.html", "/login.js", "/app.css"}                              # the login page and what it loads
-    FILES = {"/app.js", "/common.js", "/player.css", "/mpegts.min.js"}           # what the player page loads
-
-    def do_GET(self):
-        p = urlparse(self.path).path
-        name = VIEWER_USERS.user(self._cookie_value())
-        if p == "/api/auth/status":                   # in the dashboard's own words, so its login page works here too
-            return self._json({"login": True, "viewer": True, "has_password": True, "setup_needed": False,
-                               "authenticated": bool(name), "user": name})
-        if p in self.OPEN or p.startswith("/vendor/"):
-            return None if self._static(p) else self.send_error(404)
-        if name is None:
-            if p not in ("/", "/watch.html"):
-                return self._json({"error": "log in first", "login": "/login.html"}, 401)
-            self.send_response(302)
-            self.send_header("Location", "/login.html")
-            self.send_header("Content-Length", "0")
-            return self.end_headers()
-        only = VIEWER_USERS.channels(name)            # None: every channel
-
-        if p in ("/", "/watch.html"):                 # the same page, told who is watching and without the dashboard's bar
-            with open(os.path.join(STATIC_DIR, "watch.html"), "rb") as f:
-                page = f.read().replace(b'data-page="watch"', f'data-page="" data-viewer="{name}"'.encode())
-            return self._bytes(page, "text/html; charset=utf-8", cache="no-cache")
-        if p in self.FILES:
-            return None if self._static(p) else self.send_error(404)
-        if p == "/lineup.json":
-            return self._json([r for r in merged_lineup(self._base()) if only is None or str(r["GuideNumber"]) in only])
-        if p == "/xmltv.xml":
-            body = GUIDE.xmltv()
-            if only is not None:
-                body = guidemod.only_channels(body, only)
-            return self._bytes(body.replace(b"@@BASE@@", self._base().encode()), "application/xml")
-        if p == "/system.json":                       # the quality list's top rate, and nothing about the machine
-            return self._json({"video_kbps": system_status()["video_kbps"]})
-        if p.startswith("/auto/v") or p.startswith("/captions/"):
-            rest = p[len("/auto/v"):] if p.startswith("/auto/v") else p[len("/captions/"):]
-            num = rest.split("/")[0]
-            if only is not None and (num[:-5] if num.endswith(".json") else num) not in only:
-                return self.send_error(403, "that channel is not one of yours")
-            return self._stream(rest) if p.startswith("/auto/v") else self._captions(rest)
-        self.send_error(404)
-
-    def do_POST(self):
-        p = urlparse(self.path).path
-        if p not in ("/api/auth/login", "/api/auth/logout"):
-            self.close_connection = True              # its body is not read
-            return self.send_error(404)
-        body = self._json_body()
-        if body is None:
-            return None
-        if p.endswith("/logout"):
-            try:
-                VIEWER_USERS.revoke(self._cookie_value())     # dead everywhere, not only cleared in this browser
-            except OSError:
-                pass
-            return self._json({"ok": True}, headers=[self._cookie("", 0)])
-        try:
-            # shortcut: guesses are counted per address, so behind a reverse proxy everyone shares one count;
-            # read the proxy's X-Forwarded-For here once a trusted-proxy setting exists.
-            token = VIEWER_USERS.login(body.get("user"), body.get("password"), self.client_address[0])
-        except authmod.AuthError as e:
-            return self._json({"error": str(e)}, 401)
-        return self._json({"ok": True}, headers=[self._cookie(token, authmod.SESSION_SECONDS)])
-
-
 SLOW_REQUEST_SECONDS = float(os.environ.get("SLOW_REQUEST_SECONDS", "3"))
 
 
@@ -2775,13 +2706,4 @@ if __name__ == "__main__":
         threading.Thread(target=follow_loop, daemon=True, name="follow-folders",
                          args=(int(os.environ.get("FOLLOW_INTERVAL_MINUTES", "30")),
                                float(os.environ.get("FOLLOW_FIRST_DELAY_SECONDS", "120")))).start()
-    if VIEWER_ON:
-        iptv.OWN_PORTS.add(VIEWER_PORT)
-        try:
-            viewer = ThreadingHTTPServer(("0.0.0.0", VIEWER_PORT), ViewerHandler)  # nosec B104 - as below
-            threading.Thread(target=viewer.serve_forever, daemon=True, name="viewer").start()
-            print(f"  web viewer on :{VIEWER_PORT} ({len(VIEWER_USERS.list())} users; add them on the Settings page)", flush=True)
-        except OSError as e:          # a port typed on the Settings page that is taken must not take the dashboard down with it
-            VIEWER_ERROR = f"port {VIEWER_PORT} could not be opened: {e.strerror}"
-            print(f"  ! web viewer not started: {VIEWER_ERROR}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()  # nosec B104 - a server in a container: every address is the point

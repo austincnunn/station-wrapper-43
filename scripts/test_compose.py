@@ -87,11 +87,33 @@ class ComposeRenderTest(unittest.TestCase):
 
     def test_it_is_one_service_with_one_image(self):
         config = self.cfg()
-        self.assertEqual(sorted(config["services"]), ["station-wrapper-43"])     # the two weather ones are behind a profile
+        # the two weather ones are behind a profile; the web viewer is the same image again, at scale 0 until asked for
+        self.assertEqual(sorted(config["services"]), ["station-wrapper-43", "viewer"])
+        self.assertEqual(config["services"]["viewer"]["scale"], 0)
         svc = config["services"]["station-wrapper-43"]
         self.assertEqual(svc["image"], "ghcr.io/austincnunn/station-wrapper-43:latest")
         self.assertEqual(svc["container_name"], "station-wrapper-43")
         self.assertNotIn("build", svc)      # a lone compose file must start: with build: a missing image is BUILT, not pulled
+
+    def test_the_web_viewer_is_the_same_image_with_nothing_but_the_accounts_folder(self):
+        full = self.cfg(VIEWER="1", VIEWER_PORT="8443", VIEWER_TRUSTED_PROXIES="10.0.0.2")
+        off, on = self.cfg()["services"], full["services"]
+        self.assertEqual((off["viewer"]["scale"], on["viewer"]["scale"]), (0, 1))
+        v = on["viewer"]
+        self.assertEqual(v["image"], on["station-wrapper-43"]["image"])
+        self.assertNotIn("build", v)
+        self.assertEqual(v["entrypoint"][-1], "/opt/tuner/viewer.py")            # not the server's entrypoint: only the viewer
+        self.assertEqual(mounts(full, "viewer"), {"/viewers": ("/local/config/viewers", False)})     # no media, no catalog, no settings
+        self.assertEqual([(p["published"], p["target"]) for p in v["ports"]], [("8443", 5005)])
+        self.assertEqual((v["read_only"], v["cap_drop"], sorted(v["cap_add"]), v["security_opt"]),
+                         (True, ["ALL"], ["SETGID", "SETUID"], ["no-new-privileges:true"]))
+        self.assertTrue(v["mem_limit"] and v["pids_limit"])
+        self.assertEqual((v["environment"]["FS42_SERVER"], v["environment"]["VIEWER_TRUSTED_PROXIES"]), ("http://station-wrapper-43:5004", "10.0.0.2"))
+        # switching it on does not switch on the weather channel, whose flag reads COMPOSE_PROFILES as a whole
+        self.assertEqual(on["station-wrapper-43"]["environment"]["WEATHER_CHANNEL"], "")
+        self.assertFalse([k for k in on["station-wrapper-43"]["environment"] if k.startswith("VIEWER")])
+        # a config folder kept somewhere of its own takes the accounts folder with it
+        self.assertEqual(mounts(self.cfg(FS42_CONFIG_ROOT="/elsewhere/cfg"), "viewer"), {"/viewers": ("/elsewhere/cfg/viewers", False)})
 
     def test_the_weather_channel_is_two_unpublished_containers_off_until_asked_for(self):
         off, on = self.cfg()["services"], self.cfg(COMPOSE_PROFILES="weather")["services"]

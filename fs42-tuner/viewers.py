@@ -1,16 +1,22 @@
-"""Viewer accounts for the web viewer: the player on its own port (VIEWER_PORT), where each person logs in and
-sees only the channels picked for them.
+"""Viewer accounts for the web viewer: the player in a container of its own (viewer.py), where each person logs in
+and sees only the channels picked for them.
 
 Kept apart from the dashboard's one password (auth.py), whose file handling, slow hash and guess limit are reused.
-viewers.json in the config volume holds, for each user, the salted hash of the password and the channel numbers
-(null = every channel). A session is signed with the file's secret AND that user's hash, so a new password or a
-removed user ends that user's sessions, and nobody else's.
+One folder (config/viewers) is shared by the two containers, and each writes a file of its own in it, so neither
+ever overwrites the other's change:
+  viewers.json   the dashboard's: for each user the salted hash of the password and the channel numbers (null =
+                 every channel), the signing secret, and the on/off switch
+  sessions.json  the viewer's: sessions that were logged out
+  alive          the viewer's: touched every half minute, so the dashboard can say whether it is running
+A session is signed with the secret AND that user's hash, so a new password or a removed user ends that user's
+sessions, and nobody else's.
 
-What a viewer may reach is decided in tuner.py (ViewerHandler). The dashboard's own port stays open for watching,
-so these accounts only limit people who can reach the viewer port and not the dashboard's.
+The dashboard's own port stays open for watching, so these accounts only limit people who can reach the viewer and
+not the dashboard.
 """
 import hashlib
 import hmac
+import os
 import re
 import secrets
 
@@ -25,6 +31,33 @@ def _name(name):
 
 
 class Viewers(authmod.Auth):
+    def __init__(self, path, **kw):
+        super().__init__(path, **kw)
+        folder = os.path.dirname(path)
+        self._sessions = authmod.Auth(os.path.join(folder, "sessions.json"))      # only its _load / _save: a second JSON file
+        self._alive = os.path.join(folder, "alive")
+
+    # ---- the switch on the dashboard's Players tab, and whether the viewer's container is there to obey it
+    def is_on(self):
+        return self._load().get("on", True) is not False
+
+    def switch(self, on):
+        data = self._load()
+        data["on"] = bool(on)
+        self._save(data)
+
+    def beat(self):
+        """The viewer says it is running."""
+        with open(self._alive, "a"):
+            pass
+        os.utime(self._alive, (self.clock(), self.clock()))
+
+    def running(self):
+        try:
+            return self.clock() - os.path.getmtime(self._alive) < 90
+        except OSError:
+            return False
+
     def _users(self):
         users = self._load().get("users")
         return users if isinstance(users, dict) else {}
@@ -107,7 +140,16 @@ class Viewers(authmod.Auth):
     def user(self, token):
         """Whose session this is, or None."""
         parsed = self._parse(token)
-        return parsed[2] if parsed and parsed[1] not in self._load().get("revoked", {}) else None
+        return parsed[2] if parsed and parsed[1] not in self._sessions._load() else None
+
+    def revoke(self, token):
+        """Log a session out for good. Kept in sessions.json until the session would have expired anyway."""
+        parsed = self._parse(token)
+        if parsed:
+            now = self.clock()
+            gone = {n: e for n, e in self._sessions._load().items() if isinstance(e, int) and e > now}
+            gone[parsed[1]] = parsed[0]
+            self._sessions._save(gone)
 
     def login(self, name, password, who="?"):
         """A session token for the right name and password. AuthError otherwise, or when too many were tried."""

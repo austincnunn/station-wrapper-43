@@ -311,4 +311,32 @@ grep -q 'exit=0 after' <<<"$out" || fail "SIGTERM did not stop the container cle
 secs="$(sed -n 's/^exit=0 after \([0-9]*\)s/\1/p' <<<"$out")"
 [ "${secs:-99}" -le 10 ] || fail "stopping took ${secs}s, longer than Docker's 10s grace:" "$out"
 echo "config + catalog + separate media volumes: console, dashboard and sync run together, SIGTERM stops it in ${secs}s: ok"
+
+# The web viewer: the image run the way the compose file's `viewer` service runs it (its own entrypoint, a read-only
+# file system, no capabilities but the two it stops being root with, nothing shared but an accounts folder). Its
+# login page answers, the rest wants a login, and it says it is running. No server is behind it here.
+out="$(docker run --rm -i --read-only --tmpfs /tmp --tmpfs /viewers --cap-drop ALL --cap-add SETUID --cap-add SETGID \
+         --security-opt no-new-privileges:true -e FS42_SERVER=http://127.0.0.1:9 --entrypoint sh "$image" 2>&1 <<'EOS' || true
+python3 -u /opt/tuner/viewer.py > /tmp/viewer.log 2>&1 &
+python3 - <<'PY'
+import http.client, os, time
+def code(path):
+    c = http.client.HTTPConnection("127.0.0.1", 5005, timeout=5)
+    c.request("GET", path)
+    r = c.getresponse()
+    r.read()
+    return r.status
+for _ in range(40):
+    try:
+        code("/login.html")
+        break
+    except OSError:
+        time.sleep(0.5)
+print("viewer=%s,%s,%s,%s alive=%s" % (code("/login.html"), code("/"), code("/lineup.json"), code("/mpegts.min.js"), os.path.exists("/viewers/alive")))
+PY
+cat /tmp/viewer.log
+EOS
+)"
+grep -q '^viewer=200,302,401,401 alive=True$' <<<"$out" || fail "the web viewer did not start as its own container would:" "$out"
+echo "web viewer: starts read-only with nothing but its accounts folder, and wants a login: ok"
 echo "smoke ok: $image"

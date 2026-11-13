@@ -61,11 +61,6 @@ services:
     ports:
       - "${FS42_CONSOLE_BIND:-127.0.0.1}:4242:4242"     # FieldStation42's console (has no login: kept on localhost unless FS42_CONSOLE_BIND=0.0.0.0)
       - "5004:5004"     # the dashboard and player: what's on, watch a channel
-      # The web viewer's port: the player alone, with a login for each viewer and only the channels picked for them.
-      # Take the # off the line below to let people reach it, then switch the viewer on: Settings > Players in the
-      # dashboard, or VIEWER_ENABLED=1 in .env. Changed its port (Settings > General > Advanced, or VIEWER_PORT)?
-      # Then change both numbers here to match. Port 5004 above still plays every channel to anyone who reaches it.
-      # - "5005:5005"
     environment:
       # Leave unset. Only for a config or catalog on a share where you have tested it.
       FS42_ALLOW_NETWORK_CATALOG: ${FS42_ALLOW_NETWORK_CATALOG:-}
@@ -104,12 +99,6 @@ services:
       DASHBOARD_LOGIN: ${DASHBOARD_LOGIN:-1}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       # DASHBOARD_EDIT=0 makes the management pages look-only, even when logged in.
-      # OPTIONAL: the web viewer. Switched on with VIEWER_ENABLED=1 or on Settings > Players, it serves the player alone
-      # on VIEWER_PORT (5005; publish it in ports above): each viewer logs in with a name and password and gets only the
-      # channels picked for them on Settings > Viewers. Port 5004 still lets anyone watch everything, so give viewers
-      # the viewer's port only (reverse proxy, firewall).
-      VIEWER_ENABLED: ${VIEWER_ENABLED:-}
-      VIEWER_PORT: ${VIEWER_PORT:-}
       DASHBOARD_EDIT: ${DASHBOARD_EDIT:-1}
       FARM_INTERVAL_MINUTES: ${FARM_INTERVAL_MINUTES:-30}
       SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}
@@ -152,6 +141,55 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+
+  # ---- the web viewer: the player for people watching in a browser, with a login for each of them ------------------
+  # A container of its own, from the same image, running one small program (fs42-tuner/viewer.py). It is the one part
+  # meant to be reached from outside your network, so it gets nothing it does not need: no media, no schedule, no
+  # settings, a read-only file system, no privileges, and limits on memory and processes. Each viewer logs in and
+  # gets the player with only the channels picked for them on Settings > Viewers; what the player shows is fetched
+  # from the container above and passed on. The one folder it shares is config/viewers (the accounts).
+  # OFF unless VIEWER=1 is in .env (then: docker compose up -d). Settings > Players has a switch that turns logins off
+  # and on without stopping it. VIEWER_PORT moves it off port 5005.
+  # Put a reverse proxy with HTTPS in front before it leaves your network (this speaks plain HTTP), and give its
+  # address in VIEWER_TRUSTED_PROXIES. Port 5004 above still plays every channel to anyone who reaches it: keep that
+  # one private.
+  # It is behind scale, not a profile: the weather channel's switch reads COMPOSE_PROFILES as a whole.
+  viewer:
+    image: ghcr.io/austincnunn/station-wrapper-43:${FS42_TAG:-latest}
+    container_name: station-wrapper-43-viewer
+    scale: ${VIEWER:-0}
+    restart: unless-stopped
+    depends_on:
+      - station-wrapper-43
+    entrypoint: ["/usr/bin/tini", "--", "python3", "-u", "/opt/tuner/viewer.py"]
+    ports:
+      - "${VIEWER_PORT:-5005}:5005"
+    volumes:
+      - ${FS42_CONFIG_ROOT:-${FS42_LOCAL_ROOT:-./data}/config}/viewers:/viewers       # the accounts, and nothing else
+    environment:
+      FS42_SERVER: http://station-wrapper-43:5004
+      # Your reverse proxy's address (or addresses and networks, comma separated). Wrong passwords are then counted
+      # for each visitor; without it they are counted for the proxy, so one person's guesses lock everybody out.
+      VIEWER_TRUSTED_PROXIES: ${VIEWER_TRUSTED_PROXIES:-}
+      VIEWER_MAX_STREAMS: ${VIEWER_MAX_STREAMS:-3}          # streams one viewer may have open at once
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:              # only to stop being root at start: it becomes whoever owns config/viewers
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 512
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   # ---- the weather channel: a 1990s WeatherStar 4000 forecast, with the music --------------------------------------
   # Two small containers. ws4kp is the weather page (netbymatt/ws4kp; United States forecasts, from the National

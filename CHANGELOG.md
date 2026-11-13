@@ -6,12 +6,13 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
-- **A web viewer with a login for each viewer.** Switched on on the Players tab of Settings (or `VIEWER_ENABLED=1`), a
-  port of its own (5005, or `VIEWER_PORT` / Advanced on the General tab; publish it in the compose file) serves the
-  player alone: no dashboard, nothing to change. Each viewer logs in with a name and password and gets only the
-  channels you tick for them on the new **Viewers** tab of Settings (or every channel), in the channel list, the guide
-  and the streams. Off by default. Port 5004 still plays everything to anyone who reaches it, so give viewers the
-  viewer's port only.
+- **A web viewer with a login for each viewer.** `VIEWER=1` in `.env` starts a second small container from the same
+  image that serves the player alone, on port 5005: no dashboard, nothing to change. Each viewer logs in with a name and
+  password and gets only the channels you tick for them on the new **Viewers** tab of Settings (or every channel), in
+  the channel list, the guide and the streams. It is the part to put behind your reverse proxy: it has no media and no
+  settings, a read-only file system, no privileges, and limits on connections and on streams for each viewer. The
+  Players tab says whether it is running and can switch logins off and on at once. Port 5004 still plays everything to
+  anyone who reaches it, so keep that one private.
 - **Emby and Jellyfin: sign in and the lists make themselves.** Signing in with Emby Connect, or adding a server by its
   address, is now the whole setup. An Emby Connect account with more than one server is first asked which of them to
   use. A server you use has its libraries of shows, movies and music videos chosen and read at once, and each library becomes a list on the Lists & files page ("Server - Library"),

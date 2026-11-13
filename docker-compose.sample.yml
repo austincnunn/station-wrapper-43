@@ -22,11 +22,6 @@ services:
     ports:
       - "${FS42_CONSOLE_BIND:-127.0.0.1}:4242:4242"      # FieldStation42's console (no login: this machine only, unless FS42_CONSOLE_BIND=0.0.0.0)
       - "5004:5004"      # the dashboard, the player, and the HDHomeRun / guide endpoints for Jellyfin
-      # The web viewer's port: the player alone, with a login for each viewer and only the channels picked for them.
-      # Take the # off the line below to let people reach it, then switch the viewer on: Settings > Players in the
-      # dashboard, or VIEWER_ENABLED below. Changed its port (Settings > General > Advanced, or VIEWER_PORT)? Then
-      # change both numbers here to match. Port 5004 above still plays every channel to anyone who reaches it.
-      # - "5005:5005"
     tmpfs:
       - /cache:size=6g,mode=1777        # read-ahead: the next break or episode is copied to RAM
     volumes:
@@ -47,9 +42,32 @@ services:
       SYNC_FULL_EVERY_HOURS: "24"
       PREFETCH_MAX_MB: "5400"            # at most this much of the /cache RAM disk
       # DASHBOARD_PASSWORD: ""           # or set it on the first visit; the management pages are behind a login
-      # VIEWER_ENABLED: "1"              # the web viewer on port 5005 (VIEWER_PORT); or switch it on on Settings > Players
       # FS42_SYNC_TOKEN: ""              # what player PCs in client mode must send to copy this server's schedule; left
                                          # unset, the server makes one (Settings > Players shows it to copy)
+
+  # OPTIONAL: the web viewer, the player for people watching in a browser, with a login and channels for each of them
+  # (Settings > Viewers). A second container from the same image with nothing but the accounts folder: the one part
+  # meant to sit behind your reverse proxy. Take the # off this block to use it. docker-compose.yml explains each line.
+  # viewer:
+  #   image: ghcr.io/austincnunn/station-wrapper-43:latest   # the SAME tag as above
+  #   container_name: fs42-viewer
+  #   restart: unless-stopped
+  #   depends_on: [station-wrapper-43]
+  #   entrypoint: ["/usr/bin/tini", "--", "python3", "-u", "/opt/tuner/viewer.py"]
+  #   ports:
+  #     - "5005:5005"
+  #   volumes:
+  #     - /srv/fs42/config/viewers:/viewers                  # CHANGE: the viewers folder inside your config folder
+  #   environment:
+  #     FS42_SERVER: http://station-wrapper-43:5004
+  #     VIEWER_TRUSTED_PROXIES: ""                           # CHANGE: your reverse proxy's address
+  #   read_only: true
+  #   tmpfs: [/tmp]
+  #   cap_drop: [ALL]
+  #   cap_add: [SETUID, SETGID]
+  #   security_opt: ["no-new-privileges:true"]
+  #   mem_limit: 256m
+  #   pids_limit: 512
 
 volumes:
   # ---- 1. THE CONTAINER'S OWN DATA: LOCAL DISK ONLY, never a NAS or SMB/NFS share ----------------
