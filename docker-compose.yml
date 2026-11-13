@@ -61,6 +61,7 @@ services:
     ports:
       - "${FS42_CONSOLE_BIND:-127.0.0.1}:4242:4242"     # FieldStation42's console (has no login: kept on localhost unless FS42_CONSOLE_BIND=0.0.0.0)
       - "5004:5004"     # the dashboard and player: what's on, watch a channel
+      # - "5005:5005"   # the web viewer (see VIEWER_PORT below): the player alone, with a login for each viewer
     environment:
       # Leave unset. Only for a config or catalog on a share where you have tested it.
       FS42_ALLOW_NETWORK_CATALOG: ${FS42_ALLOW_NETWORK_CATALOG:-}
@@ -99,6 +100,10 @@ services:
       DASHBOARD_LOGIN: ${DASHBOARD_LOGIN:-1}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       # DASHBOARD_EDIT=0 makes the management pages look-only, even when logged in.
+      # OPTIONAL: the web viewer. VIEWER_PORT=5005 (and its ports line above) serves the player alone on that port:
+      # each viewer logs in with a name and password and gets only the channels picked for them on Settings > Viewers.
+      # Port 5004 still lets anyone watch everything, so give viewers the viewer's port only (reverse proxy, firewall).
+      VIEWER_PORT: ${VIEWER_PORT:-}
       DASHBOARD_EDIT: ${DASHBOARD_EDIT:-1}
       FARM_INTERVAL_MINUTES: ${FARM_INTERVAL_MINUTES:-30}
       SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}

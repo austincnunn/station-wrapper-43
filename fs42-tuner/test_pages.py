@@ -40,9 +40,9 @@ class PagesTest(unittest.TestCase):
         for old in ("iptv.html", "schedule.html", "files.html", "status.html"):
             self.assertNotIn(old, self.pages())
         html, js = read("settings.html"), read("settings.js")
-        for tab in ("general", "sources", "schedule", "files", "players", "status"):
+        for tab in ("general", "sources", "schedule", "files", "players", "viewers", "status"):
             self.assertIn(f'id: "{tab}"', js)
-        for part in ("sourcesTab", "embyPanel", "scheduleTab", "filesTab", "statusTab"):
+        for part in ("sourcesTab", "embyPanel", "scheduleTab", "filesTab", "viewersTab", "statusTab"):
             self.assertIn(f'x-data="{part}"', html)
 
     def test_nothing_above_the_settings_tabs_changes_height(self):

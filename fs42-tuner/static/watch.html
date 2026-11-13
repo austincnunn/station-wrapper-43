@@ -62,6 +62,7 @@
         </div>
       </div>
       <div class="control"><button type="button" class="button" :class="guideOpen && 'is-primary is-outlined'" :aria-expanded="guideOpen" @click="guideOpen = !guideOpen">Guide</button></div>
+      <div class="control" x-show="viewer" x-cloak><button type="button" class="button" @click="logout()" x-text="'Log out (' + viewer + ')'"></button></div>
       <div class="control push-right">
         <form class="field has-addons" autocomplete="off" @submit.prevent="enter()">
           <div class="control"><input class="input chan-input" x-ref="entry" inputmode="numeric" placeholder="Channel #" aria-label="Channel number" autocomplete="off" x-model="entry"></div>

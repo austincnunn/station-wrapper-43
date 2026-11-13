@@ -98,6 +98,17 @@ def _blocks(listings, name):
     return out
 
 
+def only_channels(xml, numbers):
+    """The finished guide with only these channel numbers in it: what a web viewer who may not watch every channel
+    is given. A channel is found by its number, which every <channel> carries as a display-name."""
+    root = SafeET.fromstring(xml)
+    keep = {ch.get("id") for ch in root.findall("channel") if any(d.text in numbers for d in ch.findall("display-name"))}
+    for el in list(root):
+        if el.get("id" if el.tag == "channel" else "channel") not in keep:
+            root.remove(el)
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
 class GuideBuilder:
     """Assembles and caches the merged XMLTV document."""
 

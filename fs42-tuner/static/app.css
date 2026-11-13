@@ -57,6 +57,7 @@ details.box:not([open]) > summary, .box > details:not([open]) > summary { margin
 .title.with-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .title.with-tags .tag { font-weight: 400; }
 .push-right { margin-left: auto; }
+.viewer-channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.25rem 1rem; margin-top: 0.75rem; }
 fieldset { border: 0; padding: 0; min-width: 0; }
 fieldset > legend.title { width: 100%; padding-bottom: 0.4rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
 /* a tab bar with its content framed under it (Settings): the frame's sides and foot carry on from the tabs' line */

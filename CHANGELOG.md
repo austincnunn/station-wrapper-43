@@ -6,6 +6,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **A web viewer with a login for each viewer.** Set `VIEWER_PORT` and that port serves the player alone: no dashboard,
+  nothing to change. Each viewer logs in with a name and password and gets only the channels you tick for them on the
+  new **Viewers** tab of Settings (or every channel), in the channel list, the guide and the streams. Off unless the
+  port is set. Port 5004 still plays everything to anyone who reaches it, so give viewers the viewer's port only.
 - **Emby and Jellyfin: sign in and the lists make themselves.** Signing in with Emby Connect, or adding a server by its
   address, is now the whole setup. An Emby Connect account with more than one server is first asked which of them to
   use. A server you use has its libraries of shows, movies and music videos chosen and read at once, and each library becomes a list on the Lists & files page ("Server - Library"),

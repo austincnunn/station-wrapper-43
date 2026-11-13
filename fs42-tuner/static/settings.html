@@ -549,6 +549,69 @@
     </section>
   </template>
 
+  <!-- ================= Viewers: the web viewer's accounts ================= -->
+  <template x-if="seen.viewers">
+    <section x-show="tab === 'viewers'" role="tabpanel" x-data="viewersTab">
+      <p class="block has-text-grey">The web viewer: the player on a port of its own, where each person logs in and gets only the
+        channels you pick for them.</p>
+      <template x-if="data">
+        <div>
+          <article class="message is-warning" x-show="!data.port">
+            <div class="message-body">The web viewer is off. To switch it on, set <code>VIEWER_PORT</code> (5005, say) in the compose
+              file, publish that port, and start the container again. Viewers added here are kept for then.</div>
+          </article>
+          <article class="message" x-show="data.port">
+            <div class="message-body">The web viewer is on at port <strong x-text="data.port"></strong>:
+              <a :href="link" target="_blank" rel="noopener" x-text="link"></a>. This dashboard's own port still lets anyone who reaches it
+              watch every channel, so the channels picked here only hold for people who can reach the viewer's port and not this one
+              (a reverse proxy or a firewall rule).</div>
+          </article>
+          <article class="message is-warning" x-show="!data.edit">
+            <div class="message-body">Changing settings is switched off (DASHBOARD_EDIT=0): this tab only shows them.</div>
+          </article>
+
+          <template x-for="u in data.users" :key="u.name">
+            <div class="box">
+              <h2 class="title is-5" x-text="u.name"></h2>
+              <p class="block has-text-grey" x-text="u.summary"></p>
+              <div class="buttons">
+                <button type="button" class="button" :disabled="!data.edit" @click="editUser(u)">Edit</button>
+                <button type="button" class="button is-danger is-outlined" :disabled="!data.edit" @click="remove(u)">Remove</button>
+              </div>
+            </div>
+          </template>
+
+          <form class="box" x-ref="form" autocomplete="off" @submit.prevent="save()">
+            <h2 class="title is-5" x-text="form.editing ? `Change ${form.name}` : 'Add a viewer'"></h2>
+            <div class="field" x-show="!form.editing">
+              <label class="label" for="v-name">Name</label>
+              <div class="control"><input class="input" id="v-name" type="text" maxlength="32" pattern="[A-Za-z0-9_\-]+" autocomplete="off" autocapitalize="none"
+                spellcheck="false" :required="!form.editing" placeholder="kids" x-model="form.name"></div>
+              <p class="help">What they log in with: letters, digits, - and _.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="v-pw" x-text="form.editing ? 'New password (leave empty to keep the one they have)' : 'Password (at least 8 characters)'"></label>
+              <div class="control"><input class="input" id="v-pw" type="password" maxlength="200" autocomplete="new-password" :required="!form.editing" x-model="form.password"></div>
+            </div>
+            <fieldset class="field">
+              <legend class="label">Channels</legend>
+              <div class="control"><label class="checkbox"><input type="checkbox" x-model="form.all"> Every channel, and any added later</label></div>
+              <div class="viewer-channels" x-show="!form.all">
+                <template x-for="c in data.channels" :key="c.number">
+                  <label class="checkbox"><input type="checkbox" :value="c.number" x-model="form.channels"> <span x-text="`${c.number} ${c.name}`"></span></label>
+                </template>
+              </div>
+            </fieldset>
+            <div class="buttons is-right">
+              <button type="button" class="button" x-show="form.editing" @click="cancel()">Cancel</button>
+              <button type="submit" class="button is-primary" :class="form.saving && 'is-loading'" :disabled="form.saving || !data.edit" x-text="form.editing ? 'Save' : 'Add them'"></button>
+            </div>
+          </form>
+        </div>
+      </template>
+    </section>
+  </template>
+
   <!-- ================= Status ================= -->
   <template x-if="seen.status">
     <section x-show="tab === 'status'" role="tabpanel" x-data="statusTab">
@@ -612,6 +675,7 @@
 <script src="/emby.js"></script>
 <script src="/schedule.js"></script>
 <script src="/files.js"></script>
+<script src="/viewers.js"></script>
 <script src="/status.js"></script>
 <script defer src="/vendor/alpine-3.17.5.min.js"></script>
 </body>

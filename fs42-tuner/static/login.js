@@ -29,16 +29,18 @@
       mode: "",                  // login | setup | change | off
       msg: "", kind: "", busy: false,
       pw: "", pw2: "", old: "",
+      viewer: false, user: "",   // the web viewer's port (viewers.py): the same page, with a name as well
 
       init() {
         this.run(async () => {
           const st = await (await fetch("/api/auth/status")).json();
+          this.viewer = !!st.viewer;
           if (!st.login) this.mode = "off";
           else if (st.setup_needed) this.mode = "setup";
           else if (st.authenticated && params.get("change")) this.mode = "change";
           else if (st.authenticated) return location.replace(nextUrl());
           else this.mode = "login";
-          this.$nextTick(() => this.$refs[this.mode] && this.$refs[this.mode].focus());
+          this.$nextTick(() => { const el = this.$refs[this.viewer ? "user" : this.mode]; if (el) el.focus(); });
         });
       },
       async run(fn) {
@@ -54,7 +56,7 @@
       },
       login() {
         return this.run(async () => {
-          await post("/api/auth/login", { password: this.pw });
+          await post("/api/auth/login", this.viewer ? { user: this.user, password: this.pw } : { password: this.pw });
           location.assign(nextUrl());
         });
       },

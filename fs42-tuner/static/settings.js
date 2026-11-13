@@ -1,7 +1,7 @@
 // The Settings page: one page with a tab for each group. This file is the page itself (which tab is showing) and
 // the General and Players tabs: the compose file's settings that can be changed here (envsettings.py), for this
 // server and for each player PC (client mode). The other tabs are in iptv.js + emby.js (Sources), schedule.js,
-// files.js (Lists & files) and status.js. A tab loads its data the first time it is opened.
+// files.js (Lists & files), viewers.js and status.js. A tab loads its data the first time it is opened.
 (function () {
   "use strict";
   const { call, say } = W;
@@ -9,7 +9,7 @@
   // Each tab says what it is for in its own first paragraph (settings.html), so nothing above the tabs changes height.
   const TABS = [
     { id: "general", label: "General" }, { id: "sources", label: "Sources" }, { id: "schedule", label: "Schedule" },
-    { id: "files", label: "Lists & files" }, { id: "players", label: "Players" }, { id: "status", label: "Status" },
+    { id: "files", label: "Lists & files" }, { id: "players", label: "Players" }, { id: "viewers", label: "Viewers" }, { id: "status", label: "Status" },
   ];
   const current = () => {
     const id = location.hash.slice(1);

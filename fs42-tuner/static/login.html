@@ -18,6 +18,10 @@
 
   <form class="box" x-show="mode === 'login'" x-cloak @submit.prevent="login()">
     <h2 class="title is-5">Log in</h2>
+    <div class="field" x-show="viewer">
+      <label class="label" for="l-user">Name</label>
+      <div class="control"><input class="input" id="l-user" x-ref="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" x-model="user"></div>
+    </div>
     <div class="field">
       <label class="label" for="l-pw">Password</label>
       <div class="control"><input class="input" id="l-pw" x-ref="login" type="password" autocomplete="current-password" x-model="pw"></div>

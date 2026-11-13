@@ -63,6 +63,7 @@
   document.addEventListener("alpine:init", () => {
     Alpine.data("watchPage", () => ({
       unsupported: false,
+      viewer: (document.getElementById("shell") || { dataset: {} }).dataset.viewer || "",   // who is logged in, on the web viewer's port
       channels: [],              // [{number, name}] sorted by channel number
       guide: [],                 // the same, with what is on now and next
       current: null,             // the channel tuned, as a string
@@ -104,6 +105,11 @@
         setInterval(() => this.ccPollOnce(), 5000);
       },
 
+      async logout() {
+        await fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+        location.assign("/login.html");
+      },
+
       say(msg) {
         this.toast = msg;
         clearTimeout(toastTimer);
@@ -113,6 +119,7 @@
       // ---- the lineup and the guide
       async loadLineup() {
         const res = await fetch("/lineup.json");
+        if (res.status === 401 && this.viewer) location.assign("/login.html");      // the session ended
         if (!res.ok) throw new Error(`lineup.json: ${res.status}`);
         this.channels = (await res.json())
           .map((r) => ({ number: String(r.GuideNumber), name: r.GuideName || String(r.GuideNumber) }))
