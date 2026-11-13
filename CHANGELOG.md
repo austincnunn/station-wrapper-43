@@ -65,6 +65,9 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
 
 ### Fixed
+- **A Music Videos library on an Emby or Jellyfin server came up empty.** Its videos are a kind of their own on the
+  server, which was not asked for. They are mirrored now, in a folder per artist, and the guide names each by artist
+  and song.
 - **An install with only Emby or Jellyfin videos can browse them.** With no videos of your own, the Files page showed
   an empty media folder and the `Emby` folder was out of reach. It is now shown whenever there is no media of your own
   for it to hide. (Beside your own media it still needs the pool: `SYNC_ENABLED=1`.)

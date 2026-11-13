@@ -44,7 +44,7 @@ import iptv
 CONNECT ="https://connect.emby.media/service"
 MIRROR_DIR = "Emby"                         # the mirror's folder in the media pool (client mode streams what plays from it)
 APP = "StationWrapper43/1.0"
-TYPES = "Movie,Episode,Video"
+TYPES = "Movie,Episode,Video,MusicVideo"         # MusicVideo: all a "Music Videos" library holds
 PAGE = 500
 REMOTE_CAP_KBPS = 6000                      # the starting cap for a server reached over the internet
 MAX_ITEMS = 50000                           # per library
@@ -87,7 +87,14 @@ def item_rel(item, library_dir):
         year = item.get("ProductionYear")
         stem = clean_name(f"{name} ({year})" if year else name)
         return f"{library_dir}/{stem}/{stem}.mkv"
+    if item.get("Type") == "MusicVideo" and _artist(item):
+        return f"{library_dir}/{clean_name(_artist(item))}/{name}.mkv"
     return f"{library_dir}/{name}.mkv"
+
+
+def _artist(item):
+    """A music video's artist(s), "" when the server names none."""
+    return ", ".join(str(a) for a in (item.get("Artists") or [])[:3] if a)
 
 
 def nfo(item):
@@ -101,6 +108,13 @@ def nfo(item):
                 + (f"<episode>{item['IndexNumber']}</episode>" if isinstance(item.get("IndexNumber"), int) else "")
                 + f"<plot>{_x(item.get('Overview'))}</plot>" + (f"<aired>{aired}</aired>" if aired else "")
                 + genres + "</episodedetails>\n")
+    if item.get("Type") == "MusicVideo":          # titles.py shows a music video by its <title>: artist and song
+        name, artist = str(item.get("Name") or ""), _artist(item)
+        title = f"{artist} - {name}" if artist and artist.lower() not in name.lower() else name
+        return (f"<musicvideo><title>{_x(title)}</title><artist>{_x(artist)}</artist>"
+                + (f"<album>{_x(item['Album'])}</album>" if item.get("Album") else "")
+                + (f"<year>{item['ProductionYear']}</year>" if item.get("ProductionYear") else "")
+                + f"<plot>{_x(item.get('Overview'))}</plot>" + genres + "</musicvideo>\n")
     return ("<movie>"
             f"<title>{_x(item.get('Name'))}</title>"
             + (f"<year>{item['ProductionYear']}</year>" if item.get("ProductionYear") else "")

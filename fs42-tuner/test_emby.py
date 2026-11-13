@@ -90,6 +90,17 @@ class EmbyTest(unittest.TestCase):
         self.assertIn("<showtitle>The Simpsons</showtitle>", emby.nfo(EP))
         self.assertIn("Bart &amp; Lisa", emby.nfo(EP))
 
+    def test_a_music_video_goes_under_its_artist_and_is_named_artist_and_song(self):
+        self.assertIn("MusicVideo", emby.TYPES.split(","))      # without it a Music Videos library mirrors nothing
+        mv = {"Type": "MusicVideo", "Id": "9", "Name": "Tom Sawyer", "Artists": ["Rush"], "Album": "Moving Pictures",
+              "ProductionYear": 1981, "RunTimeTicks": 2760000000}
+        self.assertEqual(emby.item_rel(mv, "S/L"), "S/L/Rush/Tom Sawyer.mkv")
+        self.assertEqual(emby.item_rel({**mv, "Artists": []}, "S/L"), "S/L/Tom Sawyer.mkv")
+        import titles
+        self.assertEqual(titles.parts_from_nfo(emby.nfo(mv)), ("Rush - Tom Sawyer", None))
+        self.assertEqual(titles.parts_from_nfo(emby.nfo({**mv, "Name": "Rush - Tom Sawyer (Live)"})), ("Rush - Tom Sawyer (Live)", None))
+        self.assertEqual(titles.parts_from_nfo(emby.nfo({**mv, "Artists": None})), ("Tom Sawyer", None))
+
     @unittest.skipUnless(shutil.which("ffprobe"), "needs ffmpeg")
     def test_sync_makes_placeholders_that_look_like_the_real_thing(self):
         e, _ = self.make([EP, MOVIE])
