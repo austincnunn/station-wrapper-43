@@ -120,6 +120,33 @@ EMBY         = emby.Emby(os.environ.get("FS42_EMBY") or os.path.join(os.path.dir
                          os.environ.get("EMBY_MIRROR") or os.path.join(FILES.roots["pool"], emby.MIRROR_DIR))
 
 
+def emby_list(rel):
+    """A list for a library an Emby or Jellyfin server was just read into ("Server - Library"): the library's folder,
+    followed, so its new shows and movies are linked in as they are found. Made once (emby.py remembers)."""
+    tag = rel.replace("/", " - ")
+    FILES.list_of(tag, "pool", f"{emby.MIRROR_DIR}/{rel}")
+    library.refresh_tag(LIBRARY_ROOT, tag)
+
+
+def emby_sync_start():
+    """Read the Emby and Jellyfin servers in the background. False when a read is already running."""
+    if EMBY.status.get("syncing"):
+        return False
+
+    def work():
+        try:
+            c = EMBY.sync()
+            print(f"[emby] mirror: {c['made']} made, {c['kept']} unchanged, {c['removed']} removed, {c['lists']} list(s) made", flush=True)
+        except Exception as e:
+            EMBY.status["error"] = str(e)[:500]
+    threading.Thread(target=work, daemon=True, name="emby-sync").start()
+    return True
+
+
+if not os.environ.get("EMBY_MIRROR"):      # lists are made from the pool: not from a mirror kept somewhere else
+    EMBY.on_sync = emby_list
+
+
 # the old schedule kept on air while a station is rebuilt (legacy.py) lives beside the other saved settings
 legacy.PATH = os.environ.get("FS42_LEGACY") or os.path.join(os.path.dirname(settings.PATH), "legacy-schedule.db")
 schedules.PATH = os.environ.get("FS42_SCHEDULES") or os.path.join(os.path.dirname(settings.PATH), "schedules.json")
@@ -1861,15 +1888,17 @@ class Handler(BaseHTTPRequestHandler):
                 raise emby.EmbyError("no such call")
             if not EDIT_FILES:
                 return self._json({"error": "changing sources is switched off (DASHBOARD_EDIT=0)"}, 403)
-            if action == "signin":
+            if action == "signin":                  # nothing is read yet: the page asks which of the account's servers to use
                 return self._json(EMBY.sign_in(body.get("name"), body.get("password")))
             if action == "signout":
                 EMBY.sign_out()
                 return self._json(EMBY.describe())
             if action == "servers":
                 return self._json(EMBY.refresh_servers())
-            if action == "add":                     # an Emby or Jellyfin server by its address; its password is passed on once too
-                return self._json(EMBY.add_server(body.get("kind"), body.get("url"), body.get("name"), body.get("password")))
+            if action == "add":                     # an Emby or Jellyfin server by its address (password passed on once too): read at once
+                out = EMBY.add_server(body.get("kind"), body.get("url"), body.get("name"), body.get("password"))
+                emby_sync_start()
+                return self._json(out)
             if action == "remove":
                 return self._json(EMBY.remove(body.get("id")))
             if action == "libraries":
@@ -1877,16 +1906,8 @@ class Handler(BaseHTTPRequestHandler):
             if action == "choose":
                 return self._json(EMBY.choose(body.get("id"), body.get("on"), body.get("libraries"), body.get("cap_kbps")))
             if action == "sync":
-                if EMBY.status.get("syncing"):
+                if not emby_sync_start():
                     raise emby.EmbyError("already reading the servers")
-
-                def work():
-                    try:
-                        c = EMBY.sync()
-                        print(f"[emby] mirror: {c['made']} made, {c['kept']} unchanged, {c['removed']} removed", flush=True)
-                    except Exception as e:
-                        EMBY.status["error"] = str(e)[:500]
-                threading.Thread(target=work, daemon=True, name="emby-sync").start()
                 return self._json({"started": True})
             raise emby.EmbyError("no such call")
         except emby.EmbyError as e:

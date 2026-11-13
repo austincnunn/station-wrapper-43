@@ -214,6 +214,16 @@ class FollowTest(Base):
         self.assertEqual(self.f.refresh_follows()["added"], 0)                       # nothing new: nothing to do
         self.assertIsNone(self.f.follows()[0]["error"])
 
+    def test_a_list_of_one_followed_folder_is_made_in_one_go(self):
+        touch(os.path.join(self.catalog, "media-links", "Emby", "Srv", "TV", "Show", "Season 01", "e1.mkv"))
+        for _ in range(2):                                                           # again: nothing breaks, nothing doubles
+            self.f.list_of("Srv - TV", "pool", "Emby/Srv/TV")
+        self.assertTrue(os.path.islink(os.path.join(self.tags, "Srv - TV", "TV", "Show", "Season 01", "e1.mkv")))
+        self.assertEqual([(x["root"], x["path"]) for x in self.f.follows("Srv - TV")], [("pool", "Emby/Srv/TV")])
+        touch(os.path.join(self.catalog, "media-links", "Emby", "Srv", "TV", "Show", "Season 01", "e2.mkv"))
+        self.f.refresh_follows()
+        self.assertTrue(os.path.islink(os.path.join(self.tags, "Srv - TV", "TV", "Show", "Season 01", "e2.mkv")))
+
     def test_a_link_to_a_deleted_video_is_not_followed_in(self):
         # the pool keeps a link after its file is deleted; following it would put a dead link in the list every pass
         self.f.add("Anime", [{"root": "media", "path": "anime/Show"}], follow=True)

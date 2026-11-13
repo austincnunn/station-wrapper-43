@@ -25,6 +25,12 @@ and played the same way. An Emby server already on the Connect list keeps its en
 reached on the given address from then on. Jellyfin has no /emby prefix and wants the token in the Authorization header.
 A server added by address always honours its cap_kbps (0, the start, reads the original file) because nothing says
 whether its address is on the LAN.
+
+Libraries don't have to be chosen by hand. A server new to the list is "auto": its libraries of shows, movies and music
+videos are chosen the first time they are looked up. One added by its address is on at once; an Emby Connect account's
+servers start off, and the page asks which of them to use before anything is read. A read then hands each library's
+folder, once, to on_sync (tuner.py makes a list of it: "Server - Library"); "listed" remembers which, so a list you
+delete stays deleted.
 """
 import hashlib
 import json
@@ -48,6 +54,7 @@ TYPES = "Movie,Episode,Video,MusicVideo"         # MusicVideo: all a "Music Vide
 PAGE = 500
 REMOTE_CAP_KBPS = 6000                      # the starting cap for a server reached over the internet
 MAX_ITEMS = 50000                           # per library
+AUTO_KINDS = {"tvshows", "movies", "musicvideos", "mixed"}    # the libraries chosen for a server new to the list
 BAD = re.compile(r'[\x00-\x1f/\\:*?"<>|]+')
 CTRL = re.compile(r"[\x00-\x1f\x7f]+")       # what must never reach a request header (a token from a server)
 
@@ -190,6 +197,7 @@ class Emby:
         self.status = {"syncing": False, "last": None, "error": None, "counts": {}}
         self.state = self._load()
         self._index, self._index_at = {}, None
+        self.on_sync = None                        # called with "<server>/<library>" (inside the mirror) for a library read for the first time
 
     # ---- saved state (tokens only: never the password) ----
     def _load(self):
@@ -259,7 +267,7 @@ class Emby:
         raw = re.sub(r"[^A-Za-z0-9]", "", str(got.get("ServerId") or info.get("Id") or uuid.uuid4().hex))[:40]
         sid = "jf-" + raw if kind == "jellyfin" else raw    # an Emby server on the Connect list keeps its entry
         with self.lock:
-            cur = self.state["servers"].setdefault(sid, {"on": True, "libraries": [], "cap_kbps": 0})
+            cur = self.state["servers"].setdefault(sid, {"on": True, "auto": True, "libraries": [], "cap_kbps": 0})
             if not self._direct(cur):
                 cur["cap_kbps"] = 0                         # from now on the cap always counts: start with the original file
             cur.update({"kind": kind, "direct": True, "url": url, "reach": url, "remote": True, "user_id": str(uid),
@@ -327,7 +335,7 @@ class Emby:
                 sid = str(s.get("SystemId") or "")
                 if not sid:
                     continue
-                cur = servers.setdefault(sid, {"on": False, "libraries": [], "cap_kbps": REMOTE_CAP_KBPS})
+                cur = servers.setdefault(sid, {"on": False, "auto": True, "libraries": [], "cap_kbps": REMOTE_CAP_KBPS})
                 cur.update({"name": s.get("Name") or sid, "url": (s.get("Url") or "").rstrip("/"),
                             "local": (s.get("LocalAddress") or "").rstrip("/"), "access_key": s.get("AccessKey")})
                 cur["gone"] = False
@@ -391,8 +399,14 @@ class Emby:
         if not s.get("user_id"):
             s = self._reach(sid)
         got = self._api(sid, f"/Users/{s['user_id']}/Views")
-        return [{"id": v["Id"], "name": v.get("Name") or v["Id"], "kind": v.get("CollectionType") or "mixed"}
-                for v in (got or {}).get("Items", []) if v.get("Id")]
+        found = [{"id": v["Id"], "name": v.get("Name") or v["Id"], "kind": v.get("CollectionType") or "mixed"}
+                 for v in (got or {}).get("Items", []) if v.get("Id")]
+        if s.get("auto"):                                    # new to the list: its video libraries are chosen for you, once
+            with self.lock:
+                s["libraries"] = [lib["id"] for lib in found if lib["kind"] in AUTO_KINDS][:50]
+                s.pop("auto")
+                self._save()
+        return found
 
     def choose(self, sid, on=None, libraries=None, cap_kbps=None):
         with self.lock:
@@ -405,6 +419,7 @@ class Emby:
                 if not isinstance(libraries, list) or not all(isinstance(x, str) for x in libraries):
                     raise EmbyError("libraries must be a list of ids")
                 s["libraries"] = libraries[:50]
+                s.pop("auto", None)                          # chosen by hand before the first look
             if cap_kbps is not None:
                 try:
                     cap = int(cap_kbps)
@@ -423,7 +438,7 @@ class Emby:
             return {"signed_in": bool(conn), "account": conn and conn.get("name"), "status": dict(self.status),
                     "servers": [{"id": sid, "name": s.get("name"), "on": s.get("on", False), "libraries": s.get("libraries", []),
                                  "cap_kbps": s.get("cap_kbps"), "remote": s.get("remote"), "error": s.get("error"),
-                                 "gone": s.get("gone", False), "folder": clean_name(s.get("name"), sid),
+                                 "gone": s.get("gone", False), "folder": clean_name(s.get("name"), sid), "auto": bool(s.get("auto")),
                                  "kind": s.get("kind", "emby"), "direct": self._direct(s)}
                                 for sid, s in sorted(self.state["servers"].items(), key=lambda kv: str(kv[1].get("name")).lower())]}
 
@@ -444,13 +459,13 @@ class Emby:
         if not self.sync_lock.acquire(blocking=False):
             raise EmbyError("already reading the servers")
         self.status.update(syncing=True, error=None)
-        counts = {"made": 0, "kept": 0, "removed": 0, "servers": 0}
-        errors = []
+        counts = {"made": 0, "kept": 0, "removed": 0, "servers": 0, "lists": 0}
+        errors, read = [], []                          # read: (server id, library id, its folder in the mirror)
         try:
             index = self._read_index()                 # {rel path: [server id, item id, key]}
             keep = set()
             for sid, s in list(self.state["servers"].items()):
-                if not s.get("on") or s.get("gone") or not s.get("libraries"):
+                if not s.get("on") or s.get("gone") or not (s.get("libraries") or s.get("auto")):
                     continue
                 folder = clean_name(s.get("name"), sid)
                 try:
@@ -458,8 +473,9 @@ class Emby:
                     for lid in s["libraries"]:
                         if lid not in libs:
                             continue
+                        read.append((sid, lid, f"{folder}/{clean_name(libs[lid])}"))
                         for item in self._items(sid, lid):
-                            rel = item_rel(item, f"{folder}/{clean_name(libs[lid])}")
+                            rel = item_rel(item, read[-1][2])
                             if rel in keep:                          # two items with the same name: keep both
                                 rel = rel[:-4] + f" [{item['Id']}].mkv"
                             if rel in keep:
@@ -496,6 +512,19 @@ class Emby:
             with os.fdopen(fd, "w") as f:
                 json.dump(index, f)
             os.replace(tmp, self._index_path())
+            for sid, lid, rel in read if self.on_sync else ():     # a list for each library read for the first time
+                s = self.state["servers"][sid]
+                if lid in s.get("listed", ()) or not os.path.isdir(os.path.join(self.mirror, rel)):
+                    continue                                 # (an empty library has no folder yet: asked again next time)
+                try:
+                    self.on_sync(rel)
+                except Exception as e:
+                    errors.append(f"no list made for {rel}: {e}")
+                    continue
+                with self.lock:
+                    s.setdefault("listed", []).append(lid)
+                    self._save()
+                counts["lists"] += 1
             self.status.update(last=time.time(), counts=counts, error="; ".join(errors)[:500] or None)
             return counts
         finally:

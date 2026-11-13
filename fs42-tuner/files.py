@@ -739,6 +739,16 @@ class Files:
             out["following"] = self._follow(tag, followed)
         return out
 
+    def list_of(self, tag, root, path):
+        """A list that is one followed folder (an Emby library, emby.py): made if it isn't there, the folder linked in
+        and followed, so what appears in the folder later is linked in too."""
+        try:
+            self.create_tag(tag)
+        except FileError as e:
+            if e.code != 409:
+                raise
+        return self.add(tag, [{"root": root, "path": path}], follow=True)
+
     def _check_no_loop(self, tag, inside, follow):
         """A list can't contain itself, and (when it is kept up to date) lists can't contain each other in a circle."""
         if inside == tag:

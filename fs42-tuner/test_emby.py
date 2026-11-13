@@ -268,6 +268,29 @@ class EmbyTest(unittest.TestCase):
         s = e.describe()["servers"][0]
         self.assertEqual((s["name"], s["cap_kbps"], s["on"], s["libraries"]), ("Friend's Emby", 0, True, ["lib1"]))
 
+    def test_a_new_server_you_switch_on_has_its_video_libraries_chosen_and_listed_once(self):
+        fake = FakeEmby([EP, MOVIE])
+        views = lambda: (200, {"Items": [{"Id": "lib1", "Name": "TV & Films"}, {"Id": "lib2", "Name": "Songs", "CollectionType": "music"}]})
+        http = lambda m, url, *a, **k: views() if url.split("?")[0].endswith("/Views") else fake(m, url, *a, **k)
+        e = emby.Emby(self.conf, self.mirror, http=http, log=lambda *a, **k: None)
+        listed = []
+        e.on_sync = listed.append
+        s = e.sign_in("austin", "secret")["servers"][0]
+        self.assertEqual((s["on"], s["auto"], s["libraries"]), (False, True, []))   # off until you say which servers to use
+        self.assertEqual(e.sync()["servers"], 0)
+        e.choose("sys1", on=True)
+        self.assertEqual(e.sync()["lists"], 1)
+        s = e.describe()["servers"][0]
+        self.assertEqual((s["auto"], s["libraries"]), (False, ["lib1"]))        # the music library is left out
+        self.assertEqual(listed, ["Friend's Emby/TV & Films"])
+        self.assertTrue(os.path.isdir(os.path.join(self.mirror, listed[0], "The Simpsons")))
+        self.assertEqual(e.sync()["lists"], 0)                                  # once: a list you delete stays deleted
+        self.assertEqual(len(listed), 1)
+        e.choose("sys1", libraries=[])                                          # your choice of none is kept
+        e.sign_in("austin", "secret")
+        e.sync()
+        self.assertEqual(e.describe()["servers"][0]["libraries"], [])
+
     def test_cap_checks(self):
         e, _ = self.make([])
         with self.assertRaises(emby.EmbyError):

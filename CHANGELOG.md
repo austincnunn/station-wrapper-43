@@ -6,6 +6,12 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **Emby and Jellyfin: sign in and the lists make themselves.** Signing in with Emby Connect, or adding a server by its
+  address, is now the whole setup. An Emby Connect account with more than one server is first asked which of them to
+  use. A server you use has its libraries of shows, movies and music videos chosen and read at once, and each library becomes a list on the Lists & files page ("Server - Library"),
+  kept up to date as a followed folder. Untick a server or a library to leave it out. A list is made once per library,
+  so one you delete stays deleted. Servers you had already set up keep their choices; their chosen libraries get a list
+  at the next read.
 - **Emby servers by their address.** Beside Emby Connect, the Sources page now adds an Emby server the way it adds a
   Jellyfin one: pick Emby or Jellyfin, type its address, a user name and password (passed on once, never saved). For an
   Emby server that isn't on Connect, or one you'd rather reach on its LAN address. An Emby server that is on your Connect
