@@ -48,10 +48,11 @@ class FirstRunTest(unittest.TestCase):
         FakeConsole.stations_now, FakeConsole.log, FakeConsole.unreachable = {}, [], False
         self.saved = (bc.Console, bc.add_first_day, bc.CONTAINER_CATALOG, firstrun.FLAG, firstrun.make_clip,
                       firstrun.WAIT_SECONDS, os.environ.get("FIRSTRUN_TEST_STATION"))
-        self.real_weather = firstrun.add_weather_source
+        self.real_weather, self.real_there = firstrun.add_weather_source, firstrun.weather_there
         self.weather_calls = []
         self.weather_there = True                           # is the ws4channels container beside us?
         firstrun.add_weather_source = lambda: (self.weather_calls.append(1), self.weather_there)[1]
+        firstrun.weather_there = lambda: self.weather_there or bool(print("no 'ws4channels' container: COMPOSE_PROFILES=weather"))
         self.real_flag, firstrun.WEATHER_FLAG = firstrun.WEATHER_FLAG, os.path.join(self.config, ".weather-channel-done")
         os.environ.pop("WEATHER_CHANNEL", None)
         bc.Console = FakeConsole
@@ -65,7 +66,7 @@ class FirstRunTest(unittest.TestCase):
     def tearDown(self):
         (bc.Console, bc.add_first_day, bc.CONTAINER_CATALOG, firstrun.FLAG, firstrun.make_clip,
          firstrun.WAIT_SECONDS, env) = self.saved
-        firstrun.add_weather_source, firstrun.WEATHER_FLAG = self.real_weather, self.real_flag
+        firstrun.add_weather_source, firstrun.weather_there, firstrun.WEATHER_FLAG = self.real_weather, self.real_there, self.real_flag
         os.environ.pop("WEATHER_CHANNEL", None)
         if env is None:
             os.environ.pop("FIRSTRUN_TEST_STATION", None)
@@ -160,6 +161,18 @@ class FirstRunTest(unittest.TestCase):
             os.environ.pop("FIRSTRUN_GUIDE_STATION", None)
         self.assertEqual(len(self.weather_calls), 3)
 
+    def test_a_weather_channel_whose_containers_have_gone_says_how_to_start_them(self):
+        os.environ["WEATHER_CHANNEL"] = "1"                 # a .env from before the profile, with the newer compose file
+        self.run_it()
+        self.assertNotIn("COMPOSE_PROFILES", self.run_it()[1])
+        self.weather_there = False
+        self.assertIn("COMPOSE_PROFILES=weather", self.run_it()[1])
+        self.assertEqual(len(self.weather_calls), 1)        # and it is not added a second time
+
+    def test_an_empty_switch_is_off(self):
+        os.environ["WEATHER_CHANNEL"] = ""                  # what the compose file passes when no profile is on
+        self.assertEqual((self.run_it()[0], self.weather_calls), (0, []))
+
     def test_with_no_weather_container_yet_it_tries_again_next_start(self):
         os.environ["WEATHER_CHANNEL"] = "1"                 # set in the wrapper's environment but not where compose reads it
         self.weather_there = False
@@ -178,11 +191,12 @@ class FirstRunTest(unittest.TestCase):
         iptv.PATH = os.path.join(self.config, "sources.json")
         bc.restart_tuner = lambda container: restarts.append(container)
         os.environ["FS42_TUNER_DIR"] = os.path.dirname(iptv.__file__)
+        firstrun.weather_there = self.real_there                # the real check, of a name that is not there
         try:
             firstrun.WEATHER_STREAM = "http://no-such-container.invalid:9798/stream/stream.m3u8"
             with contextlib.redirect_stdout(io.StringIO()) as out:
                 self.assertFalse(self.real_weather())                   # a compose file without it: no dead channel
-            self.assertIn("no weather channel yet", out.getvalue())
+            self.assertIn("COMPOSE_PROFILES=weather", out.getvalue())       # it says how to start the container
             self.assertFalse(os.path.exists(iptv.PATH))
             firstrun.WEATHER_STREAM = "http://localhost:9798/stream/stream.m3u8"
             with contextlib.redirect_stdout(io.StringIO()) as out:

@@ -93,10 +93,13 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   its address, a user name and password (passed on once for a token, never saved), tick its libraries, and its shows and
   movies appear on the Files page like an Emby server's (under `Emby/<server>/<library>`). It plays the original file; a
   server far away can be asked for a capped H.264 stream instead. Tried against Jellyfin 12.4.
-- **A weather channel with one switch.** `WEATHER_CHANNEL=1` in `.env` starts two small containers (WeatherStar 4000+
+- **A weather channel with one switch.** `COMPOSE_PROFILES=weather` in `.env` starts two small containers (WeatherStar 4000+
   and ws4channels) and adds their stream as a channel (3, or the next free number), on a new install or an old one. Its
   place is one setting on the Settings page (a ZIP code, or City, State; United States); changing it needs no restart.
   Off by default: ws4channels exists for amd64 only, and its hidden browser takes about a CPU core all day.
+  (The line was `WEATHER_CHANNEL=1` until 2026-11-13. The two containers moved behind a Compose profile because Compose
+  downloaded their images on every install, switched on or not. With the current compose file the old line alone no
+  longer starts them: the server's log says so, and the installer adds the new line by itself when run again.)
 - **A prompt for AI agents** (`docs/AGENT-PROMPT.md`): paste it into Claude Code or a similar agent after setup and it plans a
   lineup from your library, waits for your yes, then builds the channels through the dashboard.
 - **Music channels (like Music Choice).** Lists take songs (mp3, flac, m4a, ogg...) as well as videos, and a song

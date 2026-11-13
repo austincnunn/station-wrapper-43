@@ -1,6 +1,6 @@
 # ============================================================================
 #  ONE image, ONE container, THREE volumes (plus two small containers for the weather channel, at the
-#  bottom, only with WEATHER_CHANNEL=1 in .env). Nothing to edit: `docker compose up -d`
+#  bottom, only with COMPOSE_PROFILES=weather in .env). Nothing to edit: `docker compose up -d`
 #  works as this file is, and makes two folders beside it:
 #      ./data    the container's own data (config/ and catalog/)
 #      ./media   put videos here, or point FS42_MEDIA_ROOT at the folder you have
@@ -119,11 +119,12 @@ services:
       MEDIA_SERVER_URL: ${MEDIA_SERVER_URL:-}
       MEDIA_SERVER_API_KEY: ${MEDIA_SERVER_API_KEY:-}
       MEDIA_SERVER_MEDIA_ROOT: ${MEDIA_SERVER_MEDIA_ROOT:-/media}
-      # The weather channel (the two containers at the bottom of this file). OFF by default: WEATHER_CHANNEL=1 in
-      # .env starts them and adds the channel (channel 3, or the next free number).
+      # The weather channel (the two containers at the bottom of this file). OFF by default: COMPOSE_PROFILES=weather
+      # in .env starts them and adds the channel (channel 3, or the next free number).
       # Its place (a ZIP code, or City, State; United States only) is normally set on the dashboard's Settings page;
       # WEATHER_LOCATION here is only the starting value.
-      WEATHER_CHANNEL: ${WEATHER_CHANNEL:-0}
+      # This tells the container to add the channel: 1 whenever a profile is on, and this file has only the one.
+      WEATHER_CHANNEL: ${WEATHER_CHANNEL:-${COMPOSE_PROFILES:+1}}
       WEATHER_LOCATION: ${WEATHER_LOCATION:-}
     labels:
       fs42.requires: "config and catalog on LOCAL disk, not an SMB share (./data, or FS42_LOCAL_ROOT)"
@@ -146,13 +147,15 @@ services:
   # Weather Service). ws4channels (rice9797/ws4channels) opens a page in a hidden browser and turns it into a stream;
   # the page it opens is this server's own /weather, which shows ws4kp for the place set on the Settings page.
   # Neither publishes a port: only the container above talks to them.
-  # OFF unless WEATHER_CHANNEL=1 is in .env (then: docker compose up -d). Why off: the hidden browser runs all day,
-  # watched or not (about one CPU core and 1 GB of memory), and ws4channels only exists for amd64 machines, so on a
+  # OFF unless COMPOSE_PROFILES=weather is in .env (then: docker compose up -d). Why off: the hidden browser runs all
+  # day, watched or not (about one CPU core and 1 GB of memory), and ws4channels only exists for amd64 machines, so on a
   # Raspberry Pi or other ARM machine it cannot start.
+  # They are behind a profile, not scale: 0, because Compose downloads the image of every service that is not behind
+  # one, even a service that will not run. (This switch was WEATHER_CHANNEL=1 until November 2026.)
   ws4kp:
     image: ghcr.io/netbymatt/ws4kp
     container_name: station-wrapper-43-ws4kp
-    scale: ${WEATHER_CHANNEL:-0}
+    profiles: ["weather"]
     restart: unless-stopped
     logging: &weather-logging
       driver: json-file
@@ -164,7 +167,7 @@ services:
     image: ghcr.io/rice9797/ws4channels:latest
     platform: linux/amd64      # the only kind its author publishes
     container_name: station-wrapper-43-ws4channels
-    scale: ${WEATHER_CHANNEL:-0}
+    profiles: ["weather"]
     restart: unless-stopped
     depends_on:
       - station-wrapper-43

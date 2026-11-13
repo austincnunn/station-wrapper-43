@@ -10,8 +10,8 @@ It runs once. It does nothing if the install already has stations of its own (an
 touched), and once it has run (or declined to), /config/.test-station-done stops it ever running again, so a
 station you delete stays deleted. FIRSTRUN_TEST_STATION=0 and FIRSTRUN_GUIDE_STATION=0 turn each off.
 
-Separately, WEATHER_CHANNEL=1 (off by default) adds "Weather" from channel 3: the stream of the ws4channels container
-the compose file then runs beside this one, as a source (the Sources page lists it; the place is set on the Settings
+Separately, WEATHER_CHANNEL=1 (off by default; the compose file sets it when its "weather" profile is on) adds
+"Weather" from channel 3: the stream of the ws4channels container that profile runs beside this one, as a source (the Sources page lists it; the place is set on the Settings
 page). That too happens once (/config/.weather-channel-done), on a new install or an old one, and only when that
 container is there.
 
@@ -93,7 +93,7 @@ def mark_done(flag=None, text="The test station was made, or the install already
 
 
 def _on(var, default="1"):
-    return os.environ.get(var, default).lower() not in ("0", "false", "no", "off")
+    return (os.environ.get(var) or default).lower() not in ("0", "false", "no", "off")     # set but empty = not set
 
 
 def guide_conf():
@@ -106,12 +106,7 @@ def guide_conf():
 def add_weather_source():
     """The weather channel as a source, from channel 3 up. True when the source is there afterwards (new or not),
     False when there is no ws4channels container to play."""
-    host = urllib.parse.urlsplit(WEATHER_STREAM).hostname
-    try:
-        socket.getaddrinfo(host, None)
-    except OSError:
-        say(f"no weather channel yet: there is no '{host}' container beside this one (WEATHER_CHANNEL=1 belongs in .env, "
-            "where the compose file reads it)")
+    if not weather_there():
         return False
     sys.path.insert(0, os.environ.get("FS42_TUNER_DIR", "/opt/tuner"))
     import iptv
@@ -126,10 +121,26 @@ def add_weather_source():
     return True
 
 
+def weather_there():
+    """Is the ws4channels container beside this one? Says how to start it when it is not."""
+    host = urllib.parse.urlsplit(WEATHER_STREAM).hostname
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except OSError:
+        say(f"the weather channel is switched on, but there is no '{host}' container beside this one. "
+            "COMPOSE_PROFILES=weather in .env (beside the compose file) starts it; that line was WEATHER_CHANNEL=1 "
+            "until November 2026. Then: docker compose up -d")
+        return False
+
+
 def weather():
     """WEATHER_CHANNEL=1 adds the weather channel, once: on a new install or years later, whatever stations there are
     (switching it on is the asking). Its own flag, so a source deleted on the Sources page stays deleted."""
-    if not _on("WEATHER_CHANNEL", "0") or os.path.exists(WEATHER_FLAG):
+    if not _on("WEATHER_CHANNEL", "0"):
+        return
+    if os.path.exists(WEATHER_FLAG):
+        weather_there()                 # added before: only say so if its containers have gone (the switch's old name)
         return
     try:
         if add_weather_source():

@@ -72,12 +72,17 @@ pkg() {            # pkg <Debian/Ubuntu name> <Fedora/Arch name>
   else die "install $1 with your package manager, then run this again"; fi
 }
 
-# Compose pulls the image of every service in its file, even one switched off with scale 0: the two weather containers
-# (ws4channels is a large amd64-only image). So the services to pull and start are named: all of them, less those two
-# until WEATHER_CHANNEL=1 is in .env. Run in the install folder, by this script and by the update timer ($Q: --quiet).
+# The weather channel is on when .env says so: COMPOSE_PROFILES=weather, or WEATHER_CHANNEL=1 for a compose file from
+# before November 2026 (main writes both, so either file works).
+WEATHER_ON='^(WEATHER_CHANNEL=1|COMPOSE_PROFILES=(.*,)?weather(,.*)?)$'
+
+# That older compose file switches the two weather containers off with scale 0, and Compose pulls the image of every
+# such service anyway (ws4channels is a large amd64-only image). So the services to pull and start are named: all of
+# them, less those two while the weather channel is off. With the current file, where they are behind a profile, this
+# changes nothing. Run in the install folder, by this script and by the update timer ($Q: --quiet).
 UPDATE='set -e
 only=""
-grep -qs "^WEATHER_CHANNEL=1" .env || only=$(docker compose config --services | grep -vx -e ws4kp -e ws4channels || true)
+grep -Eqs "'"$WEATHER_ON"'" .env || only=$(docker compose config --services | grep -vx -e ws4kp -e ws4channels || true)
 docker compose pull $Q $only
 docker compose up -d $only'
 
@@ -261,7 +266,7 @@ EOF
       fi
     fi
     # The weather channel's hidden browser (ws4channels) is built for amd64 only, so an ARM machine is not asked.
-    if grep -qs '^WEATHER_CHANNEL=1' "$FS42_DIR/.env"; then
+    if grep -Eqs "$WEATHER_ON" "$FS42_DIR/.env"; then
       FS42_WEATHER=n                          # already on: the dashboard's Settings page has its place
     elif case $(uname -m) in x86_64 | amd64) true ;; *) false ;; esac; then
       choose FS42_WEATHER "Add a Weather channel? A WeatherStar 4000 forecast for a place in the United States; it takes about one CPU core and 1 GB of memory all day" n y n
@@ -333,9 +338,13 @@ EOF
     [ "$FS42_OWN_VIDEOS" = y ] || sed -i '/^FS42_MEDIA_ROOT=/d' .env 2> /dev/null || true
     # Beside videos of your own, the Emby folder only shows on the Files page once the pool of links is on.
     [ "$FS42_EMBY$FS42_OWN_VIDEOS" != yy ] || setenv SYNC_ENABLED 1
-    if [ "$FS42_WEATHER" = y ]; then
-      setenv WEATHER_CHANNEL 1                # the compose file starts ws4kp and ws4channels; the first start adds the channel
-      setenv WEATHER_LOCATION "$WEATHER_LOCATION"
+    [ "$FS42_WEATHER" != y ] || setenv WEATHER_LOCATION "$WEATHER_LOCATION"
+    if [ "$FS42_WEATHER" = y ] || grep -Eqs "$WEATHER_ON" .env; then
+      # Both of the switch's names, so it is on with either compose file: the current one starts ws4kp and
+      # ws4channels for the profile, and the first start then adds the channel.
+      v=$(envget COMPOSE_PROFILES)
+      case ",$v," in *,weather,*) ;; *) setenv COMPOSE_PROFILES "${v:+$v,}weather" ;; esac
+      setenv WEATHER_CHANNEL 1
     fi
   else
     compose=client/docker-compose.client.yml
