@@ -32,6 +32,7 @@ servers start off, and the page asks which of them to use before anything is rea
 folder, once, to on_sync (tuner.py makes a list of it: "Server - Library"); "listed" remembers which, so a list you
 delete stays deleted.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -46,6 +47,7 @@ import urllib.request
 import uuid
 
 import iptv
+import schedlock
 
 CONNECT ="https://connect.emby.media/service"
 MIRROR_DIR = "Emby"                         # the mirror's folder in the media pool (client mode streams what plays from it)
@@ -506,14 +508,22 @@ class Emby:
                 except EmbyError as e:                       # unreachable: leave this server's placeholders as they are
                     errors.append(str(e))
                     keep |= {r for r, v in index.items() if v[0] == sid}
-            for rel in [r for r in index if r not in keep]:
-                for p in (rel, rel[:-4] + ".nfo"):
-                    try:
-                        os.remove(os.path.join(self.mirror, p))
-                    except OSError:
-                        pass
-                index.pop(rel)
-                counts["removed"] += 1
+            gone = [r for r in index if r not in keep]
+            try:
+                # FieldStation42 stops a whole catalog build at a link whose video vanishes under it, so wait for a
+                # running build to end (schedlock.py). The next build drops the dead links before it starts.
+                waiting = f"[emby] mirror: waiting for a build to end before removing {len(gone)} video(s) that are gone"
+                with schedlock.held(on_wait=lambda: self.log(waiting, flush=True)) if gone else contextlib.nullcontext():
+                    for rel in gone:
+                        for p in (rel, rel[:-4] + ".nfo"):
+                            try:
+                                os.remove(os.path.join(self.mirror, p))
+                            except OSError:
+                                pass
+                        index.pop(rel)
+                        counts["removed"] += 1
+            except schedlock.LockTimeout:
+                pass                                         # still building: they stay, and go at the next scan
             self._tidy()
             os.makedirs(self.mirror, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=self.mirror, prefix=".index-")

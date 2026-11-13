@@ -138,6 +138,25 @@ class EmbyTest(unittest.TestCase):
         self.assertFalse(os.path.exists(show))                       # its emptied folders (and poster) too
         self.assertIsNone(e2.lookup(stub))
 
+    def test_a_gone_video_is_not_removed_while_a_build_runs(self):
+        import threading
+        import schedlock
+        e, _ = self.make([EP, MOVIE])
+        e.sync()
+        e2, _ = self.make([MOVIE])
+        stub = os.path.join(self.mirror, "Friend's Emby", "TV & Films", "The Simpsons", "Season 04",
+                            "The Simpsons - S04E01 - Kamp Krusty.mkv")
+        waiting, done = threading.Event(), []
+        e2.log = lambda *a, **k: waiting.set()
+        with schedlock.held():                                        # a catalog is being built
+            t = threading.Thread(target=lambda: done.append(e2.sync()["removed"]))
+            t.start()
+            self.assertTrue(waiting.wait(10))
+            self.assertTrue(os.path.exists(stub))                     # still there for the build to read
+        t.join(10)
+        self.assertEqual(done, [1])
+        self.assertFalse(os.path.exists(stub))
+
     def test_a_still_for_the_dashboard_tile(self):
         e, fake = self.make([EP])
         e.libraries("sys1")                                           # any call: the server's token is in hand
