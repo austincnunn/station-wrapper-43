@@ -11,7 +11,7 @@ You will get an answer within a few days.
 - **The dashboard has a login**, set up the first time it is opened (`DASHBOARD_LOGIN=1`, the default). The stream, guide and
   `/lineup.json` addresses are open on purpose: IPTV clients can't log in. Keep port 5004 on your own network, or put it behind a
   reverse proxy with its own authentication.
-- **The web viewer** (`VIEWER_PORT`, off by default) is the one port meant for people you would not hand the dashboard to: it
+- **The web viewer** (`VIEWER_ENABLED`, off by default) is the one port meant for people you would not hand the dashboard to: it
   serves only the player, behind a name and password for each viewer, cut down to that viewer's channels. Put HTTPS in front of
   it (a reverse proxy) before it leaves your network. It does not close port 5004: someone who can reach that can watch everything.
 - **Do not publish ports 5004 or 4242 to the internet.** 4242 is FieldStation42's own console and has no login: the compose file

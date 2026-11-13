@@ -71,6 +71,17 @@
             </div>
             <p class="has-text-grey" x-show="!r.players.length">No player has checked in in the last day.</p>
           </div>
+          <!-- the web viewer's switch: people watching in a browser are players too. Its accounts are the Viewers tab -->
+          <div class="box" x-show="viewer">
+            <h2 class="title is-5 with-tags"><span>Web viewer</span><span class="tag" :class="viewerOn && 'is-success'" x-text="viewerOn ? 'on' : 'off'"></span></h2>
+            <p class="block has-text-grey">The player on a port of its own, for people watching in a browser: each one logs in and gets
+              only the channels picked for them on the <a href="#viewers">Viewers</a> tab.</p>
+            <p class="block" x-text="viewerHelp"></p>
+            <div class="buttons">
+              <button type="button" class="button" :class="viewerBusy && 'is-loading'" :disabled="viewerBusy || !r.edit" @click="toggleViewer()"
+                x-text="viewerOn ? 'Switch off' : 'Switch on'"></button>
+            </div>
+          </div>
         </div>
 
         <template x-for="f in forms" :key="f.id">
@@ -556,11 +567,15 @@
         channels you pick for them.</p>
       <template x-if="data">
         <div>
-          <article class="message is-warning" x-show="!data.port">
-            <div class="message-body">The web viewer is off. To switch it on, set <code>VIEWER_PORT</code> (5005, say) in the compose
-              file, publish that port, and start the container again. Viewers added here are kept for then.</div>
+          <article class="message is-warning" x-show="!data.on">
+            <div class="message-body">The web viewer is off: switch it on on the <a href="#players">Players</a> tab. Viewers added
+              here are kept for then.</div>
           </article>
-          <article class="message" x-show="data.port">
+          <article class="message is-danger" x-show="data.on && data.error">
+            <div class="message-body">The web viewer is switched on but not running: <span x-text="data.error"></span>. Choose another
+              port under Advanced on the <a href="#general">General</a> tab.</div>
+          </article>
+          <article class="message" x-show="data.on && !data.error">
             <div class="message-body">The web viewer is on at port <strong x-text="data.port"></strong>:
               <a :href="link" target="_blank" rel="noopener" x-text="link"></a>. This dashboard's own port still lets anyone who reaches it
               watch every channel, so the channels picked here only hold for people who can reach the viewer's port and not this one

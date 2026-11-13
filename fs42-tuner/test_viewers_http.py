@@ -2,6 +2,7 @@
 and nothing else of the dashboard answers on it. Run: python3 test_viewers_http.py"""
 import os
 import shutil
+import socket
 import tempfile
 import unittest
 
@@ -22,7 +23,7 @@ class ViewerPortTest(unittest.TestCase):
         cls.viewer_port = free_port()
         cls.srv = Server(cls.root, extra={"channels": {"101": "one", "102": "two"}},
                          env={"DASHBOARD_LOGIN": "1", "FS42_SETTINGS": os.path.join(cls.root, "settings.json"),
-                              "VIEWER_PORT": str(cls.viewer_port)})
+                              "VIEWER_ENABLED": "1", "VIEWER_PORT": str(cls.viewer_port)})
         cls.dash = Client(cls.srv)
         cls.view = Client(cls.srv)
         cls.view.port = cls.viewer_port
@@ -53,7 +54,7 @@ class ViewerPortTest(unittest.TestCase):
         self.assertEqual(self.dash.request("POST", "/api/viewers/save", {"name": "x", "password": LONG})[0], 401)
         code, _, body, text = self.dash.request("GET", "/api/viewers", cookie=self.admin)
         self.assertEqual(code, 200)
-        self.assertEqual(body["port"], self.viewer_port)
+        self.assertEqual((body["on"], body["port"], body["error"]), (True, self.viewer_port, ""))
         self.assertEqual(body["users"], [{"name": "kid", "channels": ["102"]}, {"name": "mum", "channels": None}])
         self.assertEqual([c["number"] for c in body["channels"]], ["101", "102"])
         self.assertNotIn("pbkdf2", text)
@@ -126,6 +127,43 @@ class ViewerPortTest(unittest.TestCase):
         code, _, body, _ = self.dash.request("POST", "/api/viewers/remove", {"name": "tmp"}, cookie=self.admin)
         self.assertEqual((code, [u["name"] for u in body["users"]]), (200, ["kid", "mum"]))
         self.assertEqual(self.get("/lineup.json", tmp)[0], 401)
+
+
+class ViewerSwitchTest(unittest.TestCase):
+    """Off unless switched on; and a port that can't be opened leaves the dashboard running."""
+
+    def start(self, **env):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root)
+        os.makedirs(os.path.join(self.root, "catalog", "by-genre"))
+        self.srv = Server(self.root, env={"FS42_SETTINGS": os.path.join(self.root, "settings.json"), **env})
+        self.addCleanup(self.srv.stop)
+
+    def test_a_port_alone_does_not_switch_it_on_and_the_settings_page_holds_the_switch(self):
+        port = free_port()
+        self.start(VIEWER_PORT=str(port))
+        code, report = self.srv.get("/api/viewers")
+        self.assertEqual((code, report["on"], report["port"]), (200, False, port))
+        with self.assertRaises(OSError):
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+        rows = {s["key"]: s for s in self.srv.get("/api/settings")[1]["settings"]}
+        self.assertEqual((rows["VIEWER_ENABLED"]["value"], rows["VIEWER_PORT"]["value"], rows["VIEWER_PORT"]["default"]), ("0", str(port), "5005"))
+        self.assertEqual(rows["VIEWER_ENABLED"]["restarts"], ["tuner"])           # the supervisor restarts the dashboard to apply it
+        code, r = self.srv.post("/api/settings", {"values": {"VIEWER_ENABLED": "1", "VIEWER_PORT": "5006"}})
+        self.assertEqual(code, 200)
+        self.assertEqual({s["key"]: s["value"] for s in r["settings"] if s["key"].startswith("VIEWER_")}, {"VIEWER_ENABLED": "1", "VIEWER_PORT": "5006"})
+        for bad in ("80", "70000", "abc"):
+            self.assertEqual(self.srv.post("/api/settings", {"values": {"VIEWER_PORT": bad}})[0], 400, bad)
+
+    def test_a_port_that_is_taken_is_said_on_the_page_and_the_dashboard_still_runs(self):
+        taken = socket.socket()
+        taken.bind(("0.0.0.0", 0))
+        taken.listen(1)
+        self.addCleanup(taken.close)
+        self.start(VIEWER_ENABLED="1", VIEWER_PORT=str(taken.getsockname()[1]))
+        code, report = self.srv.get("/api/viewers")
+        self.assertEqual((code, report["on"]), (200, True))
+        self.assertIn("could not be opened", report["error"])
 
 
 if __name__ == "__main__":

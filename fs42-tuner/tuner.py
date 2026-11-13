@@ -178,10 +178,13 @@ PROTECTED_PAGES = {"/stations.html", "/station.html", "/settings.html"}
 # Pages that became tabs of the Settings page: an old link or bookmark lands on its tab (a ?name= is kept).
 MOVED_PAGES = {"/iptv.html": "sources", "/schedule.html": "schedule", "/files.html": "files", "/status.html": "status"}
 SESSION_COOKIE = "sw43_session"
-# The web viewer: the player on a second port (VIEWER_PORT; not set = no viewer), where each person logs in and gets
-# only the channels picked for them on the Settings page. See viewers.py and ViewerHandler. This port's watching stays
-# open (Jellyfin, the TV apps and player PCs cannot log in), so the accounts only limit people who cannot reach it.
-VIEWER_PORT  = int(os.environ.get("VIEWER_PORT") or 0)
+# The web viewer: the player on a second port, where each person logs in and gets only the channels picked for them on
+# the Settings page. Off unless VIEWER_ENABLED (the switch on the Players tab); VIEWER_PORT is its port. See viewers.py
+# and ViewerHandler. This port's watching stays open (Jellyfin, the TV apps and player PCs cannot log in), so the
+# accounts only limit people who cannot reach it.
+VIEWER_ON    = os.environ.get("VIEWER_ENABLED", "").strip().lower() not in ("", *envsettings.OFF)
+VIEWER_PORT  = int(os.environ.get("VIEWER_PORT") or 5005)
+VIEWER_ERROR = ""                   # why the viewer's port could not be opened, for the Viewers tab
 VIEWER_USERS = viewers.Viewers(os.environ.get("FS42_VIEWERS") or os.path.join(os.path.dirname(settings.PATH), "viewers.json"))
 if LOGIN_ON and os.environ.get("DASHBOARD_PASSWORD") and not AUTH.has_password():
     try:
@@ -1654,7 +1657,7 @@ def thumbnail(num):
 
 def viewers_report():
     """The Settings page's Viewers tab: the port, the users (never their hashes) and the channels there are to tick."""
-    return {"port": VIEWER_PORT, "edit": EDIT_FILES, "users": VIEWER_USERS.list(),
+    return {"on": VIEWER_ON, "port": VIEWER_PORT, "error": VIEWER_ERROR, "edit": EDIT_FILES, "users": VIEWER_USERS.list(),
             "channels": [{"number": str(r["GuideNumber"]), "name": r["GuideName"]} for r in merged_lineup()]}
 
 
@@ -2772,9 +2775,13 @@ if __name__ == "__main__":
         threading.Thread(target=follow_loop, daemon=True, name="follow-folders",
                          args=(int(os.environ.get("FOLLOW_INTERVAL_MINUTES", "30")),
                                float(os.environ.get("FOLLOW_FIRST_DELAY_SECONDS", "120")))).start()
-    if VIEWER_PORT:
+    if VIEWER_ON:
         iptv.OWN_PORTS.add(VIEWER_PORT)
-        print(f"  web viewer on :{VIEWER_PORT} ({len(VIEWER_USERS.list())} users; add them on the Settings page)", flush=True)
-        threading.Thread(target=ThreadingHTTPServer(("0.0.0.0", VIEWER_PORT), ViewerHandler).serve_forever,  # nosec B104 - as below
-                         daemon=True, name="viewer").start()
+        try:
+            viewer = ThreadingHTTPServer(("0.0.0.0", VIEWER_PORT), ViewerHandler)  # nosec B104 - as below
+            threading.Thread(target=viewer.serve_forever, daemon=True, name="viewer").start()
+            print(f"  web viewer on :{VIEWER_PORT} ({len(VIEWER_USERS.list())} users; add them on the Settings page)", flush=True)
+        except OSError as e:          # a port typed on the Settings page that is taken must not take the dashboard down with it
+            VIEWER_ERROR = f"port {VIEWER_PORT} could not be opened: {e.strerror}"
+            print(f"  ! web viewer not started: {VIEWER_ERROR}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()  # nosec B104 - a server in a container: every address is the point

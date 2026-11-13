@@ -127,6 +127,6 @@ LABEL org.opencontainers.image.title="Station Wrapper 43" \
 
 # 4242: FieldStation42's console. 5004: the dashboard and player (the port a real
 # HDHomeRun serves on, so clients that probe for one find this where they expect it).
-# The web viewer (VIEWER_PORT) has no port until you choose one: publish that one yourself.
+# The web viewer (VIEWER_ENABLED) is on VIEWER_PORT, 5005 unless you change it: publish that one yourself.
 EXPOSE 4242 5004
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

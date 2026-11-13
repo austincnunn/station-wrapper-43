@@ -26,6 +26,7 @@
     ["FS42_SYNC_TOKEN", "What player PCs sign in with. Made by this server when not set (the Players tab shows it)."],
   ]);
   const WEATHER = "WEATHER_LOCATION";       // the weather channel's place: asked for on the Sources tab, not under Advanced
+  const VIEWER = "VIEWER_ENABLED";          // the web viewer's switch: on the Players tab, not under Advanced (its port is)
   const shown = (s, v) => (s.kind === "bool" ? (v === "0" ? "off" : "on") : v === "" || v == null ? "automatic" : v);
 
   document.addEventListener("alpine:init", () => {
@@ -36,6 +37,7 @@
       r: null,                    // /api/settings: this machine, this server's settings, the players
       token: "",
       place: "", placeBusy: false,       // the weather channel's place, as typed
+      viewerBusy: false,
 
       init() {
         this.$watch("r", () => { const w = this.weather; this.place = w && w.source === "saved" ? String(w.value) : ""; });
@@ -55,7 +57,7 @@
       // Every settings form on the page: this server's (General), then one for each player PC (Players).
       get forms() {
         if (!this.r) return [];
-        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings.filter((s) => s.key !== WEATHER), applied: null,
+        const out = [{ id: "server-", tab: "general", title: "Advanced", advanced: true, rows: this.r.settings.filter((s) => s.key !== WEATHER && s.key !== VIEWER), applied: null,
           send: (values) => call("/api/settings", { values }) }];
         for (const p of this.r.sync_on ? this.r.players : []) {
           out.push({ id: `player-${p.name}-`, tab: "players", title: `${p.name}${p.gone ? " (not seen for a while)" : ""}`,
@@ -81,6 +83,26 @@
           say(e.message, "err");
         }
         this.placeBusy = false;
+      },
+
+      // ---- the web viewer's switch (VIEWER_ENABLED): one of the compose settings, kept with the other ways of watching
+      get viewer() { return (this.r && this.r.settings.find((s) => s.key === VIEWER)) || null; },
+      get viewerOn() { const v = this.viewer; return !!v && !["", "0", "false", "no", "off"].includes(String(v.value ?? "").toLowerCase()); },
+      get viewerHelp() {
+        if (!this.viewer) return "";
+        const port = (this.r.settings.find((s) => s.key === "VIEWER_PORT") || {}).value || "5005";
+        return `Its port is ${port}, which the compose file must publish too (its ports list). The port is changed under Advanced on the General tab.`;
+      },
+      async toggleViewer() {
+        const on = !this.viewerOn;
+        this.viewerBusy = true;
+        try {
+          this.r = await call("/api/settings", { values: { [VIEWER]: on ? "1" : "0" } });
+          say(`The web viewer is switched ${on ? "on" : "off"}. The dashboard restarts for a moment: channels being watched pause for a few seconds.`, "ok");
+        } catch (e) {
+          say(e.message, "err");
+        }
+        this.viewerBusy = false;
       },
 
       // The sync token a player puts in its .env (FS42_SYNC_TOKEN): fetched only when asked for, then shown and copied.

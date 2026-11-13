@@ -64,6 +64,10 @@ REGISTRY = [
     _s("WEATHER_LOCATION", "Weather channel", "Where: a ZIP code, or City, State (United States only)",
        ("text", r"[A-Za-z0-9 ,.'\-]{0,80}"), "", [],
        note="The weather channel shows this place's forecast within a minute of saving. Empty: it asks for a place."),
+    # the web viewer (tuner.py ViewerHandler): the switch is on the Players tab, the port under Advanced
+    _s("VIEWER_ENABLED", "Web viewer", "The web viewer: the player on a port of its own, with a login for each viewer", "bool", "0", ["tuner"]),
+    _s("VIEWER_PORT", "Web viewer", "Port of the web viewer", ("int", 1024, 65535), "5005", ["tuner"],
+       note="The compose file must publish the same port (its ports list). Not 5004 or 4242: those are taken."),
     # a player (client mode): set on the server, used by the player
     _s("FS42_SCREEN", "Screen", "Screen", ("choice", ["crt", "hd"]), "hd", ["client", "player"], "client",
        "crt: 4:3, widescreen cropped, lighter streams. hd: 16:9, the whole picture."),

@@ -7,7 +7,7 @@
 
   document.addEventListener("alpine:init", () => {
     Alpine.data("viewersTab", () => ({
-      data: null,                        // { port, edit, users: [{name, channels, summary}], channels: [{number, name}] }
+      data: null,                        // { on, port, error, edit, users: [{name, channels, summary}], channels: [{number, name}] }
       link: "",                          // the viewer's address, as reached from where this page was
       form: blank(),                     // a new viewer, or (editing) the one whose Edit was pressed
 
@@ -25,7 +25,7 @@
             : u.channels.length ? u.channels.map((n) => (names[n] ? `${n} ${names[n]}` : n)).join(", ") : "No channels yet";
         });
         this.data = data;
-        this.link = data.port ? `${location.protocol}//${location.hostname}:${data.port}/` : "";
+        this.link = data.on ? `${location.protocol}//${location.hostname}:${data.port}/` : "";
       },
 
       editUser(u) {
