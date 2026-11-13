@@ -378,7 +378,7 @@ EOF
     say "Done. The dashboard: http://${ip:-<this machine>}:5004 (the first visit sets its password)"
     if [ "$FS42_EMBY" = y ]; then
       echo "  Next, your Emby or Jellyfin server: http://${ip:-<this machine>}:5004/settings.html#sources (Settings, the Sources tab), under 'Emby and Jellyfin servers'."
-      echo "    Sign in with Emby Connect, or add an Emby or Jellyfin server by its address. Choose libraries, then 'Read the servers now'."
+      echo "    Sign in with Emby Connect, or add an Emby or Jellyfin server by its address. Choose libraries, then 'Scan the servers now'."
       echo "    Its shows and movies are then on the Lists & files tab of Settings, in the Emby folder."
     fi
     [ "$FS42_WEATHER" = n ] || echo "  Weather comes on air in a minute or two (channel 3, or the next free number). Its place: the Settings page."

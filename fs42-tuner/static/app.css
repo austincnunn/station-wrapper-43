@@ -77,6 +77,9 @@ fieldset > legend.title { width: 100%; padding-bottom: 0.4rem; margin-bottom: 0.
 /* ---- messages (top right) and the progress bar of a long job */
 .toasts { position: fixed; top: 4.25rem; right: 1rem; z-index: 60; display: flex; flex-direction: column; gap: 0.5rem; width: min(30rem, calc(100vw - 2rem)); pointer-events: none; }
 .toasts .notification { margin: 0; pointer-events: auto; padding: 0.9rem 2.5rem 0.9rem 1.1rem; box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.5); overflow-wrap: anywhere; }
+/* Bulma colours a bar's track only for WebKit (::-webkit-progress-bar). In Firefox the track is the element's own
+   background, which is the browser's light grey unless it is given one: white on this dark page. */
+.progress { background-color: var(--bulma-progress-bar-background-color); }
 .job-progress { margin: 0.75rem 0; }
 .job-progress .progress { margin-bottom: 0.3rem; }
 .job-progress .help { margin-top: 0; overflow-wrap: anywhere; }

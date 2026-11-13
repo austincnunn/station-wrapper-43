@@ -138,6 +138,8 @@ def emby_sync_start():
         try:
             c = EMBY.sync()
             print(f"[emby] mirror: {c['made']} made, {c['kept']} unchanged, {c['removed']} removed, {c['lists']} list(s) made", flush=True)
+        except emby.Busy:                # two starts a moment apart: the other one is doing it, and that is not an error to show
+            pass
         except Exception as e:
             EMBY.status["error"] = str(e)[:500]
     threading.Thread(target=work, daemon=True, name="emby-sync").start()
@@ -1911,9 +1913,7 @@ class Handler(BaseHTTPRequestHandler):
             if action == "choose":
                 return self._json(EMBY.choose(body.get("id"), body.get("on"), body.get("libraries"), body.get("cap_kbps")))
             if action == "sync":
-                if not emby_sync_start():
-                    raise emby.EmbyError("already reading the servers")
-                return self._json({"started": True})
+                return self._json({"started": emby_sync_start(), "syncing": True})     # already running: the page just shows it
             raise emby.EmbyError("no such call")
         except emby.EmbyError as e:
             return self._json({"error": str(e)}, 400)

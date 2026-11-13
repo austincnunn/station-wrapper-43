@@ -208,7 +208,7 @@
       <div class="box" x-data="embyPanel">
         <h2 class="title is-5">Emby and Jellyfin servers</h2>
         <p class="block has-text-grey">Sign in with Emby Connect and say which of your servers to use, or add an Emby or Jellyfin server by its
-          address. Each server's libraries of shows, movies and music videos are then read, and each becomes a list (“Server -
+          address. Each server's libraries of shows, movies and music videos are then scanned, and each becomes a list (“Server -
           Library”) on the Lists &amp; files tab, ready to put on a channel and kept up to date. Untick a server or a library to leave
           it out. No video is read from a server until a channel plays it.</p>
 
@@ -223,8 +223,8 @@
 
             <div class="notification" x-show="ask">
               <h3 class="title is-6">Which servers do you want to use?</h3>
-              <p class="block">Each server you tick is read now, and its libraries of shows, movies and music videos become lists. The first
-                read of a big server far away can take a quarter of an hour. You can switch a server on or off below at any time.</p>
+              <p class="block">Each server you tick is scanned now, and its libraries of shows, movies and music videos become lists. The first
+                scan of a big server far away can take a quarter of an hour. You can switch a server on or off below at any time.</p>
               <div class="field is-grouped is-grouped-multiline">
                 <template x-for="s in (ask ? ask.servers : [])" :key="s.id">
                   <label class="checkbox control"><input type="checkbox" :checked="want.includes(s.id)" @change="tick(s.id, $el.checked)"> <span x-text="s.name"></span></label>
@@ -250,7 +250,7 @@
             <p class="block has-text-danger" x-show="status.error" x-text="status.error"></p>
             <div x-progress="status.syncing ? syncJob : null"></div>
             <div class="buttons">
-              <button type="button" class="button is-primary" :disabled="!data.edit || status.syncing" @click="sync()">Read the servers now</button>
+              <button type="button" class="button is-primary" :disabled="!data.edit || status.syncing" @click="sync()">Scan the servers now</button>
               <button type="button" class="button" x-show="data.signed_in" :disabled="!data.edit" @click="lookAgain()">Look for Emby servers again</button>
               <button type="button" class="button" x-show="data.signed_in" :disabled="!data.edit" @click="signout()">Sign out of Emby Connect</button>
             </div>

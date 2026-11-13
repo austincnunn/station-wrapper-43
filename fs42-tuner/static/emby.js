@@ -38,13 +38,18 @@
       get summary() {
         const st = this.status, c = st.counts || {};
         return (this.data.signed_in ? `Signed in to Emby Connect as ${this.data.account}. ` : "") +
-          (st.syncing ? "Reading the servers now…" : st.last ? `Last read ${fmtWhen(st.last * 1000)}: ${c.made || 0} new, ${c.kept || 0} unchanged, ${c.removed || 0} removed${c.lists ? `, ${c.lists} list(s) made` : ""}.` : "Not read yet.");
+          (st.syncing ? this.scanning : st.last ? `Last scanned ${fmtWhen(st.last * 1000)}: ${c.made || 0} new, ${c.kept || 0} unchanged, ${c.removed || 0} removed${c.lists ? `, ${c.lists} list(s) made` : ""}.` : "Not scanned yet.");
       },
-      // What the bar shows while the servers are read: how many items so far, and of how many when the server said.
+      // "Scanning the server's media…": one server or several. Which kind (Emby or Jellyfin) is not said: a scan covers them all.
+      get scanning() {
+        const on = this.data.servers.filter((s) => s.on && !s.gone).length;
+        return on === 1 ? "Scanning the server's media…" : "Scanning your servers' media…";
+      },
+      // What the bar shows while the servers are scanned: how many items so far, and of how many when the server said.
       get syncJob() {
         const st = this.status;
         return {
-          message: st.library ? `Reading ${st.library}: ${st.read || 0}${st.total ? ` of ${st.total}` : ""} items` : "Reading the servers now…",
+          message: st.library ? `Scanning ${st.library}: ${st.read || 0}${st.total ? ` of ${st.total}` : ""} items` : this.scanning,
           done: st.total ? st.read || 0 : undefined, total: st.total || 0,
         };
       },
@@ -52,7 +57,7 @@
         : s.remote === true ? "over the internet" : s.remote === false ? "on the LAN" : "not reached yet"),
       libsLabel(s) {
         if (this.libs[s.id]) return "Hide libraries";
-        return "Choose libraries" + (s.auto ? " (chosen for you at the first read)" : s.libraries.length ? ` (${s.libraries.length} chosen)` : "");
+        return "Choose libraries" + (s.auto ? " (chosen for you at the first scan)" : s.libraries.length ? ` (${s.libraries.length} chosen)` : "");
       },
       tick(id, on) { this.want = on ? [...new Set([...this.want, id])] : this.want.filter((x) => x !== id); },
 
@@ -68,9 +73,9 @@
         this.ask = null;
         for (const id of ids) this.data = await call("/api/emby/choose", { id, on: true });
         const any = this.data.servers.some((s) => s.on && !s.gone);
-        if (any) await call("/api/emby/sync", {}).catch(() => {});     // ponytail: a read already running misses a server switched on just now; it is read at the next one
+        if (any) await call("/api/emby/sync", {}).catch(() => {});     // ponytail: a scan already running misses a server switched on just now; it is scanned at the next one
         await this.load();
-        say(any ? "Reading the servers' libraries now: a list for each appears on the Lists & files tab." : "No server is switched on: tick one below to use it.", any ? "ok" : "");
+        say(any ? "Scanning the servers' libraries now: a list for each appears on the Lists & files tab." : "No server is switched on: tick one below to use it.", any ? "ok" : "");
       },
 
       signin() {
@@ -91,7 +96,7 @@
           try {
             this.data = await call("/api/emby/add", this.direct);
             this.direct.password = "";
-            say("Added. Reading its libraries now: a list for each appears on the Lists & files tab. The password was passed on once and not saved.", "ok");
+            say("Added. Scanning its libraries now: a list for each appears on the Lists & files tab. The password was passed on once and not saved.", "ok");
             await W.sleep(1000);
             await this.load();
           } finally {
@@ -102,7 +107,7 @@
       sync() {
         return run(async () => {
           await call("/api/emby/sync", {});
-          say("Reading them in the background: new shows appear on the Lists & files tab as they are found.", "ok");
+          say("Scanning in the background: new shows appear on the Lists & files tab as they are found.", "ok");
           await W.sleep(1000);
           await this.load();
         });
@@ -135,14 +140,14 @@
         return run(async () => {
           const want = this.libs[s.id].filter((l) => (l.id === lib.id ? on : s.libraries.includes(l.id))).map((l) => l.id);
           this.data = await call("/api/emby/choose", { id: s.id, libraries: want });
-          say("Saved. Press “Read the servers now” to fetch them.", "ok");
+          say("Saved. Press “Scan the servers now” to fetch them.", "ok");
         });
       },
       removeServer(s) {
         return run(async () => {
-          if (!await W.confirm(`Remove “${s.name}”? Its videos leave the Lists & files tab at the next read.`, { ok: "Remove", danger: true })) return;
+          if (!await W.confirm(`Remove “${s.name}”? Its videos leave the Lists & files tab at the next scan.`, { ok: "Remove", danger: true })) return;
           this.data = await call("/api/emby/remove", { id: s.id });
-          say("Removed. Its videos leave the Lists & files tab at the next read.", "ok");
+          say("Removed. Its videos leave the Lists & files tab at the next scan.", "ok");
         });
       },
     }));

@@ -63,6 +63,10 @@ class EmbyError(Exception):
     """Something the person can fix: the message is safe to show."""
 
 
+class Busy(EmbyError):
+    """A scan of the servers is already running. Not a fault: whoever asked for another has nothing to do or to report."""
+
+
 def _safe_server_url(url):
     if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
         return False
@@ -457,7 +461,7 @@ class Emby:
         """Make the mirror match the chosen libraries: placeholders made for new or changed items, removed for gone ones.
         A server that can't be reached keeps its placeholders (they come back when it does). Returns the counts."""
         if not self.sync_lock.acquire(blocking=False):
-            raise EmbyError("already reading the servers")
+            raise Busy("the servers are already being scanned")
         self.status.update(syncing=True, error=None, library="", read=0, total=0)
         counts = {"made": 0, "kept": 0, "removed": 0, "servers": 0, "lists": 0}
         errors, read = [], []                          # read: (server id, library id, its folder in the mirror)
@@ -588,6 +592,8 @@ class Emby:
                     c = self.sync()
                     self.log(f"[emby] mirror: {c['made']} made, {c['kept']} unchanged, {c['removed']} removed"
                              + (f"; {self.status['error']}" if self.status.get("error") else ""), flush=True)
+                except Busy:                             # one you asked for is running: this turn is not needed
+                    pass
                 except Exception as e:
                     self.status["error"] = str(e)[:500]
                     self.log(f"[emby] mirror: {e}", flush=True)

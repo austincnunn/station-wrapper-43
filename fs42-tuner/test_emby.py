@@ -65,6 +65,21 @@ class EmbyTest(unittest.TestCase):
         e.choose("sys1", on=True, libraries=["lib1"])
         return e, fake
 
+    def test_a_second_scan_while_one_runs_is_not_an_error(self):
+        """Two starts a moment apart used to leave "already reading the servers" in red beside the progress bar of the
+        scan that was running. The second is turned away as Busy, which nothing records as an error."""
+        e, _fake = self.make([])
+        self.assertTrue(e.sync_lock.acquire(blocking=False))             # a scan is running
+        try:
+            e.status.update(syncing=True, error=None, library="Herbert TV - TV shows", read=500, total=10647)
+            with self.assertRaises(emby.Busy):
+                e.sync()
+            self.assertIsNone(e.status["error"])                         # the running scan's status is untouched
+            self.assertEqual((e.status["syncing"], e.status["read"]), (True, 500))
+        finally:
+            e.sync_lock.release()
+        self.assertTrue(issubclass(emby.Busy, emby.EmbyError))
+
     def test_wrong_password_is_refused_and_password_never_saved(self):
         e = emby.Emby(self.conf, self.mirror, http=FakeEmby([]))
         with self.assertRaises(emby.EmbyError):
