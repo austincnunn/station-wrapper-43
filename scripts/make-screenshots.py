@@ -2,7 +2,8 @@
 """A developer tool, not part of CI: run the image with the repo's code and the demo media, make a couple of stations, and take
 the screenshots in docs/images with a headless browser.
 
-Needs Docker, ffmpeg, and Chromium's headless shell (Playwright's is found in ~/.cache/ms-playwright).
+Needs Docker, ffmpeg, and a Chromium to drive: Playwright's headless shell (~/.cache/ms-playwright, or
+~/Library/Caches/ms-playwright on a Mac), or Google Chrome on a Mac, or any other named in $CHROME.
     python3 scripts/fetch-demo-media.py --dest /tmp/demo/media
     python3 scripts/make-screenshots.py --media /tmp/demo/media [--image station-wrapper-43-smoke:local] [--out docs/images]
 """
@@ -12,6 +13,7 @@ import glob
 import http.client
 import json
 import os
+import platform
 import shutil
 import socket
 import struct
@@ -30,10 +32,21 @@ class Browser:
     """A very small Chrome DevTools client using only the standard library."""
 
     def __init__(self, width=1280, height=860):
-        exe = (glob.glob(os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell"))
-               or glob.glob(os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome")))[-1]
-        self.p = subprocess.Popen([exe, "--no-sandbox", "--remote-debugging-port=9334", "--hide-scrollbars", "--force-dark-mode",
-                                   f"--window-size={width},{height}", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        found = [os.environ["CHROME"]] if os.environ.get("CHROME") else []
+        for cache in ("~/.cache/ms-playwright", "~/Library/Caches/ms-playwright"):
+            found += glob.glob(os.path.expanduser(f"{cache}/chromium_headless_shell-*/*/chrome-headless-shell"))
+            found += glob.glob(os.path.expanduser(f"{cache}/chromium-*/chrome-linux*/chrome"))
+        found += [p for p in ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",) if os.path.exists(p)]
+        if not found:
+            raise SystemExit("no Chromium found: install Playwright's (playwright install chromium) or name one in $CHROME")
+        exe = found[0] if os.environ.get("CHROME") else found[-1]
+        # its own profile folder, so a Chrome you have open is left alone; a full Chrome has to be told to be headless
+        self.profile = tempfile.mkdtemp(prefix="shots-chrome-")
+        args = [exe, "--no-sandbox", "--remote-debugging-port=9334", "--hide-scrollbars", "--force-dark-mode", f"--user-data-dir={self.profile}",
+                "--no-first-run", "--no-default-browser-check", f"--window-size={width},{height}"]
+        if "headless-shell" not in os.path.basename(exe):
+            args.append("--headless=new")
+        self.p = subprocess.Popen(args + ["about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tabs = None
         for _ in range(60):
             try:
@@ -112,14 +125,26 @@ class Browser:
                     " return [b.left + scrollX, b.top + scrollY, b.width, b.height]; })()" % json.dumps(selector))
         if not r:
             raise RuntimeError(f"nothing matches {selector}")
-        x, y, w, h = r
+        # as tall as the page while the picture is taken: a "sticky" Save bar then sits at the foot of its box, where it
+        # belongs, instead of at the bottom of a short window part way down the picture
+        full = self.js("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)")
+        self.call("Emulation.setDeviceMetricsOverride", width=self.width, height=min(int(full), 6000), deviceScaleFactor=1, mobile=False)
+        time.sleep(0.3)
+        x, y, w, h = self.js("(() => { const b = document.querySelector(%s).getBoundingClientRect();"
+                             " return [b.left + scrollX, b.top + scrollY, b.width, b.height]; })()" % json.dumps(selector))
         data = self.call("Page.captureScreenshot", format="png", captureBeyondViewport=True,
                          clip={"x": max(x - pad, 0), "y": max(y - pad, 0), "width": w + 2 * pad, "height": h + 2 * pad, "scale": 1})["data"]
         with open(path, "wb") as f:
             f.write(base64.b64decode(data))
+        self.call("Emulation.setDeviceMetricsOverride", width=self.width, height=self.height, deviceScaleFactor=1, mobile=False)
 
     def close(self):
         self.p.terminate()
+        try:
+            self.p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.p.kill()
+        shutil.rmtree(self.profile, ignore_errors=True)
 
 
 def req(method, path, body=None, timeout=120):
@@ -172,10 +197,11 @@ def main():
     for src in ("scripts/init.py", "scripts/build_channels.py", "scripts/fs42_link.py", "scripts/firstrun.py", "scripts/update_catalog.py",
                 "fs42-tuner/schedlock.py", "fieldstation42/console_launch.py"):
         shutil.copy(os.path.join(REPO, src), os.path.join(root, "wrapper", os.path.basename(src)))
-    for src in ("supervisor/supervisor.py", "fs42-tuner/stations.py"):
+    for src in ("supervisor/supervisor.py", "fs42-tuner/stations.py", "fs42-tuner/envsettings.py", "fs42-tuner/settings.py"):     # as the Dockerfile copies them
         shutil.copy(os.path.join(REPO, src), os.path.join(root, "supervisor", os.path.basename(src)))
     name = f"shots-{os.getpid()}"
-    subprocess.run(["docker", "run", "-d", "--name", name, "--network", "host", "-e", "DASHBOARD_LOGIN=0", "-e", "SYNC_ENABLED=0",
+    net = ["--network", "host"] if platform.system() == "Linux" else ["-p", f"127.0.0.1:{PORT}:{PORT}"]      # Docker on a Mac has no host network
+    subprocess.run(["docker", "run", "-d", "--name", name, *net, "-e", "DASHBOARD_LOGIN=0", "-e", "SYNC_ENABLED=0",
                     "-v", f"{root}/config:/config", "-v", f"{root}/catalog:/app/catalog", "-v", f"{os.path.abspath(a.media)}:/mnt/media:ro",
                     "-v", f"{REPO}/fs42-tuner:/opt/tuner:ro", "-v", f"{root}/wrapper:/opt/wrapper:ro",
                     "-v", f"{root}/supervisor:/opt/supervisor:ro", "-v", f"{REPO}/assets:/opt/assets:ro", a.image], check=True, capture_output=True)
@@ -188,6 +214,7 @@ def main():
         shots = os.path.join(a.out)
 
         # a fresh install: the guide channel and the test pattern, and the getting-started card
+        wait(lambda: sum(1 for c in req("GET", "/channels.json")[1] if c.get("on_air")) >= 2, "the first two channels to be on air", 180)
         time.sleep(8)
         b.go(f"{base}/index.html", 3)
         b.shot(os.path.join(shots, "dashboard-first-run.png"), full=False)
@@ -275,15 +302,28 @@ def main():
         time.sleep(1.0)
         b.js("[...document.querySelectorAll('.tag-list a')].find(l => l.textContent.includes('Superman'))?.click()")
         time.sleep(0.8)
-        b.clip("main .columns", os.path.join(shots, "files.png"))
-        page("settings.html#schedule", "schedule.png", 4)
+        b.clip("main .container", os.path.join(shots, "files.png"))
+        # the top of a day, with its first block opened to the files inside it (a whole day is too long for one picture)
+        b.go(f"{base}/settings.html?name=Saturday%20Cartoons#schedule", 4)
+        b.js("document.querySelector('table.sched .twisty')?.click()")
+        time.sleep(1.5)
+        b.shot(os.path.join(shots, "schedule.png"), full=False)
+        # a camera as a source, so the Sources tab has one to show (added after the dashboard's picture: it is a channel too)
+        req("POST", "/api/iptv/save", {"type": "stream", "name": "Front door", "url": "rtsp://192.168.1.60:554/stream1", "mode": "convert"})
         b.go(f"{base}/settings.html#sources", 3)
-        b.js("document.querySelectorAll('details').forEach(d => d.open = true)")
+        b.js("document.querySelectorAll('[x-data=sourcesTab] details').forEach(d => d.open = true)")
         b.js("(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; "
              "while ((n = w.nextNode())) n.nodeValue = n.nodeValue.replace(/192\\.168\\.\\d+\\.\\d+/g, '192.168.1.50'); })()")   # a private address, tidied for a picture
         time.sleep(0.5)
         b.shot(os.path.join(shots, "sources.png"), full=True)
+        b.js("document.querySelector('[x-data=embyPanel]').id = 'emby-box'; document.getElementById('w-place').closest('form').id = 'weather-box'")
+        b.clip("#emby-box", os.path.join(shots, "emby.png"))                      # for the wiki's Emby Servers page
+        b.clip("#weather-box", os.path.join(shots, "weather.png"))                # ... and its Weather Channel page
         page("settings.html#status", "status.png", 4)
+        b.go(f"{base}/settings.html#general", 3)
+        b.clip("main .container", os.path.join(shots, "settings.png"))
+        b.go(f"{base}/settings.html#players", 3)
+        b.clip("main .container", os.path.join(shots, "players.png"))
 
         # the schedule editor: the week, a slot chosen, and the one browser for what plays
         b.go(f"{base}/station.html?name=Saturday%20Cartoons", 4)
@@ -304,7 +344,20 @@ def main():
         b.js("[...document.querySelectorAll('.box')].find(p => (p.querySelector('h2') || {}).textContent === 'Details').id = 'details-panel'")
         b.clip("#details-panel", os.path.join(shots, "station-details.png"))
         b.go(f"{base}/station.html", 3)
-        b.clip("form", os.path.join(shots, "station-new.png"))
+        b.clip("main form", os.path.join(shots, "station-new.png"))
+
+        # a build in progress: the card's bar and its status line
+        code, job = req("POST", "/api/stations/build", {"name": "Movie Night", "days": 4, "rebuild": True})
+        if code == 200:
+            b.go(f"{base}/stations.html", 1)
+            try:
+                wait(lambda: b.js("[...document.querySelectorAll('.box.station .job-progress:not([hidden]) progress[value]')].some(p => p.value >= 50)"),
+                     "a progress bar past half way", 240, 0.5)
+                b.js("document.querySelector('.box.station .job-progress:not([hidden])').closest('.box').id = 'building'")
+                b.clip("#building", os.path.join(shots, "building.png"))
+            except RuntimeError as e:
+                print("no picture of a build in progress:", e)
+            wait(lambda: req("GET", f"/api/stations/job?id={job['id']}")[1].get("state") != "running", "the build to end", 300)
 
         # the TV guide channel: drawn here from the container's own guide, at the top of its scroll (a frame of the live stream
         # would catch it part way down)

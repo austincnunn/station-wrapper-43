@@ -85,6 +85,8 @@ Run it beside the compose file (it needs a clone of this repository for the scri
 | **Settings → Status**: what is wrong first, with a button to fix it | **Settings → Schedule**: what plays when, down to each file in a break |
 | ![First run](docs/images/dashboard-first-run.png) | ![New station](docs/images/station-new.png) |
 | **First run**: the Getting started card and a channel in one click | **New station**: start from a template, then change anything |
+| ![Settings](docs/images/settings.png) | ![A build in progress](docs/images/building.png) |
+| **Settings**: one page, with a tab for each group | **A build in progress**: anything slow shows how far it is |
 
 ![The details of a station](docs/images/station-details.png)
 
