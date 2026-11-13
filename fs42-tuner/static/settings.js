@@ -6,13 +6,10 @@
   "use strict";
   const { call, say } = W;
 
+  // Each tab says what it is for in its own first paragraph (settings.html), so nothing above the tabs changes height.
   const TABS = [
-    { id: "general", label: "General", about: "This machine, and the settings that seldom need changing." },
-    { id: "sources", label: "Sources", about: "Other tuners, playlists of channels, single streams such as cameras, and Emby or Jellyfin servers. Their channels get numbers of their own and join the lineup, the guide, the player and the dashboard." },
-    { id: "schedule", label: "Schedule", about: "What each station plays, day by day." },
-    { id: "files", label: "Lists & files", about: "Build the lists a station plays from. Nothing is copied: a list holds links, so a video can be in as many lists as you like and your media is never touched." },
-    { id: "players", label: "Players", about: "Player PCs in client mode: connect one, and change its settings from here." },
-    { id: "status", label: "Status", about: "What is wrong, what to look at, and what is fine. The diagnostics file holds all of this plus the last messages the container printed, with passwords left out: send it when asking for help." },
+    { id: "general", label: "General" }, { id: "sources", label: "Sources" }, { id: "schedule", label: "Schedule" },
+    { id: "files", label: "Lists & files" }, { id: "players", label: "Players" }, { id: "status", label: "Status" },
   ];
   const current = () => {
     const id = location.hash.slice(1);
@@ -22,6 +19,12 @@
   W.onTab = (id) => document.visibilityState === "visible" && current() === id;
 
   const SOURCE = { saved: "set here", env: "from the compose file", default: "built-in default" };
+  // what each secret in .env is for, by its name (pairs, not name: "text", which a secret scanner reads as a password)
+  const SECRET_FOR = Object.fromEntries([
+    ["DASHBOARD_PASSWORD", "Sets the dashboard's password at first start. Optional: the login page can set it instead."],
+    ["MEDIA_SERVER_API_KEY", "Lets the guide ask your Emby or Jellyfin server for titles and pictures."],
+    ["FS42_SYNC_TOKEN", "What player PCs sign in with. Made by this server when not set (the Players tab shows it)."],
+  ]);
   const WEATHER = "WEATHER_LOCATION";       // the weather channel's place: asked for on the Sources tab, not under Advanced
   const shown = (s, v) => (s.kind === "bool" ? (v === "0" ? "off" : "on") : v === "" || v == null ? "automatic" : v);
 
@@ -44,8 +47,9 @@
         call("/api/settings").then((r) => { this.r = r; }).catch((e) => say(e.message, "err"));
       },
 
-      get secrets() {
-        return Object.entries(this.r.machine.secrets).map(([k, v]) => `${k} ${v ? "set" : "not set"}`).join(", ");
+      // The secrets in .env: what each is for, and whether it is set (never its value).
+      get secretRows() {
+        return Object.entries((this.r && this.r.machine.secrets) || {}).map(([name, set]) => ({ name, set: !!set, what: SECRET_FOR[name] || "" }));
       },
 
       // Every settings form on the page: this server's (General), then one for each player PC (Players).

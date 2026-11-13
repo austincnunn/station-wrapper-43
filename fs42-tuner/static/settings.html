@@ -12,13 +12,8 @@
 <div id="shell" data-page="settings"></div>
 <main class="section" x-data="settingsPage">
 <div class="container">
-  <header class="page-head">
-    <div>
-      <h1 class="title">Settings</h1>
-      <p class="subtitle" x-text="tabs.find((t) => t.id === tab).about"></p>
-    </div>
-  </header>
-
+  <!-- nothing above the tabs changes height, so they stay put from one tab to the next: each tab says what it is itself -->
+  <h1 class="is-sr-only">Settings</h1>
   <div class="tabs is-boxed">
     <ul role="tablist">
       <template x-for="t in tabs" :key="t.id">
@@ -38,14 +33,14 @@
     <template x-if="r">
       <div>
         <div class="block" x-show="tab === 'general'">
-          <p class="block has-text-grey">The schedule keeper, episode names and captions are on the
-            <a href="/stations.html">Stations</a> page.</p>
+          <p class="block has-text-grey">This machine, and the settings that seldom need changing. The schedule keeper, episode
+            names and captions are on the <a href="/stations.html">Stations</a> page.</p>
           <div class="box">
             <h2 class="title is-5">This machine</h2>
             <table class="table is-fullwidth facts">
               <tbody>
-                <tr><th>Role</th><td x-text="`${r.machine.role} (FS42_ROLE in the compose file; a player PC runs the client compose file)`"></td></tr>
-                <tr><th>Time zone</th><td x-text="r.machine.tz || '(the container\'s)'"></td></tr>
+                <tr><th>Role</th><td x-text="r.machine.role"></td></tr>
+                <tr><th>Time zone</th><td x-text="r.machine.tz"></td></tr>
                 <tr><th>Version</th><td x-text="r.machine.version || '?'"></td></tr>
                 <tr><th>Login</th>
                   <td>
@@ -53,13 +48,13 @@
                     <span x-show="!r.machine.login">OFF (DASHBOARD_LOGIN)</span>
                   </td></tr>
                 <tr><th>Changes from the dashboard</th><td x-text="r.machine.edit ? 'on' : 'OFF (DASHBOARD_EDIT)'"></td></tr>
-                <tr><th>Secrets (in .env; the sync token can be made here)</th><td x-text="secrets"></td></tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div x-show="tab === 'players'">
+        <div class="block" x-show="tab === 'players'">
+          <p class="block has-text-grey">Player PCs in client mode: connect one, and change its settings from here.</p>
           <p class="block has-text-grey" x-show="!r.sync_on">No player PCs: client sync is off (this server could not make its sync
             token; set FS42_SYNC_TOKEN in its .env).</p>
           <div class="box" x-show="r.sync_on">
@@ -111,6 +106,21 @@
                 </template>
               </fieldset>
             </template>
+            <!-- secrets are never settings: they stay in .env, and this only says whether each is there -->
+            <fieldset class="block" x-show="f.advanced">
+              <legend class="title is-6">Secrets</legend>
+              <p class="help block">Set in <code>.env</code> beside the compose file. Their values are never shown here, only whether each is set.</p>
+              <table class="table is-fullwidth facts">
+                <tbody>
+                  <template x-for="s in secretRows" :key="s.name">
+                    <tr>
+                      <th><code x-text="s.name"></code></th>
+                      <td><span class="tag" :class="s.set && 'is-success'" x-text="s.set ? 'set' : 'not set'"></span> <span x-text="s.what"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </fieldset>
             <div class="buttons is-right sticky-actions" x-show="r.edit">
               <button type="submit" class="button is-primary" :class="busy && 'is-loading'" :disabled="busy">Save</button>
             </div>
@@ -124,54 +134,8 @@
   <!-- ================= Sources ================= -->
   <template x-if="seen.sources">
     <section x-show="tab === 'sources'" role="tabpanel" x-data="sourcesTab">
-      <div class="buttons is-right">
-        <button type="button" class="button is-primary" :disabled="!edit" @click="openForm(null)">Add a source</button>
-      </div>
-
-      <form class="box" x-show="form.open" x-ref="form" @submit.prevent="save()">
-        <h2 class="title is-5" x-text="form.editing ? `Change ${form.title}` : 'Add a source'"></h2>
-        <div class="field">
-          <label class="label" for="f-type">What it is</label>
-          <div class="control"><div class="select">
-            <select id="f-type" x-model="form.type" :disabled="!!form.editing" @change="typeChanged()">
-              <option value="stream">A single stream (a camera, one channel)</option>
-              <option value="m3u">A playlist of channels (an .m3u or .m3u8 address)</option>
-              <option value="hdhomerun">Another HDHomeRun tuner</option>
-            </select>
-          </div></div>
-        </div>
-        <div class="field">
-          <label class="label" for="f-name">Name</label>
-          <div class="control"><input class="input" id="f-name" x-ref="name" type="text" maxlength="80" required placeholder="Front door" x-model="form.name"></div>
-        </div>
-        <div class="field">
-          <label class="label" for="f-url">Address</label>
-          <div class="control"><input class="input" id="f-url" type="text" required autocomplete="off" x-model="form.url" :placeholder="urlPlaceholder"></div>
-          <p class="help" x-text="HINTS[form.type]"></p>
-        </div>
-        <div class="field">
-          <label class="label" for="f-mode">How to play it</label>
-          <div class="control"><div class="select">
-            <select id="f-mode" x-model="form.mode">
-              <option value="convert">Convert it so a web browser can play it (uses more CPU)</option>
-              <option value="relay">Pass it on as it is (cheap; a browser may not be able to play it)</option>
-              <option value="guide" :hidden="form.type !== 'hdhomerun'" :disabled="form.type !== 'hdhomerun'">Guide only: its listings go in our guide, but Jellyfin plays the tuner's channels itself (tuners only)</option>
-            </select>
-          </div></div>
-        </div>
-        <div class="field" x-show="form.type !== 'hdhomerun'">
-          <label class="label" for="f-base">First channel number</label>
-          <div class="control"><input class="input" id="f-base" type="number" min="1" max="99999" placeholder="automatic" x-model="form.base"></div>
-          <p class="help">Its channels are numbered from here (a tuner keeps its own numbers).</p>
-        </div>
-        <p class="help block" role="status" x-text="form.result"></p>
-        <div class="buttons is-right">
-          <button type="button" class="button" @click="form.open = false">Cancel</button>
-          <button type="button" class="button" :class="form.testing && 'is-loading'" :disabled="form.testing" @click="test()">Test the address</button>
-          <button type="submit" class="button is-primary" :class="form.saving && 'is-loading'" :disabled="form.saving">Save</button>
-        </div>
-      </form>
-
+      <p class="block has-text-grey">Other tuners, playlists of channels, single streams such as cameras, and Emby or Jellyfin servers.
+        Their channels get numbers of their own and join the lineup, the guide, the player and the dashboard.</p>
       <div class="box" x-show="legacy">
         <h2 class="title is-5">An older setting: one HDHomeRun in the config file</h2>
         <p class="block has-text-grey" x-text="legacy ? `The config file still has a single passthrough device (${legacy.url}, ${legacy.mode} mode). Sources on this page replace it: they feed the guide and the lineup the same way, with the numbers kept stable.` : ''"></p>
@@ -186,7 +150,7 @@
         </ul></div>
       </div>
 
-      <p class="block has-text-grey" x-show="loaded && !sources.length">No sources yet. Add one: a camera, a playlist, or another tuner.</p>
+      <p class="block has-text-grey" x-show="loaded && !sources.length">No sources yet. Add one below: a camera, a playlist, or another tuner.</p>
 
       <template x-for="s in sources" :key="s.id">
         <div class="box" :class="!s.enabled && 'is-off'">
@@ -201,7 +165,7 @@
           <div class="buttons">
             <button type="button" class="button" :disabled="!edit" @click="toggle(s)" x-text="s.enabled ? 'Switch off' : 'Switch on'"></button>
             <button type="button" class="button" x-show="s.type !== 'stream'" :disabled="!edit || reading === s.id" @click="refresh(s)">Read the channels again</button>
-            <button type="button" class="button" :disabled="!edit" @click="openForm(s)">Edit</button>
+            <button type="button" class="button" :disabled="!edit" @click="editSource(s)">Edit</button>
             <button type="button" class="button is-danger is-outlined" :disabled="!edit" @click="remove(s)">Delete</button>
           </div>
           <details x-show="s.channels.length" :open="open.includes(s.id)" @toggle="noteOpen(s.id, $el.open)">
@@ -317,12 +281,58 @@
           </div>
         </template>
       </div>
+
+      <!-- add a source, or change the one whose Edit was pressed: always here, under everything it adds to -->
+      <form class="box" x-ref="form" @submit.prevent="save()">
+        <h2 class="title is-5" x-text="form.editing ? `Change ${form.title}` : 'Add a source'"></h2>
+        <div class="field">
+          <label class="label" for="f-type">What it is</label>
+          <div class="control"><div class="select">
+            <select id="f-type" x-model="form.type" :disabled="!!form.editing" @change="typeChanged()">
+              <option value="stream">A single stream (a camera, one channel)</option>
+              <option value="m3u">A playlist of channels (an .m3u or .m3u8 address)</option>
+              <option value="hdhomerun">Another HDHomeRun tuner</option>
+            </select>
+          </div></div>
+        </div>
+        <div class="field">
+          <label class="label" for="f-name">Name</label>
+          <div class="control"><input class="input" id="f-name" x-ref="name" type="text" maxlength="80" required placeholder="Front door" x-model="form.name"></div>
+        </div>
+        <div class="field">
+          <label class="label" for="f-url">Address</label>
+          <div class="control"><input class="input" id="f-url" type="text" required autocomplete="off" x-model="form.url" :placeholder="urlPlaceholder"></div>
+          <p class="help" x-text="HINTS[form.type]"></p>
+        </div>
+        <div class="field">
+          <label class="label" for="f-mode">How to play it</label>
+          <div class="control"><div class="select">
+            <select id="f-mode" x-model="form.mode">
+              <option value="convert">Convert it so a web browser can play it (uses more CPU)</option>
+              <option value="relay">Pass it on as it is (cheap; a browser may not be able to play it)</option>
+              <option value="guide" :hidden="form.type !== 'hdhomerun'" :disabled="form.type !== 'hdhomerun'">Guide only: its listings go in our guide, but Jellyfin plays the tuner's channels itself (tuners only)</option>
+            </select>
+          </div></div>
+        </div>
+        <div class="field" x-show="form.type !== 'hdhomerun'">
+          <label class="label" for="f-base">First channel number</label>
+          <div class="control"><input class="input" id="f-base" type="number" min="1" max="99999" placeholder="automatic" x-model="form.base"></div>
+          <p class="help">Its channels are numbered from here (a tuner keeps its own numbers).</p>
+        </div>
+        <p class="help block" role="status" x-text="form.result"></p>
+        <div class="buttons is-right">
+          <button type="button" class="button" x-show="form.editing" @click="blank()">Cancel</button>
+          <button type="button" class="button" :class="form.testing && 'is-loading'" :disabled="form.testing" @click="test()">Test the address</button>
+          <button type="submit" class="button is-primary" :class="form.saving && 'is-loading'" :disabled="form.saving || !edit" x-text="form.editing ? 'Save' : 'Add it'"></button>
+        </div>
+      </form>
     </section>
   </template>
 
   <!-- ================= Schedule ================= -->
   <template x-if="seen.schedule">
     <section x-show="tab === 'schedule'" role="tabpanel" x-data="scheduleTab">
+      <p class="block has-text-grey">What each station plays, day by day.</p>
       <div class="field is-grouped is-grouped-multiline">
         <div class="control"><div class="select">
           <select aria-label="Station" x-model="name" @change="pick()">
@@ -380,6 +390,8 @@
   <!-- ================= Lists & files ================= -->
   <template x-if="seen.files">
     <section x-show="tab === 'files'" role="tabpanel" x-data="filesTab">
+      <p class="block has-text-grey">Build the lists a station plays from. Nothing is copied: a list holds links, so a video can be in as
+        many lists as you like and your media is never touched.</p>
       <article class="message is-warning" x-show="warning"><div class="message-body" x-text="warning"></div></article>
 
       <details class="box" x-show="inUse && (inUse.sources.length || idle.length)" @toggle="$el.open && loadSources()">
@@ -534,6 +546,7 @@
   <!-- ================= Status ================= -->
   <template x-if="seen.status">
     <section x-show="tab === 'status'" role="tabpanel" x-data="statusTab">
+      <p class="block has-text-grey">What is wrong, what to look at, and what is fine.</p>
       <div class="buttons is-right">
         <button type="button" class="button" :disabled="testing" @click="speed()">Test media speed</button>
         <a class="button" href="/api/system/diagnostics" download>Download diagnostics</a>

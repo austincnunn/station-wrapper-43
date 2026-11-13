@@ -45,6 +45,21 @@ class PagesTest(unittest.TestCase):
         for part in ("sourcesTab", "embyPanel", "scheduleTab", "filesTab", "statusTab"):
             self.assertIn(f'x-data="{part}"', html)
 
+    def test_nothing_above_the_settings_tabs_changes_height(self):
+        """A title and a per-tab subtitle above the tab bar made it jump from tab to tab: each tab says what it is itself."""
+        html = read("settings.html")
+        above = html[html.index("<main"):html.index('<div class="tabs')]
+        self.assertNotIn("x-text", above)
+        self.assertNotRegex(above, r'class="(?:title|subtitle|page-head)')
+        self.assertIn('<h1 class="is-sr-only">Settings</h1>', above)              # still a heading for a screen reader
+
+    def test_the_sources_tab_always_shows_its_add_form_last(self):
+        html = read("settings.html")
+        sources = html[html.index('x-data="sourcesTab"'):html.index('x-data="scheduleTab"')]
+        form = sources.index('<form class="box" x-ref="form"')
+        self.assertGreater(form, sources.index('x-data="embyPanel"'))
+        self.assertNotIn("form.open", html + read("iptv.js"))
+
     def test_nothing_drawn_by_the_chooser_is_a_function(self):
         """Alpine calls any function an expression evaluates to. A row that carried its own "use" function was chosen
         just by being drawn (x-show="r.use"), which walked the media and made a source of everything in it. Rows and

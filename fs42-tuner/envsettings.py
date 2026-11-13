@@ -20,6 +20,8 @@ compose file or .env, and the page only says whether each is set.
 import json
 import os
 import re
+import time
+from datetime import datetime
 
 import settings
 
@@ -235,10 +237,54 @@ def save_player(name, values):
     return player_overlay(name)
 
 
+def time_zone(env=None, localtime="/etc/localtime", zonefile="/etc/timezone"):
+    """The time zone in force, by name where one can be found, with its short name and offset now:
+    "America/New_York (EST, UTC-05:00)". The name is TZ, else where /etc/localtime points, else /etc/timezone."""
+    env = os.environ if env is None else env
+    name = (env.get("TZ") or "").strip().lstrip(":")
+    if not name:
+        target = os.path.realpath(localtime)
+        if "zoneinfo/" in target:
+            name = target.split("zoneinfo/", 1)[1]
+    if not name:
+        try:
+            with open(zonefile) as f:
+                name = f.read().strip()
+        except OSError:
+            pass
+    short, offset = time.strftime("%Z"), time.localtime().tm_gmtoff          # this process's own clock, unless the name says better
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo(name))
+        short, offset = now.tzname(), int(now.utcoffset().total_seconds())
+    except Exception:                    # no such zone, an old-style TZ ("EST5EDT"), or no zone files here
+        pass
+    hours = f"UTC{'-' if offset < 0 else '+'}{abs(offset) // 3600:02d}:{abs(offset) % 3600 // 60:02d}"
+    return f"{name} ({short}, {hours})" if name and short and short != name else f"{name or short or 'unknown'} ({hours})"
+
+
+def build_stamp(env=None):
+    """Which build this is, from what the image was stamped with when it was built (Dockerfile): "dev build 28e6a47,
+    13 Nov 2026", or "v0.8.0 (28e6a47), 13 Nov 2026" for a release."""
+    env = os.environ if env is None else env
+    ref, sha, built = ((env.get(k) or "").strip() for k in ("FS42_WRAPPER_REF", "FS42_WRAPPER_SHA", "FS42_WRAPPER_BUILT"))
+    if sha in ("", "unknown"):
+        return "not stamped (run from source, or an image built by hand)"
+    sha = sha[:7]
+    branch = ref[:-len(sha) - 1] if ref.endswith("-" + sha) else ref           # the image tag is <branch>-<sha>
+    text = f"{branch} ({sha})" if re.match(r"v?\d", branch) else f"{branch or 'a'} build {sha}"
+    try:
+        day = datetime.strptime(built[:10], "%Y-%m-%d")
+        text += f", {day.day} {day:%b %Y}"
+    except ValueError:
+        pass
+    return text
+
+
 def machine(env=None):
     """The read-only facts the page shows: role, clock, version, the login switches, and which secrets are set."""
     env = os.environ if env is None else env
-    return {"role": (env.get("FS42_ROLE") or "server").strip().lower(), "tz": env.get("TZ", ""),
-            "version": env.get("FS42_WRAPPER_SHA", "")[:7], "login": env.get("DASHBOARD_LOGIN", "1").lower() not in OFF,
+    return {"role": (env.get("FS42_ROLE") or "server").strip().lower(), "tz": time_zone(env),
+            "version": build_stamp(env), "login": env.get("DASHBOARD_LOGIN", "1").lower() not in OFF,
             "edit": env.get("DASHBOARD_EDIT", "1").lower() not in OFF,
             "secrets": {k: bool(env.get(k, "").strip()) for k in SECRETS}}

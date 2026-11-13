@@ -19,7 +19,8 @@
       sources: [], edit: true, legacy: null, clashes: [], loaded: false,
       open: [],                         // ids of the sources whose channel table is open
       reading: null,                    // id of the source whose channels are being read again
-      form: { open: false, editing: null, title: "", type: "stream", name: "", url: "", mode: "convert", base: "", result: "", saving: false, testing: false },
+      // the form at the bottom of the tab: a new source, or (editing: its id) the one whose Edit was pressed
+      form: { editing: null, title: "", type: "stream", name: "", url: "", mode: "convert", base: "", result: "", saving: false, testing: false },
 
       init() {
         run(() => this.load());
@@ -93,14 +94,17 @@
       },
 
       // ---- the form
-      openForm(s) {
+      blank() {
+        Object.assign(this.form, { editing: null, title: "", type: "stream", name: "", url: "", mode: "convert", base: "", result: "" });
+      },
+      editSource(s) {
         Object.assign(this.form, {
-          open: true, editing: s ? s.id : null, title: s ? s.name : "", type: s ? s.type : "stream",   // what kind of source it is can't change: make a new one
-          name: s ? s.name : "", url: s ? s.url : "", mode: s ? s.mode : "convert", base: s && s.base ? s.base : "", result: "",
+          editing: s.id, title: s.name, type: s.type,              // what kind of source it is can't change: make a new one
+          name: s.name, url: s.url, mode: s.mode, base: s.base ? s.base : "", result: "",
         });
         this.$nextTick(() => {
-          this.$refs.name.focus();
-          this.$refs.form.scrollIntoView({ block: "nearest" });
+          this.$refs.form.scrollIntoView({ block: "start", behavior: "smooth" });
+          this.$refs.name.focus({ preventScroll: true });
         });
       },
       typeChanged() {
@@ -134,12 +138,12 @@
             const body = { name: f.name, url: f.url, mode: f.mode, base: f.base === "" || f.base == null ? null : Number(f.base) };
             if (f.editing) body.id = f.editing; else body.type = f.type;
             await call("/api/iptv/save", body);
-            f.open = false;
+            this.blank();
             await this.load();
             say("Saved. Its channels are in the lineup, the guide and the player.", "ok");
           } finally {
             f.saving = false;
-            f.result = "";
+            if (f.result === "Saving…") f.result = "";
           }
         });
       },

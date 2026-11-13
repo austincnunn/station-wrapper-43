@@ -85,6 +85,35 @@ class EnvSettingsTest(unittest.TestCase):
         self.assertFalse(m["edit"])
         self.assertTrue(all(k not in es.BY_KEY for k in es.SECRETS))
 
+    def test_the_time_zone_is_named_with_its_offset(self):
+        import os, tempfile
+        self.assertEqual(es.machine({"FS42_ROLE": "Client "})["role"], "client")
+        self.assertRegex(es.time_zone({"TZ": "America/Chicago"}), r"^America/Chicago \(C[SD]T, UTC-0[56]:00\)$")
+        self.assertEqual(es.time_zone({"TZ": "UTC"}), "UTC (UTC+00:00)")                       # the name is not said twice
+        d = tempfile.mkdtemp()
+        try:                                                    # no TZ: the zone /etc/localtime points at
+            os.makedirs(os.path.join(d, "zoneinfo", "Europe"))
+            open(os.path.join(d, "zoneinfo", "Europe", "London"), "w").close()
+            os.symlink(os.path.join(d, "zoneinfo", "Europe", "London"), os.path.join(d, "localtime"))
+            self.assertTrue(es.time_zone({}, localtime=os.path.join(d, "localtime")).startswith("Europe/London ("))
+            with open(os.path.join(d, "timezone"), "w") as f:   # ... or the one /etc/timezone names
+                f.write("Asia/Tokyo\n")
+            self.assertTrue(es.time_zone({}, localtime=os.path.join(d, "nothing"), zonefile=os.path.join(d, "timezone")).startswith("Asia/Tokyo ("))
+            nameless = es.time_zone({}, localtime=os.path.join(d, "nothing"), zonefile=os.path.join(d, "nothing"))
+            self.assertRegex(nameless, r"UTC[+-]\d\d:\d\d\)$")                                 # never empty, never "(the container's)"
+        finally:
+            import shutil
+            shutil.rmtree(d)
+
+    def test_the_version_is_the_build_the_image_was_stamped_with(self):
+        stamp = lambda ref, sha, built: es.build_stamp({"FS42_WRAPPER_REF": ref, "FS42_WRAPPER_SHA": sha, "FS42_WRAPPER_BUILT": built})
+        self.assertEqual(stamp("dev-28e6a47", "28e6a47", "2026-11-13T04:31:02Z"), "dev build 28e6a47, 13 Nov 2026")
+        self.assertEqual(stamp("main-28e6a47", "28e6a47" + "0" * 33, "unknown"), "main build 28e6a47")            # a full commit id is cut to 7
+        self.assertEqual(stamp("v0.8.0", "28e6a47", "2026-12-01T00:00:00Z"), "v0.8.0 (28e6a47), 1 Dec 2026")       # a release
+        self.assertIn("not stamped", stamp("dev", "unknown", "unknown"))                                         # an image built by hand
+        self.assertIn("not stamped", es.build_stamp({}))
+        self.assertEqual(es.machine({"FS42_WRAPPER_REF": "dev-abc1234", "FS42_WRAPPER_SHA": "abc1234"})["version"], "dev build abc1234")
+
 
 if __name__ == "__main__":
     unittest.main()
