@@ -5,6 +5,9 @@
   const { call, fmtWhen, say, run } = W;
 
   const SHOWN_LISTS = 6;             // a card names this many lists; the rest fold away
+  // a build's step (the job's "phase", stationsapi.py), as the card's status line says it
+  const DOING = { starting: "starting the build now", linking: "linking the series you picked now", waiting: "waiting for another schedule change to finish",
+    catalog: "building the catalog now", days: "adding days to the schedule now" };
   const LANGUAGES = [["en", "English"], ["ja", "Japanese"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["it", "Italian"],
     ["pt", "Portuguese"], ["ko", "Korean"], ["zh", "Chinese"], ["ru", "Russian"]];
 
@@ -34,12 +37,24 @@
       live: (s) => s.type === "guide" || s.type === "web",      // drawn live (the guide) or by a player (pay-per-view): no schedule
       jobFor(s) { return this.jobs[s.name] || s.job || null; },
       busy(s) { return !!this.jobFor(s); },
+      // What a build is doing right now, in a few words, or "" when none is running for this station.
+      doing(s) {
+        const job = this.jobFor(s);
+        if (!job || job.state === "done" || job.state === "error") return "";
+        if (job.phase === "catalog" && job.refresh) return "looking for new videos now";
+        return DOING[job.phase] || "building it now";
+      },
+      // The card's one line. While a build runs it says so, instead of telling you to start the build that is running.
       status(s) {
         if (s.type === "guide") return ["On air. The guide is drawn live: nothing needs scheduling.", "has-text-success"];
         if (s.type === "web") return ["On air on your players (not in Emby or Jellyfin): a menu, nothing needs scheduling.", "has-text-success"];
-        if (!s.scheduled_until) return ["Off air: nothing is scheduled yet. Use Build to make a schedule.", "has-text-danger"];
-        if (!s.on_air) return [`Off air: the schedule ended ${fmtWhen(s.scheduled_until)}. Add days to put it back on.`, "has-text-danger"];
-        if (s.low) return [`On air, but the schedule ends ${fmtWhen(s.scheduled_until)}. Add days soon.`, "has-text-warning"];
+        const doing = this.doing(s), now = doing ? ` ${doing[0].toUpperCase()}${doing.slice(1)}.` : "";
+        if (!s.scheduled_until) {
+          return doing ? [`Off air: ${doing}.`, "has-text-warning"]
+            : ["Off air: nothing is scheduled yet. Open Edit and use Save and build to make a schedule.", "has-text-danger"];
+        }
+        if (!s.on_air) return [`Off air: the schedule ended ${fmtWhen(s.scheduled_until)}.` + (now || " Add days to put it back on."), doing ? "has-text-warning" : "has-text-danger"];
+        if (s.low) return [`On air, but the schedule ends ${fmtWhen(s.scheduled_until)}.` + (now || " Add days soon."), "has-text-warning"];
         return [`On air. Scheduled until ${fmtWhen(s.scheduled_until)}.`, "has-text-success"];
       },
 

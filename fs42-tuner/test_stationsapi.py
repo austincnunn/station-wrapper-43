@@ -605,6 +605,7 @@ class JobsTest(Base):
         job = self.api.build("Cartoons", 3)
         done = self.wait(job["id"])
         self.assertEqual(done["state"], "done")
+        self.assertEqual(done["phase"], "done")
         self.assertEqual(self.console.log, [("rebuild", "Cartoons")] + [("day", "Cartoons")] * 3)
 
     def test_resuming_a_rebuild_whose_catalog_was_built_only_adds_the_days_that_are_missing(self):
@@ -800,6 +801,7 @@ class ProgressBarTest(unittest.TestCase):
             stationsapi.resolver.file_meta_count = saved
         self.assertEqual(job["percent"], 25)
         self.assertEqual((job["checked"], job["total"]), (30, 60))
+        self.assertEqual(job["phase"], "catalog")                 # which step it is on, for the page to say in its own words
 
 
 class BuiltCallbackTest(unittest.TestCase):
