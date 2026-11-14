@@ -52,7 +52,7 @@ jobs:
           python3 scripts/test_setup_dirs.py
           (cd fs42-sync && python3 test_sync.py)
           (cd supervisor && python3 test_supervisor.py)
-          (cd client && python3 test_client.py && python3 test_banner.py)
+          (cd client && python3 test_client.py && python3 test_banner.py && python3 test_remote.py)
 
       - name: FieldStation42 contract (upstream's newest, which the next image build will fetch)
         env:

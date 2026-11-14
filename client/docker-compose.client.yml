@@ -28,7 +28,10 @@ services:
       - /dev/snd                  # sound
       - /dev/tty0                 # these two: the bare X server for a pay-per-view station (FieldStation42's browser needs X);
       - /dev/tty7                 #   it only runs while the server has one
+    device_cgroup_rules:
+      - 'c 13:* rmw'              # with /dev/input below: a keyboard is the remote, even one plugged in later (arrows: channel and volume)
     volumes:
+      - /dev/input:/dev/input           # keyboards and IR receivers (leave out these two lines for no keyboard remote)
       - ./data/config:/config           # the copied schedule and station configs (local disk)
       - ./data/catalog:/app/catalog     # the copied catalog links (local disk: links don't work on a share)
       - /mnt/media:/mnt/media:ro        # the media share, at the same path as on the server

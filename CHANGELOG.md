@@ -6,6 +6,12 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **A keyboard is a player PC's remote.** Plug a keyboard (or a Flirc or other IR receiver that types like one) into a
+  player PC in client mode: up and down change the channel, left and right the volume, digits type a channel number,
+  Home shows the guide, Backspace goes back to the last channel and M mutes (FieldStation42's own remote decides the
+  keys). Keyboards plugged in later are found too; the PC's power and sleep buttons are left to the host. It needs two
+  new lines in the player's compose file (`device_cgroup_rules` and the `/dev/input` volume, see
+  `client/docker-compose.client.yml`). amd64 only: the arm64 image has no keyboard support.
 - **A web viewer with a login for each viewer.** `VIEWER=1` in `.env` starts a second small container from the same
   image that serves the player alone, on port 5005: no dashboard, nothing to change. Each viewer logs in with a name and
   password and gets only the channels you tick for them on the new **Viewers** tab of Settings (or every channel), in
