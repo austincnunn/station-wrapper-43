@@ -33,6 +33,15 @@ class Variants(unittest.TestCase):
         self.assertTrue(arg(high, "-vf").startswith(f"scale={tuner.W}:{tuner.H}"))
         self.assertEqual(arg(tuner.NORMALIZE, "-b:v"), "4000k")          # the channel's own encoder is untouched
 
+    def test_a_copy_starts_without_ffmpegs_5_second_look_at_its_input(self):
+        i = tuner.VARIANT_INPUT
+        self.assertEqual(arg(i, "-i"), "pipe:0")
+        self.assertLess(i.index("-analyzeduration"), i.index("-i"))       # an input option: before the input
+        self.assertLessEqual(int(arg(i, "-analyzeduration")), 1000000)   # microseconds: at most 1 s, not ffmpeg's 5
+        self.assertLessEqual(int(arg(i, "-probesize")), 1000000)
+        maps = [i[n + 1] for n, x in enumerate(i) if x == "-map"]
+        self.assertEqual(maps, ["0:v:0", "0:a:0?"])                      # audio that starts after the look is kept
+
     def test_a_vaapi_encoder_uploads_after_every_cpu_filter(self):
         hw = tuner.encode_args({"vcodec": "h264_vaapi", "vaapi_device": "/dev/dri/renderD129"}, 1280, 720, 30)
         self.assertEqual(arg(hw, "-vaapi_device"), "/dev/dri/renderD129")

@@ -302,6 +302,12 @@ NORMALIZE = encode_args(V, W, H, FPS)
 HW_DECODE = bool(V.get("hw_decode")) and bool(hw_tail(V))
 
 
+# A lower-rate copy reads the channel's own stream (H.264 and AAC, made by the tuner): ffmpeg's default look at the input
+# (5 s of it) held back every tune to a copy by 5 s. Half a second is enough for the video, but a file from Emby can start
+# its audio a second or so after the video: the maps keep the audio even when the look ended before any of it came.
+VARIANT_INPUT = ["-probesize", "500000", "-analyzeduration", "500000", "-f", "mpegts", "-i", "pipe:0", "-map", "0:v:0", "-map", "0:a:0?"]
+
+
 def variant_args(kbps):
     """The encoder options for a lower-rate copy of a channel (a player PC asking /auto/v<n>?kbps=N): 854x480 at 2000 kbps and
     under, else this tuner's own size, at that rate."""
@@ -733,7 +739,7 @@ class Channel:
             print(f"[ch{self.number}] the full-rate channel has no encoder free", flush=True)
             self.stop.wait(5)
             return
-        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "mpegts", "-i", "pipe:0"] + self.args + MUX + ["pipe:1"]
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"] + VARIANT_INPUT + self.args + MUX + ["pipe:1"]
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
 
         def feed():

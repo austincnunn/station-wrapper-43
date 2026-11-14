@@ -106,6 +106,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
 
 ### Fixed
+- **A lower-rate copy of a channel took 5 seconds longer to start.** Its ffmpeg looked at 5 seconds of the channel's
+  stream before making anything; it looks at half a second now, and keeps the audio that a file from Emby can start a
+  second after the picture. A player PC on a CRT (1500 kbps) changes channel in about 1.5 s instead of 5.5 (3 s instead
+  of 7.5 for a channel playing from Emby), and the web player's lower qualities likewise.
 - **A player PC's channel bar never showed.** mpv takes a control connection's overlays away when it closes, and the
   bar was drawn over a connection that closed at once. It keeps one connection now, and the bar stays its
   `FS42_BANNER_SECONDS`.
