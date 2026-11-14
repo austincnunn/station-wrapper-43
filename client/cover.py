@@ -9,12 +9,14 @@ changed 15 times a second, through the player's mpv control socket (runtime/mpv.
 then fades from the new picture as before.
 
   FS42_CHANGE_COVER   off (default) | snow: an empty channel's snow | roll: the last picture rolling, as a TV that has
-                      lost its vertical hold, with the black bar between frames going by
+                      lost its vertical hold, with the black bar between frames going by | both: the rolling picture
+                      with snow over it (the snow half see-through)
 
 How it draws: mpv's overlay-add, a bitmap the size of the screen read from a file in /dev/shm (RAM). One file each:
 snow is a field of noise a little bigger than the screen, shown from a different place each time; roll is the last
 picture twice, one above the other with the black bar between, shown a little further down each time, so it goes round.
-The last picture is a screenshot mpv takes of the video every half second while nothing is being covered.
+The last picture is a screenshot mpv takes of the video every half second while nothing is being covered. For both,
+the snow is a second bitmap above the rolling one, its pixels part see-through (mpv takes premultiplied alpha).
 """
 import json
 import os
@@ -28,22 +30,24 @@ STATUS = os.path.join(APP, "runtime", "play_status.socket")
 MPV = os.path.join(APP, "runtime", "mpv.socket")
 SHM = os.environ.get("FS42_COVER_DIR", "/dev/shm")  # nosec B108: the player container's own RAM disk, not shared with the host
 SNOW, ROLL, SNAP = (os.path.join(SHM, f"fs42-cover-{n}") for n in ("snow.bgra", "roll.bgra", "last.jpg"))
-OVERLAY = 7                       # the cover's slot among mpv's overlay-add bitmaps (0-63)
+ROLL_ID, SNOW_ID = 7, 8            # the cover's slots among mpv's overlay-add bitmaps (0-63): a higher one is drawn over a lower
+SEE_THROUGH = 150                 # the snow's alpha (of 255) over the rolling picture in `both`
+MODES = ("snow", "roll", "both")
 FPS = 15
 LONGEST = 10.0                    # never covers for longer than this, whatever mpv says
 SNAP_EVERY = 0.5
 ROLL_SECONDS = 1.0                # one whole turn of the rolling picture
 
 
-def _bgra(grey=None, rgb=None):
-    """BGRA pixels (alpha 255) from grey bytes, or from RGB bytes."""
+def _bgra(grey=None, rgb=None, alpha=255):
+    """BGRA pixels from grey bytes, or from RGB bytes, all with `alpha` (the colours must be premultiplied by it)."""
     n = len(grey) if grey is not None else len(rgb) // 3
     px = bytearray(n * 4)
     if grey is not None:
         px[0::4] = px[1::4] = px[2::4] = grey
     else:
         px[0::4], px[1::4], px[2::4] = rgb[2::3], rgb[1::3], rgb[0::3]
-    px[3::4] = b"\xff" * n
+    px[3::4] = bytes([alpha]) * n
     return px
 
 
@@ -51,16 +55,17 @@ def _bgra(grey=None, rgb=None):
 _SNOW_LEVELS = bytes(24 + v * 200 // 255 for v in range(256))
 
 
-def snow(w, h):
+def snow(w, h, alpha=255):
     """Noise in 2x2 blocks (an old TV's snow is coarse), as BGRA rows `w` wide and h + h//2 + 1 high: the screen's worth
-    shown from any row pair and any pixel pair (snow_offset) looks like new snow."""
+    shown from any row pair and any pixel pair (snow_offset) looks like new snow. Under 255 `alpha`, part see-through."""
+    levels = bytes(v * alpha // 255 for v in _SNOW_LEVELS)          # premultiplied
     rows = (h + h // 2 + 2) // 2
     out = bytearray()
     for _ in range(rows):
-        half = random.randbytes(w // 2 + 1).translate(_SNOW_LEVELS)
+        half = random.randbytes(w // 2 + 1).translate(levels)
         line = bytearray(len(half) * 2)
         line[0::2] = line[1::2] = half
-        out += _bgra(grey=bytes(line[:w])) * 2          # each row twice: blocks two rows high
+        out += _bgra(grey=bytes(line[:w]), alpha=alpha) * 2   # each row twice: blocks two rows high
     return bytes(out)
 
 
@@ -175,17 +180,16 @@ class Cover:
         size = (int(dims.get("w") or 0), int(dims.get("h") or 0))
         if min(size) <= 0:
             raise OSError("mpv has no screen yet")
-        if size != self.size and self.mode == "snow":
-            _write(SNOW, snow(*size))
+        if size != self.size and self.mode in ("snow", "both"):
+            _write(SNOW, snow(*size, 255 if self.mode == "snow" else SEE_THROUGH))
         self.size = size
 
     def _show(self):
         w, h = self.size
-        if self.mode == "snow":
-            path, off = SNOW, snow_offset(w, h)
-        else:
-            path, off = ROLL, roll_offset(w, h, self.frame)
-        self.mpv.send("overlay-add", OVERLAY, 0, 0, path, off, "bgra", w, h, w * 4)
+        if self.mode in ("roll", "both"):
+            self.mpv.send("overlay-add", ROLL_ID, 0, 0, ROLL, roll_offset(w, h, self.frame), "bgra", w, h, w * 4)
+        if self.mode in ("snow", "both"):
+            self.mpv.send("overlay-add", SNOW_ID, 0, 0, SNOW, snow_offset(w, h), "bgra", w, h, w * 4)
         self.frame += 1
 
     def step(self):
@@ -195,7 +199,7 @@ class Cover:
             now = current()
             shown = self.mpv.first_frame()
             if now is not None and now != self.last:
-                if self.mode == "roll":
+                if self.mode in ("roll", "both"):
                     _write(ROLL, roll(*self.size, SNAP))
                 self.last, self.since, self.frame = now, time.monotonic(), 0
                 shown = False                    # a first frame from before the change was the old channel's
@@ -203,11 +207,12 @@ class Cover:
                 self.last = None
             if self.since is not None:
                 if shown or time.monotonic() - self.since > LONGEST:
-                    self.mpv.send("overlay-remove", OVERLAY)
+                    for slot in (SNOW_ID, ROLL_ID):
+                        self.mpv.send("overlay-remove", slot)
                     self.since = None
                 else:
                     self._show()
-            elif self.mode == "roll" and time.monotonic() >= self.next_snap:
+            elif self.mode in ("roll", "both") and time.monotonic() >= self.next_snap:
                 self.mpv.send("screenshot-to-file", SNAP, "video")   # fails quietly with no picture: the last one stays
                 self.next_snap = time.monotonic() + SNAP_EVERY
         except (OSError, ValueError):
@@ -225,7 +230,7 @@ def _write(path, data):
 
 def main():
     mode = os.environ.get("FS42_CHANGE_COVER", "off").strip().lower()
-    if mode not in ("snow", "roll"):
+    if mode not in MODES:
         sys.exit(0)
     cover = Cover(mode)
     while True:

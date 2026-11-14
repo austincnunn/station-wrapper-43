@@ -68,7 +68,7 @@ def services_from_env(env=None, exists=os.path.exists):
                Service("player", ["sh", f"{client}/player.sh"], cwd=env.get("FS42_APP", "/app"))]
         if env.get("FS42_BANNER", "on").lower() not in ("0", "false", "no", "off"):
             out.append(Service("banner", ["python3", "-u", f"{client}/banner.py"]))
-        if env.get("FS42_CHANGE_COVER", "off").strip().lower() in ("snow", "roll"):   # snow or a rolling picture while a channel comes in
+        if env.get("FS42_CHANGE_COVER", "off").strip().lower() in ("snow", "roll", "both"):   # snow and/or a rolling picture while a channel comes in
             out.append(Service("cover", ["python3", "-u", f"{client}/cover.py"]))
         if exists("/dev/input"):                  # a keyboard as the remote, when the compose file hands the container the input devices
             out.append(Service("remote", ["python3", "-u", f"{client}/remote.py"], cwd=env.get("FS42_APP", "/app")))

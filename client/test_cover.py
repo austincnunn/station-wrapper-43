@@ -26,6 +26,9 @@ class Pictures(unittest.TestCase):
             self.assertEqual(off % 8, 0)                                    # on a pixel pair: the blocks stay whole
             self.assertLessEqual(off + w * h * 4, len(field))               # a whole screen after it
         self.assertNotEqual(cover.snow(w, h)[:w * 4], field[:w * 4])        # new snow each time it is made
+        see = cover.snow(w, h, 150)                                         # over the rolling picture: part see-through
+        self.assertEqual(set(see[3::4]), {150})
+        self.assertLessEqual(max(see[0::4]), 224 * 150 // 255)              # premultiplied, as mpv takes it
 
     def test_roll_is_the_picture_twice_with_a_black_bar_between(self):
         w, h = 64, 48
@@ -106,7 +109,7 @@ class Covering(unittest.TestCase):
         self.step(c)
         self.assertEqual(self.mpv.names().count("overlay-add"), 2)
         add = [x for x in self.mpv.got if x[0] == "overlay-add"][0]
-        self.assertEqual(add[1:5] + add[6:], [cover.OVERLAY, 0, 0, cover.SNOW, "bgra", 64, 48, 256])
+        self.assertEqual(add[1:5] + add[6:], [cover.SNOW_ID, 0, 0, cover.SNOW, "bgra", 64, 48, 256])
         self.mpv.event("playback-restart")                                  # the new channel's first frame
         self.step(c)
         self.step(c)
@@ -123,6 +126,19 @@ class Covering(unittest.TestCase):
         c.since -= cover.LONGEST + 1                                         # mpv never said the picture came
         self.step(c)
         self.assertEqual(self.mpv.names()[-1], "overlay-remove")
+
+    def test_both_draws_the_snow_over_the_rolling_picture(self):
+        c = cover.Cover("both", self.mpv.path)
+        self.step(c)
+        self.assertEqual(set(open(cover.SNOW, "rb").read()[3::4]), {cover.SEE_THROUGH})
+        self.tune(104)
+        self.step(c)
+        adds = [x for x in self.mpv.got if x[0] == "overlay-add"]
+        self.assertEqual([(a[1], a[4]) for a in adds], [(cover.ROLL_ID, cover.ROLL), (cover.SNOW_ID, cover.SNOW)])
+        self.assertGreater(cover.SNOW_ID, cover.ROLL_ID)                      # the higher slot is drawn on top
+        self.mpv.event("playback-restart")
+        self.step(c)
+        self.assertEqual(self.mpv.got[-2:], [["overlay-remove", cover.SNOW_ID], ["overlay-remove", cover.ROLL_ID]])
 
 
 if __name__ == "__main__":
