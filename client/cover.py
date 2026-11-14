@@ -26,7 +26,7 @@ import time
 APP = os.environ.get("FS42_APP", "/app")
 STATUS = os.path.join(APP, "runtime", "play_status.socket")
 MPV = os.path.join(APP, "runtime", "mpv.socket")
-SHM = os.environ.get("FS42_COVER_DIR", "/dev/shm")
+SHM = os.environ.get("FS42_COVER_DIR", "/dev/shm")  # nosec B108: the player container's own RAM disk, not shared with the host
 SNOW, ROLL, SNAP = (os.path.join(SHM, f"fs42-cover-{n}") for n in ("snow.bgra", "roll.bgra", "last.jpg"))
 OVERLAY = 7                       # the cover's slot among mpv's overlay-add bitmaps (0-63)
 FPS = 15
