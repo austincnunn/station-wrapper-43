@@ -81,6 +81,8 @@ REGISTRY = [
     _s("FS42_STREAM_KBPS", "Screen", "Rate of channels streamed from the server, the guide (kbps)", ("int", 500, 4000), "", ["client"], "client"),
     _s("FS42_BANNER", "Banner", "Show the channel bar on a channel change", "bool", "1", [], "client"),
     _s("FS42_BANNER_SECONDS", "Banner", "For (seconds)", ("int", 1, 60), "8", ["banner"], "client"),
+    _s("FS42_CHANGE_COVER", "Banner", "While a channel comes in, show", ("choice", ["off", "snow", "roll"]), "off", ["cover"], "client",
+       "snow: an empty channel's snow. roll: the last picture rolling, as a TV losing its vertical hold. Covers the second or two before the new channel's picture."),
     _s("FS42_SYNC_SECONDS", "Sync", "Look for schedule changes every (seconds)", ("int", 15, 3600), "60", ["client"], "client"),
 ]
 BY_KEY = {s["key"]: s for s in REGISTRY}

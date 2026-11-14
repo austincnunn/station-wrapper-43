@@ -99,8 +99,8 @@ COPY fieldstation42/fs42-channels /usr/local/bin/fs42-channels
 COPY assets/ /opt/assets/
 COPY farm/run.sh /opt/farm/run.sh
 COPY supervisor/supervisor.py fs42-tuner/stations.py fs42-tuner/envsettings.py fs42-tuner/settings.py /opt/supervisor/
-# Client mode: copies the server's schedule (client.py) and plays it (player.sh, banner.py); a keyboard is the remote (remote.py).
-COPY client/client.py client/playerconfs.py client/player.sh client/banner.py client/remote.py fs42-tuner/envsettings.py fs42-tuner/settings.py /opt/client/
+# Client mode: copies the server's schedule (client.py) and plays it (player.sh, banner.py, cover.py); a keyboard is the remote (remote.py).
+COPY client/client.py client/playerconfs.py client/player.sh client/banner.py client/cover.py client/remote.py fs42-tuner/envsettings.py fs42-tuner/settings.py /opt/client/
 COPY fieldstation42/entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh /opt/farm/run.sh /opt/client/player.sh /usr/local/bin/fs42-channels && chmod 644 /opt/tuner/static/mpegts.min.js
 

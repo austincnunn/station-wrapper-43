@@ -473,6 +473,8 @@ class RoleTest(unittest.TestCase):
     def test_a_client_runs_only_the_sync_the_player_the_banner_and_the_remote(self):
         self.assertEqual(self.names({"FS42_ROLE": "client"}), ["client", "player", "banner", "remote"])
         self.assertEqual(self.names({"FS42_ROLE": "Client", "FS42_BANNER": "off"}), ["client", "player", "remote"])
+        self.assertEqual(self.names({"FS42_ROLE": "client", "FS42_CHANGE_COVER": "snow"}), ["client", "player", "banner", "cover", "remote"])
+        self.assertEqual(self.names({"FS42_ROLE": "client", "FS42_CHANGE_COVER": "off"}), ["client", "player", "banner", "remote"])
         no_input = lambda p: p != "/dev/input"          # the compose file doesn't hand over the keyboards
         self.assertEqual([s.name for s in sv.services_from_env({"FS42_ROLE": "client"}, exists=no_input)], ["client", "player", "banner"])
 

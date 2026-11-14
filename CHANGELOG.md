@@ -6,6 +6,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **Snow or a rolling picture while a channel comes in.** On a player PC, `FS42_CHANGE_COVER=snow` (or Settings >
+  Players, Banner) fills the second or two between a channel change and the new channel's first picture with an empty
+  channel's snow, and `roll` with the last picture rolling, as a TV that has lost its vertical hold; FieldStation42's
+  own noise then fades from the new picture as before. No sound. Off by default.
 - **A player PC can decode video on its CPU.** `FS42_HWDEC=no` (or Settings > Players, Video decoding) has mpv decode
   on the CPU instead of the graphics chip; the default stays `auto-safe`.
 - **A keyboard is a player PC's remote.** Plug a keyboard (or a Flirc or other IR receiver that types like one) into a
