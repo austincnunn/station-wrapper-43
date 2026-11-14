@@ -82,5 +82,6 @@ Things learned from its source that shape the tuner:
 | `stations.py`, `stationform.py`, `stationsapi.py`, `schedules.py`, `keeper.py`, `legacy.py` | stations, their calendar and schedule, kept running a few days ahead |
 | `files.py`, `library.py`, `titles.py`, `art.py`, `channel_logo.py` | lists and the file browser, names, pictures and logos |
 | `settings.py`, `auth.py`, `diag.py`, `prefetch.py`, `breaksnap.py`, `breakstore.py` | settings, login, status page, read-ahead, commercial-break points |
+| `viewer.py`, `viewers.py` | the web viewer: a program of its own (the compose file's `viewer` container) that serves the player to logged-in viewers and passes on what the tuner sends, cut down to each viewer's channels; and the viewer accounts both sides read |
 | `static/` | the dashboard and web player (plain files, no build step; `mpegts.min.js` is vendored by the Dockerfile) |
 | `test_*.py` | one per module; CI runs each directly (`python3 test_resolver.py`) |
