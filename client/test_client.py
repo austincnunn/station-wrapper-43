@@ -149,6 +149,9 @@ class ClientSync(unittest.TestCase):
         client.sync_once(srv, client.screen({"FS42_SCREEN": "hd"}), state)
         self.assertIn("/sync/confs", CALLS)
         self.assertEqual(json.load(open(os.path.join(client.CONFS, "guide.json")))["station_conf"]["panscan"], 0.0)
+        # a new screen mode leaves the confs as they were, but the player still restarts (it may have read them half-made)
+        self.assertTrue(client.sync_once(srv, client.screen({"FS42_SCREEN": "hd", "FS42_DRM_MODE": "640x480@59.94"}), state))
+        self.assertFalse(client.sync_once(srv, client.screen({"FS42_SCREEN": "hd", "FS42_DRM_MODE": "640x480@59.94"}), state))
 
     def test_a_wrong_token_is_refused(self):
         with self.assertRaises(Exception) as e:

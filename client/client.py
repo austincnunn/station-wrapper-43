@@ -458,7 +458,8 @@ def now_on():
 # -- one round ------------------------------------------------------------------
 def sync_once(server, scr, state):
     """Copy what changed since `state` (the hashes last copied; updated in place). True when the player must restart."""
-    if state.get("screen") != scr:                 # new screen settings: the stream stations are made again for them
+    rescreen = state.get("screen") != scr
+    if rescreen:                                   # new screen settings: the stream stations are made again for them
         state.pop("etag", None)
         state.get("parts", {}).pop("confs", None)
     code, headers, body = server.get("/sync/state", state.get("etag"))
@@ -483,7 +484,8 @@ def sync_once(server, scr, state):
             playerconfs.write(APP, json.load(f), server.base, scr["panscan"], scr["kbps"],
                               from_server=server_stations(os.path.join(RUNTIME, "fs42_fluid.db")))
     state.update(parts=dict(want), etag=headers.get("ETag"), versions=st.get("versions"), tz=st.get("tz"), screen=scr)
-    return _hash_confs() != before
+    # a player started meanwhile may have read the server's confs before they were made this player's again
+    return rescreen or _hash_confs() != before
 
 
 def main():
