@@ -77,6 +77,7 @@ REGISTRY = [
        ("text", r"(preferred|highest|\d{2,5}x\d{2,5}(@\d{1,3}(\.\d{1,3})?)?)?"), "", ["player"], "client"),
     _s("FS42_MPV_PROFILE", "Screen", "Picture scaling", ("choice", ["", "fast", "high-quality"]), "", ["player"], "client"),
     _s("FS42_GAMMA", "Screen", "Gamma (-100 to 100; a CRT often wants a little, like 10)", ("int", -100, 100), "0", ["player"], "client"),
+    _s("FS42_HWDEC", "Screen", "Video decoding (auto-safe = the graphics chip when it can, no = the CPU)", ("choice", ["auto-safe", "no"]), "auto-safe", ["player"], "client"),
     _s("FS42_STREAM_KBPS", "Screen", "Rate of channels streamed from the server, the guide (kbps)", ("int", 500, 4000), "", ["client"], "client"),
     _s("FS42_BANNER", "Banner", "Show the channel bar on a channel change", "bool", "1", [], "client"),
     _s("FS42_BANNER_SECONDS", "Banner", "For (seconds)", ("int", 1, 60), "8", ["banner"], "client"),

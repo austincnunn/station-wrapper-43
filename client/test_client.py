@@ -208,8 +208,9 @@ class Screen(unittest.TestCase):
 
     def test_mpv_draws_straight_to_the_screen(self):
         conf = client.mpv_conf(client.screen({"FS42_SCREEN": "crt"}), {"FS42_DRM_CONNECTOR": "VGA-1", "FS42_GAMMA": "10"})
-        for line in ("vo=gpu", "gpu-context=drm", "drm-connector=VGA-1", "profile=fast", "gamma=10", "sid=no"):
+        for line in ("vo=gpu", "gpu-context=drm", "drm-connector=VGA-1", "profile=fast", "gamma=10", "sid=no", "hwdec=auto-safe"):
             self.assertIn(line + "\n", conf)
+        self.assertIn("hwdec=no\n", client.mpv_conf(client.screen({}), {"FS42_HWDEC": "no"}))     # the CPU decodes
 
 
 class WebStations(unittest.TestCase):

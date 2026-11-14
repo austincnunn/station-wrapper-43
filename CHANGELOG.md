@@ -6,6 +6,8 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
 ## [Unreleased]
 
 ### Added
+- **A player PC can decode video on its CPU.** `FS42_HWDEC=no` (or Settings > Players, Video decoding) has mpv decode
+  on the CPU instead of the graphics chip; the default stays `auto-safe`.
 - **A keyboard is a player PC's remote.** Plug a keyboard (or a Flirc or other IR receiver that types like one) into a
   player PC in client mode: up and down change the channel, left and right the volume, digits type a channel number,
   Home shows the guide, Backspace goes back to the last channel and M mutes (FieldStation42's own remote decides the

@@ -20,6 +20,7 @@ Settings (environment):
   FS42_PANSCAN, FS42_DRM_MODE, FS42_MPV_PROFILE, FS42_STREAM_KBPS   override one default each
   FS42_DRM_CONNECTOR  the output to draw on (VGA-1, HDMI-A-1, ...; default: the first one connected)
   FS42_GAMMA          mpv's gamma, -100..100 (a CRT often wants a little, like 10)
+  FS42_HWDEC          auto-safe (default: the graphics chip decodes video when it can) or no (the CPU does)
   FS42_PLAYER_NAME    the name the server's Status page shows (default: the host name)
   FS42_SYNC_SECONDS   how often to look for changes (default 60)
 The screen, banner and sync settings can also be set for this player on the server's Settings page: the server sends
@@ -86,7 +87,7 @@ def screen(env=None):
 def mpv_conf(scr, env=None, x11=False):
     """mpv's settings: drawing straight to the screen, or (x11) full screen in the X server player.sh started."""
     env = os.environ if env is None else env
-    common = [f"profile={scr['mpv_profile']}", "hwdec=auto-safe", "sid=no", "sub-auto=no", "cursor-autohide=always",
+    common = [f"profile={scr['mpv_profile']}", f"hwdec={env.get('FS42_HWDEC') or 'auto-safe'}", "sid=no", "sub-auto=no", "cursor-autohide=always",
               f"gamma={int(env.get('FS42_GAMMA', '0') or 0)}"]
     if x11:
         return "\n".join(["vo=gpu", "gpu-context=x11egl", "fullscreen=yes"] + common) + "\n"
