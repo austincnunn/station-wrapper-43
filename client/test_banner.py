@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """The channel bar's text fitting, its now-playing lookup and its layout. Run: python3 test_banner.py"""
+import json
+import os
 import re
+import socket
+import tempfile
+import threading
 import unittest
 
 import banner
@@ -34,6 +39,45 @@ class TestBanner(unittest.TestCase):
             text = "\n".join(ev)
             for part in ("103", "Cartoons", "Looney Tunes", "until 8:30 PM", "8:05 PM", banner._c(banner.LAVENDER)):
                 self.assertIn(part, text)
+
+    def test_one_connection_keeps_the_bar(self):
+        """mpv removes a client's overlays when it disconnects: show and hide must go over one connection."""
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "mpv.socket")
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(path)
+        srv.listen()
+        conns, got = [], []
+
+        def fake_mpv():                      # replies to each command; an event first, as mpv sends them unasked
+            while True:
+                try:
+                    c, _ = srv.accept()
+                except OSError:
+                    return
+                conns.append(c)
+                for line in c.makefile("rb"):
+                    req = json.loads(line)
+                    got.append((len(conns), req["command"]))
+                    c.sendall(b'{"event":"playback-restart"}\n' +
+                              json.dumps({"request_id": req["request_id"], "error": "success", "data": None}).encode() + b"\n")
+                c.close()
+
+        threading.Thread(target=fake_mpv, daemon=True).start()
+        banner.MPV, banner._conn = path, None
+        try:
+            self.assertEqual(banner.mpv(["get_property", "osd-dimensions"])[0]["error"], "success")
+            banner.mpv({"name": "osd-overlay", "id": 42, "format": "none", "data": ""})
+            self.assertEqual(len(conns), 1)                               # still the first connection
+            self.assertEqual(got[0], (1, ["disable_event", "all"]))
+            conns[0].shutdown(socket.SHUT_RDWR)                           # the player restarted
+            with self.assertRaises(OSError):
+                banner.mpv(["get_property", "osd-dimensions"])
+            banner.mpv(["get_property", "osd-dimensions"])                # a new connection
+            self.assertEqual(len(conns), 2)
+        finally:
+            banner._conn = None
+            srv.close()
 
 
 if __name__ == "__main__":

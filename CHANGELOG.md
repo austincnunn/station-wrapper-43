@@ -104,6 +104,9 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
 
 ### Fixed
+- **A player PC's channel bar never showed.** mpv takes a control connection's overlays away when it closes, and the
+  bar was drawn over a connection that closed at once. It keeps one connection now, and the bar stays its
+  `FS42_BANNER_SECONDS`.
 - **A Music Videos library on an Emby or Jellyfin server came up empty.** Its videos are a kind of their own on the
   server, which was not asked for. They are mirrored now, in a folder per artist, and the guide names each by artist
   and song.

@@ -114,21 +114,44 @@ def fetch_rows():
         return []
 
 
+_conn = None    # (socket, its reader): ONE connection for as long as mpv runs. mpv takes a client's overlays away when
+_req = 0        # it disconnects, so a connection per command drew the bar and took it away at once.
+
+
 def mpv(*commands):
-    """Send commands to the player's mpv; the reply to each, in order (an event mpv sends meanwhile is skipped)."""
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+    """Send commands to the player's mpv; the reply to each, in order (an event mpv sends meanwhile is skipped).
+    Any failure drops the connection (the player restarted, say), and the next call makes a new one."""
+    global _conn, _req
+    fresh = _conn is None
+    if fresh:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(2)
-        s.connect(MPV)
-        f = s.makefile("rb")
+        try:
+            s.connect(MPV)
+        except OSError:
+            s.close()
+            raise
+        _conn = (s, s.makefile("rb"))
+        commands = (["disable_event", "all"],) + commands     # events would only pile up unread between bars
+    s, f = _conn
+    try:
         out = []
-        for i, cmd in enumerate(commands):
-            s.sendall((json.dumps({"command": cmd, "request_id": i + 1}) + "\n").encode())
+        for cmd in commands:
+            _req += 1
+            s.sendall((json.dumps({"command": cmd, "request_id": _req}) + "\n").encode())
             while True:
-                reply = json.loads(f.readline() or b"{}")
-                if reply.get("request_id") == i + 1 or not reply:
+                line = f.readline()
+                if not line:
+                    raise OSError("mpv closed the connection")
+                reply = json.loads(line)
+                if reply.get("request_id") == _req:
                     out.append(reply)
                     break
-        return out
+        return out[1:] if fresh else out
+    except (OSError, ValueError):
+        _conn = None
+        s.close()
+        raise
 
 
 def show(number, name):
