@@ -390,6 +390,15 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(status["web_viewer"], {"on": True, "running": True, "accounts": 2, "started": 1_700_000_000,
                                                 "watching": [{"user": "kid", "channel": "102"}]})
         self.assertFalse([c for c in status["checks"] if "web viewer" in c["text"]])
+        # the Status tab's Players list has them too, one row a viewer whatever they have open
+        shared.beat({"started": 1_700_000_000, "watching": [{"user": "kid", "channel": "102"}, {"user": "mum", "channel": "101"},
+                                                            {"user": "kid", "channel": "101"}]})
+        status = self.dash.request("GET", "/api/system/status", cookie=self.admin)[2]
+        self.assertEqual([p for p in status["players"] if p["kind"] == "viewer"],
+                         [{"kind": "viewer", "name": "kid", "channel": "101, 102", "watching": True},
+                          {"kind": "viewer", "name": "mum", "channel": "101", "watching": True}])
+        self.assertEqual(len(self.dash.request("GET", "/api/viewers", cookie=self.admin)[2]["watching"]), 3)     # the Players tab's line
+        shared.beat({"started": 1_700_000_000, "watching": [{"user": "kid", "channel": "102"}]})
         code, answer = self.post("/api/viewers/remove", {"name": "mum"})
         self.assertEqual((code, [u["name"] for u in answer["users"]]), (200, ["kid"]))
 

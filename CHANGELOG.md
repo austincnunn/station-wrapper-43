@@ -13,6 +13,13 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   settings, a read-only file system, no privileges, and limits on connections and on streams for each viewer. The
   Players tab says whether it is running and can switch logins off and on at once, and the Status tab says who is
   watching which channel. Port 5004 still plays everything to anyone who reaches it, so keep that one private.
+- **The player: the TV apps' channel bar, a Full screen button, and keys that always work.** A channel change shows
+  the same bar as the FS42 TV apps and a player PC: the number and name in bevelled grey, a green clock, and what is on
+  until when in lavender. **Full screen** (or F) fills the window with the picture and the controls under it, and the
+  whole screen where the browser allows; Esc leaves it. The up and down arrows change channel (left and right, the
+  volume) wherever you last clicked, and no longer scroll the page. Channel # and Go sit beside the channel arrows.
+- **Who is watching in the web viewer** is listed under Players on the Status tab, and on the Players tab.
+- The web player keeps half a minute of played video in the browser, not three minutes.
 - **The player can say what is playing.** A **Stats** button on the Watch page (and in the web viewer) shows the picture's
   size as decoded, how fast the stream is arriving and the quality asked for, over the corner of the picture. A lower
   quality can look the same in a small player; this is how to tell that it took. Remembered.

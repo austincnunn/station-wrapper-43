@@ -1509,6 +1509,13 @@ def status_report(recent=60):
     except OSError:
         media = {"path": media_root, "present": False}
     sysinfo = system_status()
+    web = VIEWER_USERS.status()                         # None: no viewers set up and no viewer container (viewers.py)
+    # people watching in the web viewer: its container says who (they reach this tuner as that container, not as themselves)
+    seen = {}
+    for w in (web or {}).get("watching", []):           # one row a viewer, however many streams they have open
+        seen.setdefault(w["user"], []).append(w["channel"])
+    watching = [{"kind": "viewer", "name": user, "channel": ", ".join(sorted(set(chans), key=_sortkey)), "watching": True}
+                for user, chans in sorted(seen.items())]
     report = {
         "version": {"wrapper": os.environ.get("FS42_WRAPPER_REF"), "commit": os.environ.get("FS42_WRAPPER_SHA"),
                     "built": os.environ.get("FS42_WRAPPER_BUILT"),
@@ -1523,9 +1530,9 @@ def status_report(recent=60):
         "advertise": {"configured": ADVERTISE, "used_for_clients": "the address each client itself used" if ADVERTISE.split("//")[-1].startswith(("localhost", "127.0.0.1")) else ADVERTISE},
         "recent": diag.RING.recent(recent),
         "recent_problems": diag.RING.recent(15, problems_only=True),
-        "web_viewer": VIEWER_USERS.status(),            # None: no viewers set up and no viewer container (viewers.py)
-        # client-mode boxes (when sync is on) and the FS42 TV apps; None hides the Players panel
-        "players": ((FEED.players() if FEED.enabled else []) + APPS.players()) if FEED.enabled or APPS.players() else None,
+        "web_viewer": web,
+        # client-mode boxes (when sync is on), the FS42 TV apps and web viewers who are watching; None hides the Players panel
+        "players": ((FEED.players() if FEED.enabled else []) + APPS.players() + watching) if FEED.enabled or APPS.players() or watching else None,
     }
     report["checks"] = diag.checks(report)
     return report
@@ -1658,6 +1665,7 @@ def viewers_report():
     """The Settings page's Viewers tab and the Players tab's switch: whether the web viewer is switched on and its
     container running, the users (never their hashes) and the channels there are to tick."""
     return {"on": VIEWER_USERS.is_on(), "running": VIEWER_USERS.running(), "edit": EDIT_FILES, "users": VIEWER_USERS.list(),
+            "watching": (VIEWER_USERS.status() or {}).get("watching", []),
             "channels": [{"number": str(r["GuideNumber"]), "name": r["GuideName"]} for r in merged_lineup()]}
 
 

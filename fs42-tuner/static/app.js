@@ -11,7 +11,7 @@
   const CC_NUDGE_KEY = "fs42.captionsNudge";    // seconds: how far behind the clock the picture runs for this viewer
   const GUIDE_REFRESH_MS = 5 * 60 * 1000;
   const BANNER_REFRESH_MS = 15 * 1000;
-  const BANNER_SHOW_MS = 5000;
+  const BANNER_SHOW_MS = 8000;                  // as long as the TV apps and a player PC show theirs
   const RETRY_MS = 3000;
   // The picture stopping without any error (a gap in the stream the player cannot get past) used to need a page
   // refresh. If a playing picture has not moved for STALL_MS, tune the channel again.
@@ -70,12 +70,13 @@
       guide: [],                 // the same, with what is on now and next
       current: null,             // the channel tuned, as a string
       entry: "", guideOpen: false,
-      banner: { show: false, num: "", name: "", title: "" },
+      banner: { show: false, num: "", name: "", clock: "", title: "", until: "" },
       toast: "",
       volume: 100, silent: true, volumeIcon: "\u{1F507}",
       kbps: 0, qualities: [{ kbps: 0, name: "Full" }], qualityTitle: "Picture quality: pick a lower one on a slow connection",
       topKbps: 4000,             // the tuner's own rate: what Full is
       stats: recall(STATS_KEY) === "on", statsText: "",
+      full: false,               // the player (picture and controls) is filling the window, and the screen where the browser lets it
       cc: { tracks: [], track: -1, nudge: 2 },
       ccLines: [],
 
@@ -88,6 +89,7 @@
         this.showVolume();
         this.loadQuality();
         document.addEventListener("keydown", (e) => this.key(e));
+        document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) this.full = false; });    // Esc left the full screen
 
         if (!window.mpegts || !mpegts.isSupported()) { this.unsupported = true; return; }
         try {
@@ -173,7 +175,9 @@
         const chan = this.channels.find((c) => c.number === this.current);
         if (!chan) return;
         const np = nowPlaying(chan.number);
-        Object.assign(this.banner, { num: chan.number, name: chan.name, title: np && np.title !== chan.name ? np.title : "" });   // a guide or a camera is its own title: say it once
+        const hm = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        Object.assign(this.banner, { num: chan.number, name: chan.name, clock: hm(new Date()),
+          title: np ? np.title : chan.name, until: np ? `until ${hm(np.stop)}` : "" });       // nothing in the guide (a camera): its name
         if (showAndFade) {
           this.banner.show = true;
           clearTimeout(bannerTimer);
@@ -214,6 +218,10 @@
         player = mpegts.createPlayer(
           { type: "mpegts", isLive: true, url: `/auto/v${encodeURIComponent(num)}` + (this.kbps ? `?kbps=${this.kbps}` : "") },
           {
+            // The browser keeps half a minute of what was already played, not three: nothing here rewinds. (enableWorker was
+            // tried with it and left out: the picture then ran a fifth of a second from the end of what had arrived, not two.)
+            autoCleanupMaxBackwardDuration: 30,
+            autoCleanupMinBackwardDuration: 15,
             enableStashBuffer: false,
             // Falling behind is made up by playing a little faster, not by jumping ahead. A jump is a visible skip and left
             // 1 s in hand, so the next hiccup froze the picture (worst in Firefox); the tuner's 3 s replay for a new viewer
@@ -275,6 +283,7 @@
       },
       enter() {
         const v = this.entry.trim();
+        this.$refs.entry.blur();                         // so the arrow keys are the channel keys again
         if (v) this.tune(v);
       },
 
@@ -295,6 +304,16 @@
         this.kbps = kbps;
         keep(QUALITY_KEY, String(kbps));
         if (this.current != null) this.tune(this.current);
+      },
+
+      // ---- full screen: the picture AND the controls under it, so the channel can still be changed there. The player
+      // always fills the browser's window (a style); the whole screen is asked for on top of that, and a browser that
+      // refuses or never answers (an embedded one) just leaves it at the window.
+      toggleFull() {
+        this.full = !this.full;
+        const stage = this.$refs.stage;
+        if (this.full && stage.requestFullscreen) Promise.resolve(stage.requestFullscreen()).catch(() => {});
+        else if (!this.full && document.fullscreenElement) document.exitFullscreen();
       },
 
       // ---- what is playing (the Stats button): the picture's size as it was decoded, how fast the stream is arriving, and
@@ -341,11 +360,17 @@
         const video = this.$refs.video;
         if (e.target === this.$refs.entry || e.target === this.$refs.volume) return;       // the slider has its own arrow keys
         if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-        if (e.key === "ArrowUp") this.channelStep(1);
-        else if (e.key === "ArrowDown") this.channelStep(-1);
-        else if (e.key === "ArrowRight") this.setVolume((video.muted ? 0 : video.volume) + 0.05);
-        else if (e.key === "ArrowLeft") this.setVolume((video.muted ? 0 : video.volume) - 0.05);
-        else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey) this.toggleMute();
+        const arrows = {
+          ArrowUp: () => this.channelStep(1), ArrowDown: () => this.channelStep(-1),
+          ArrowRight: () => this.setVolume((video.muted ? 0 : video.volume) + 0.05),
+          ArrowLeft: () => this.setVolume((video.muted ? 0 : video.volume) - 0.05),
+        };
+        if (arrows[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();                            // the keys are the remote: the page does not scroll under them
+          arrows[e.key]();
+        } else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey) this.toggleMute();
+        else if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey) this.toggleFull();
+        else if (e.key === "Escape" && this.full) this.toggleFull();
         else if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && this.cc.tracks.length) this.ccNext();
       },
 
@@ -429,6 +454,7 @@
         this.ccPollOnce();
       },
       ccTick() {
+        if (document.hidden) return;                     // nobody is looking: the next poll catches up
         this.ccShow();
         // the piece on air has ended (the picture runs a little behind the clock): look at what is on now, don't wait for the next poll
         const s = ccState;

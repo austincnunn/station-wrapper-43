@@ -54,6 +54,34 @@ class PagesTest(unittest.TestCase):
         for needle in ("mpegts.Events.STATISTICS_INFO", "v.videoWidth", 'recall(STATS_KEY) === "on"'):
             self.assertIn(needle, js)
 
+    def test_the_player_has_the_tv_apps_channel_bar_and_keys_that_reach_it(self):
+        html, js, css = read("watch.html"), read("app.js"), read("player.css")
+        bar = html[html.index('<div id="banner"'):html.index('<div id="captions"')]
+        order = [bar.index(f'x-text="banner.{part}"') for part in ("num", "name", "clock", "title", "until")]
+        self.assertEqual(order, sorted(order))                       # number, name, clock; then what is on, until when
+        for colour in ("rgb(201, 201, 201)", "rgb(80, 255, 80)", "rgb(180, 176, 242)", "rgb(30, 30, 200)"):
+            self.assertIn(colour, css)                               # the Cable box colours of client/banner.py
+        # the controls, left to right: channel arrows, the number box, then the volume; Log out names nobody on its face
+        controls = html[html.index('class="box controls"'):html.index('aria-label="Channel guide"')]
+        marks = [controls.index(m) for m in ('aria-label="Channel up"', 'aria-label="Channel number"', 'id="volume"', '>Log out</button>')]
+        self.assertEqual(marks, sorted(marks))
+        self.assertNotIn("'Log out ('", html)
+        # a control lets go of the keyboard once it is used, and the arrows do not scroll the page
+        self.assertIn('@change="setQuality(Number($el.value)); $el.blur()"', html)
+        self.assertIn('@change="$el.blur()"', html)
+        self.assertIn("this.$refs.entry.blur()", js)
+        self.assertIn("e.preventDefault()", js)
+
+    def test_full_screen_keeps_the_controls_and_does_not_depend_on_the_browser_granting_it(self):
+        html, js, css = read("watch.html"), read("app.js"), read("player.css")
+        stage = html[html.index('id="stage"'):html.index('aria-label="Channel guide"')]
+        for inside in ('id="screen"', 'class="box controls"', '@click="toggleFull()"'):
+            self.assertIn(inside, stage)                             # what fills the screen holds the picture AND the controls
+        self.assertIn(""":class="full && 'is-full'\"""", html)
+        self.assertIn("#stage.is-full { position: fixed; inset: 0;", css)       # the window is filled by a style, whatever the browser says
+        self.assertIn("requestFullscreen", js)
+        self.assertNotIn("enableWorker: true", js)                   # tried: it left the picture a fifth of a second from stalling
+
     def test_nothing_above_the_settings_tabs_changes_height(self):
         """A title and a per-tab subtitle above the tab bar made it jump from tab to tab: each tab says what it is itself."""
         html = read("settings.html")

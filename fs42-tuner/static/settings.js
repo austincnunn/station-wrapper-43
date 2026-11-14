@@ -88,19 +88,21 @@
 
       // ---- the web viewer's switch. Its container (viewer.py) reads it with every request, so nothing restarts.
       loadViewer() {
-        call("/api/viewers").then((v) => { this.vw = { on: v.on, running: v.running }; }).catch(() => {});
+        call("/api/viewers").then((v) => { this.vw = { on: v.on, running: v.running, watching: v.watching || [] }; }).catch(() => {});
       },
       get viewerHelp() {
         if (!this.vw) return "";
         if (!this.vw.running) return "Its container is not running. To start it, put VIEWER=1 in .env and run docker compose up -d.";
-        return this.vw.on ? "Its container is running: viewers can log in." : "Its container is running, and tells everyone the viewer is switched off.";
+        if (!this.vw.on) return "Its container is running, and tells everyone the viewer is switched off.";
+        const who = this.vw.watching.map((w) => `${w.user} on ${w.channel}`).join(", ");
+        return "Its container is running: viewers can log in. " + (who ? `Watching now: ${who}.` : "Nobody is watching.");
       },
       async toggleViewer() {
         const on = !this.vw.on;
         this.viewerBusy = true;
         try {
           const v = await call("/api/viewers/switch", { on });
-          this.vw = { on: v.on, running: v.running };
+          this.vw = { on: v.on, running: v.running, watching: v.watching || [] };
           say(`The web viewer is switched ${on ? "on" : "off"}.`, "ok");
         } catch (e) {
           say(e.message, "err");

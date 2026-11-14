@@ -12,14 +12,16 @@
 <body>
 <div id="shell" data-page="watch"></div>
 <main class="section" x-data="watchPage">
-<div class="container is-max-desktop">
+<div class="container is-max-desktop" id="stage" x-ref="stage" :class="full && 'is-full'">
   <div id="screen">
     <video id="video" x-ref="video" autoplay muted playsinline x-show="!unsupported" @volumechange="showVolume()"></video>
     <p class="has-text-danger p-5" x-show="unsupported" x-cloak>This browser does not support MSE-based MPEG-TS playback. Try a recent desktop Chrome, Firefox or Edge.</p>
+    <!-- the channel bar on a channel change: the FS42 TV apps' bar (client/banner.py draws the same on a player PC) -->
     <div id="banner" :class="!banner.show && 'is-gone'">
       <span class="num" x-text="banner.num"></span>
       <span class="name" x-text="banner.name"></span>
-      <span class="what" x-text="banner.title"></span>
+      <span class="clock" x-text="banner.clock"></span>
+      <div class="now"><span class="what" x-text="banner.title"></span><span class="until" x-text="banner.until"></span></div>
     </div>
     <div id="captions" aria-live="off" x-show="ccLines.length" x-cloak>
       <template x-for="(line, i) in ccLines" :key="i"><div><span x-text="line"></span></div></template>
@@ -38,15 +40,21 @@
         </div>
       </div>
       <div class="control">
+        <form class="field has-addons" autocomplete="off" @submit.prevent="enter()">
+          <div class="control"><input class="input chan-input" x-ref="entry" inputmode="numeric" placeholder="Channel #" aria-label="Channel number" autocomplete="off" x-model="entry" @keydown.escape="$el.blur()"></div>
+          <div class="control"><button type="submit" class="button">Go</button></div>
+        </form>
+      </div>
+      <div class="control">
         <button type="button" class="button" :aria-label="silent ? 'Unmute' : 'Mute'" title="Mute (M)" @click="toggleMute()" x-text="volumeIcon"></button>
       </div>
       <div class="control volume">
         <input id="volume" x-ref="volume" type="range" min="0" max="100" step="1" aria-label="Volume" title="Volume (left and right arrow keys)"
-               :value="volume" :style="silent ? 'opacity:0.6' : ''" @input="setVolume(Number($el.value) / 100)">
+               :value="volume" :style="silent ? 'opacity:0.6' : ''" @input="setVolume(Number($el.value) / 100)" @change="$el.blur()">
       </div>
       <div class="control">
         <div class="select">
-          <select aria-label="Quality" :title="qualityTitle" @change="setQuality(Number($el.value))">
+          <select aria-label="Quality" :title="qualityTitle" @change="setQuality(Number($el.value)); $el.blur()">
             <template x-for="q in qualities" :key="q.kbps"><option :value="q.kbps" x-text="q.name" :selected="q.kbps === kbps"></option></template>
           </select>
         </div>
@@ -67,13 +75,11 @@
         </div>
       </div>
       <div class="control"><button type="button" class="button" :class="guideOpen && 'is-primary is-outlined'" :aria-expanded="guideOpen" @click="guideOpen = !guideOpen">Guide</button></div>
-      <div class="control" x-show="viewer" x-cloak><button type="button" class="button" @click="logout()" x-text="'Log out (' + viewer + ')'"></button></div>
       <div class="control push-right">
-        <form class="field has-addons" autocomplete="off" @submit.prevent="enter()">
-          <div class="control"><input class="input chan-input" x-ref="entry" inputmode="numeric" placeholder="Channel #" aria-label="Channel number" autocomplete="off" x-model="entry"></div>
-          <div class="control"><button type="submit" class="button">Go</button></div>
-        </form>
+        <button type="button" class="button" :class="full && 'is-primary is-outlined'" :aria-pressed="full ? 'true' : 'false'"
+                title="Fill the screen, controls and all (F)" @click="toggleFull()">Full screen</button>
       </div>
+      <div class="control" x-show="viewer" x-cloak><button type="button" class="button" :title="'Log out ' + viewer" @click="logout()">Log out</button></div>
     </div>
   </div>
 

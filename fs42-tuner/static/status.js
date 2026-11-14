@@ -50,7 +50,7 @@
       },
       // player PCs in client mode, and the FS42 TV apps
       get playerRows() {
-        return (this.r.players || []).map((p) => (p.kind === "app"
+        return (this.r.players || []).map((p) => (p.kind === "viewer" ? [p.name, `web viewer, watching ${p.channel}`] : p.kind === "app"
           ? [p.name, `FS42 TV app on ${p.platform}` + (p.watching ? `, watching ${p.channel}` : `, last watched ${p.channel} ${dur(p.age)} ago`) + ` from ${p.addr}`]
           : [p.name, `${p.gone ? "NOT SEEN" : "seen"} ${dur(p.age)} ago from ${p.addr}` +
             (p.channel ? `, on ${p.channel}` : "") + (p.screen ? `, ${p.screen} screen` : "") + (p.mismatch ? ", DIFFERENT VERSION" : "") +
