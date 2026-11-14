@@ -159,6 +159,10 @@ def checks(report):
             add("warn", f"Player {pl['name']} runs a different version than this server: run docker compose pull on it.")
         for e in pl.get("errors") or []:
             add("error", f"Player {pl['name']}: {e}")
+    wv = report.get("web_viewer")                                # the web viewer's own container (viewer.py)
+    if wv and wv.get("on") and wv.get("accounts") and not wv.get("running"):
+        add("warn", "The web viewer is switched on and has viewers, but its container is not running, so nobody can log in. "
+                    "Put VIEWER=1 in .env and run docker compose up -d, or switch it off.", "/settings.html#players", "Open Players")
     if not report.get("ffmpeg", {}).get("found"):
         add("error", "ffmpeg was not found: nothing can be streamed.")
     if not out:

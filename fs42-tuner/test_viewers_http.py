@@ -236,6 +236,7 @@ class ViewerTest(unittest.TestCase):
         self.assertEqual((r1.status, r1.getheader("Content-Type")), (200, "video/mp2t"))
         self.assertEqual(r1.read(188 * 3), CHUNK * 3)
         self.assertEqual(FakeServer.agents[-1], ("/auto/v102?kbps=1500", "sw43-web-viewer (kid)"))
+        self.assertEqual(self.users.status()["watching"], [{"user": "kid", "channel": "102"}])     # told to the dashboard at once
         c2, r2 = self.stream(kid)
         self.assertEqual(r2.status, 200)
         code, _, body, _ = self.get("/auto/v102", kid)                         # the third: over this viewer's cap
@@ -248,6 +249,12 @@ class ViewerTest(unittest.TestCase):
             r.close()                                                          # the response holds the socket open too
             c.close()
         self.assertTrue(self.settled(0))                                       # the server's side was closed too
+        for _ in range(60):
+            if not self.users.status()["watching"]:
+                break
+            time.sleep(0.05)
+        self.assertEqual(self.users.status()["watching"], [])
+        self.assertGreater(self.users.status()["started"], time.time() - 600)
         c4, r4 = self.stream(kid)
         self.assertEqual(r4.status, 200)
         r4.close()
@@ -348,6 +355,11 @@ class DashboardTest(unittest.TestCase):
         shared.beat()                                                          # the viewer's container shows up
         code, answer = self.post("/api/viewers/switch", {"on": True})
         self.assertEqual((answer["on"], answer["running"]), (True, True))
+        shared.beat({"started": 1_700_000_000, "watching": [{"user": "kid", "channel": "102"}]})
+        status = self.dash.request("GET", "/api/system/status", cookie=self.admin)[2]       # the Status tab's data
+        self.assertEqual(status["web_viewer"], {"on": True, "running": True, "accounts": 2, "started": 1_700_000_000,
+                                                "watching": [{"user": "kid", "channel": "102"}]})
+        self.assertFalse([c for c in status["checks"] if "web viewer" in c["text"]])
         code, answer = self.post("/api/viewers/remove", {"name": "mum"})
         self.assertEqual((code, [u["name"] for u in answer["users"]]), (200, ["kid"]))
 

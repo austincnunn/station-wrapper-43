@@ -35,9 +35,18 @@
             Object.entries(g).filter(([k, v]) => v && typeof v === "object" && "channels" in v).map(([k, v]) => `${k}: ${v.channels} ch / ${v.programmes} programmes`).join(", ")],
           ["Sources", r.sources.length ? r.sources.map((s) => `${s.name} (${s.enabled ? s.channels + " ch" : "off"}${s.error ? ", ERROR" : ""})`).join(", ") : "none"],
           ["Streams", `${r.encoders.in_use} of ${r.encoders.max} encoders, ${r.viewers.in_use} of ${r.viewers.max} viewers`],
+          ...(r.web_viewer ? [["Web viewer", this.webViewer]] : []),
           ["CPU / memory", `load ${r.cpu.load1} on ${r.cpu.count} cores; ${r.memory ? r.memory.available_mb + " of " + r.memory.total_mb + " MB free" : "?"}`],
           ["Disk free", Object.entries(r.disk).map(([k, d]) => `${k} ${d.free_mb == null ? "?" : d.free_mb + " MB"}`).join(", ")],
         ];
+      },
+      // the web viewer's container (viewer.py): is it there, may people log in, and who is watching what
+      get webViewer() {
+        const w = this.r.web_viewer, n = `${w.accounts} viewer${w.accounts === 1 ? "" : "s"} set up`;
+        if (!w.running) return `NOT running (${w.on ? "switched on" : "switched off"}), ${n}`;
+        if (!w.on) return `running, but switched off: nobody can log in; ${n}`;
+        const up = w.started ? ` for ${dur(Math.max(0, Math.round(Date.now() / 1000 - w.started)))}` : "";
+        return `running${up}, ${n}; ` + (w.watching.length ? "watching now: " + w.watching.map((x) => `${x.user} on ${x.channel}`).join(", ") : "nobody is watching");
       },
       // player PCs in client mode, and the FS42 TV apps
       get playerRows() {

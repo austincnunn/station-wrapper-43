@@ -133,6 +133,22 @@ class ViewersTest(unittest.TestCase):
         self.v.beat()
         self.assertTrue(self.v.running())
 
+    def test_status_is_what_the_dashboard_shows_and_nothing_when_there_is_nothing_to_say(self):
+        self.assertIsNone(self.v.status())                           # no viewers set up, no container
+        self.v.save("kid", "cartoons please", ["102"])
+        self.assertEqual(self.v.status(), {"on": True, "running": False, "accounts": 1, "started": None, "watching": []})
+        self.v.beat({"started": 999_000, "watching": [{"user": "kid", "channel": "102"}, "junk"]})
+        self.assertEqual(self.v.status(), {"on": True, "running": True, "accounts": 1, "started": 999_000,
+                                           "watching": [{"user": "kid", "channel": "102"}]})
+        self.v.switch(False)
+        self.assertFalse(self.v.status()["on"])
+        self.clock.now += 91                                         # the container went away: who was watching is stale
+        self.assertEqual(self.v.status(), {"on": False, "running": False, "accounts": 1, "started": None, "watching": []})
+        with open(os.path.join(self.dir, "alive"), "w") as f:
+            f.write("not json")                                      # a half-written file is still a sign of life
+        os.utime(os.path.join(self.dir, "alive"), (self.clock.now, self.clock.now))
+        self.assertEqual((self.v.status()["running"], self.v.status()["watching"]), (True, []))
+
     def test_too_many_wrong_guesses_must_wait(self):
         self.v.save("kid", "cartoons please")
         for _ in range(auth.FAIL_LIMIT):

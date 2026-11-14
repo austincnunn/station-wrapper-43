@@ -191,7 +191,7 @@ The dashboard's **management pages** (Stations, the station form, and every tab 
 
 For letting other people watch in a browser without handing them the dashboard, and for giving each of them their own channels (the children's channels for the children, say). It is a **second container** from the same image, and the one part of this meant to be reached from outside your network.
 
-**Start it:** put `VIEWER=1` in `.env` and run `docker compose up -d`. It answers on port `5005` (`VIEWER_PORT` moves it). The Web viewer box on the Settings page's **Players** tab says whether it is running, and its **Switch off** stops everyone logging in, at once and without stopping anything else.
+**Start it:** put `VIEWER=1` in `.env` and run `docker compose up -d`. It answers on port `5005` (`VIEWER_PORT` moves it). The Web viewer box on the Settings page's **Players** tab says whether it is running, and its **Switch off** stops everyone logging in, at once and without stopping anything else. The **Status** tab has a Web viewer line too: running or not, how many viewers are set up, and who is watching which channel right now; it warns when the viewer is switched on with viewers set up but its container is not running.
 
 - It serves the **player and nothing else**: no dashboard, no Settings, no lineup for other programs. Everything on it needs a login.
 - **Viewers** are added on the Settings page, the **Viewers** tab: a name, a password, and either every channel or the ones you tick. A viewer sees only those in the channel list and the guide, and is refused the others. A new password or **Remove** logs that viewer out everywhere, and a channel you take away stops playing for them within seconds.

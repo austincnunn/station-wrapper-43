@@ -1523,6 +1523,7 @@ def status_report(recent=60):
         "advertise": {"configured": ADVERTISE, "used_for_clients": "the address each client itself used" if ADVERTISE.split("//")[-1].startswith(("localhost", "127.0.0.1")) else ADVERTISE},
         "recent": diag.RING.recent(recent),
         "recent_problems": diag.RING.recent(15, problems_only=True),
+        "web_viewer": VIEWER_USERS.status(),            # None: no viewers set up and no viewer container (viewers.py)
         # client-mode boxes (when sync is on) and the FS42 TV apps; None hides the Players panel
         "players": ((FEED.players() if FEED.enabled else []) + APPS.players()) if FEED.enabled or APPS.players() else None,
     }

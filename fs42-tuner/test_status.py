@@ -28,6 +28,16 @@ class DiagUnitTest(unittest.TestCase):
         self.assertEqual(bad[0]["level"], "error")
         self.assertIn("refused", bad[0]["text"])
 
+    def test_a_web_viewer_that_is_meant_to_be_up_but_is_not_is_called_out(self):
+        base = {"console": {"reachable": True}, "stations": [], "sources": [], "media": {"present": True},
+                "ffmpeg": {"found": True}, "disk": {}, "guide": {}}
+        down = {"on": True, "running": False, "accounts": 2, "watching": []}
+        [warn] = diag.checks({**base, "web_viewer": down})
+        self.assertEqual((warn["level"], warn["href"]), ("warn", "/settings.html#players"))
+        self.assertIn("not running", warn["text"])
+        for fine in (None, {**down, "running": True}, {**down, "on": False}, {**down, "accounts": 0}):
+            self.assertEqual([c["level"] for c in diag.checks({**base, "web_viewer": fine})], ["ok"], fine)
+
     def test_a_check_that_has_a_fix_says_where_to_go(self):
         rows = diag.checks({"console": {"reachable": True}, "stations": [{"name": "A", "type": "standard", "scheduled_until": None}],
                             "sources": [], "media": {"present": False, "path": "/m"}, "ffmpeg": {"found": True}, "disk": {}, "guide": {}})

@@ -52,6 +52,8 @@ CAPTIONS = re.compile(r"[A-Za-z0-9.\-]{1,16}(\.json|/[A-Za-z0-9]{1,64}/[A-Za-z0-
 OFF_PAGE = b"<!doctype html><title>Switched off</title><p>The web viewer is switched off.</p>"
 
 STREAMS, STREAMS_LOCK = {}, threading.Lock()         # viewer -> streams open now
+WATCHING = []                                        # (viewer, channel) for each of them, for the dashboard's Status tab
+STARTED = time.time()
 CACHE, CACHE_LOCK = {}, threading.Lock()             # path -> (fetched at, body)
 
 
@@ -216,6 +218,8 @@ class Handler(BaseHTTPRequestHandler):
             if STREAMS.get(name, 0) >= MAX_STREAMS:
                 return self._error(429, "too many streams are open for you: close one and try again")
             STREAMS[name] = STREAMS.get(name, 0) + 1
+            WATCHING.append((name, num))
+        report()
         self.close_connection = True
         try:
             url = f"{SERVER}/auto/v{num}" + (f"?kbps={int(kbps)}" if kbps.isdigit() else "")
@@ -247,6 +251,8 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             with STREAMS_LOCK:
                 STREAMS[name] -= 1
+                WATCHING.remove((name, num))
+            report()
 
     def do_POST(self):
         p = urlparse(self.path).path
@@ -311,12 +317,20 @@ def drop_root():
             os.setuid(st.st_uid)
 
 
+def report():
+    """Tell the dashboard we are running and who is watching what (viewers.py `alive`): every half minute, and at once
+    when a stream starts or ends. Never worth failing a viewer's request over."""
+    with STREAMS_LOCK:
+        watching = [{"user": n, "channel": c} for n, c in WATCHING]
+    try:
+        USERS.beat({"started": int(STARTED), "watching": watching})
+    except OSError as e:
+        print(f"! could not write to {DIR}: {e.strerror}", flush=True)
+
+
 def heartbeat():
     while True:
-        try:
-            USERS.beat()
-        except OSError as e:
-            print(f"! could not write to {DIR}: {e.strerror}", flush=True)
+        report()
         time.sleep(30)
 
 

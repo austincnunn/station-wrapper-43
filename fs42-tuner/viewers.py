@@ -7,7 +7,8 @@ ever overwrites the other's change:
   viewers.json   the dashboard's: for each user the salted hash of the password and the channel numbers (null =
                  every channel), the signing secret, and the on/off switch
   sessions.json  the viewer's: sessions that were logged out
-  alive          the viewer's: touched every half minute, so the dashboard can say whether it is running
+  alive          the viewer's: written every half minute and when someone starts or stops watching, so the
+                 dashboard's Status tab can say whether it is running and who is watching what
 A session is signed with the secret AND that user's hash, so a new password or a removed user ends that user's
 sessions, and nobody else's.
 
@@ -35,7 +36,7 @@ class Viewers(authmod.Auth):
         super().__init__(path, **kw)
         folder = os.path.dirname(path)
         self._sessions = authmod.Auth(os.path.join(folder, "sessions.json"))      # only its _load / _save: a second JSON file
-        self._alive = os.path.join(folder, "alive")
+        self._alive = authmod.Auth(os.path.join(folder, "alive"))                 # the same, for the viewer's own state
 
     # ---- the switch on the dashboard's Players tab, and whether the viewer's container is there to obey it
     def is_on(self):
@@ -46,17 +47,27 @@ class Viewers(authmod.Auth):
         data["on"] = bool(on)
         self._save(data)
 
-    def beat(self):
-        """The viewer says it is running."""
-        with open(self._alive, "a"):
-            pass
-        os.utime(self._alive, (self.clock(), self.clock()))
+    def beat(self, state=None):
+        """The viewer says it is running, and what it is doing: {"started": when, "watching": [{"user", "channel"}]}."""
+        self._alive._save(state or {})
+        os.utime(self._alive.path, (self.clock(), self.clock()))
 
     def running(self):
         try:
-            return self.clock() - os.path.getmtime(self._alive) < 90
+            return self.clock() - os.path.getmtime(self._alive.path) < 90
         except OSError:
             return False
+
+    def status(self):
+        """For the dashboard's Status tab: None when there is nothing to say (no viewers set up and no container),
+        else whether it is switched on and running, how many viewers there are, and who is watching what."""
+        running, users = self.running(), self._users()
+        if not running and not users:
+            return None
+        state = self._alive._load() if running else {}
+        watching = [w for w in state.get("watching") or [] if isinstance(w, dict)]
+        return {"on": self.is_on(), "running": running, "accounts": len(users), "started": state.get("started"),
+                "watching": [{"user": str(w.get("user")), "channel": str(w.get("channel"))} for w in watching]}
 
     def _users(self):
         users = self._load().get("users")
