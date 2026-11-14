@@ -9,6 +9,9 @@
 #banner .name { font-weight: 600; }
 #banner .what { color: #c3c8d0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+#stats { position: absolute; top: 0.6em; left: 0.6em; padding: 0.25em 0.6em; border-radius: 0.3em; background: rgba(0, 0, 0, 0.65); color: #fff;
+  font-size: 0.8em; font-variant-numeric: tabular-nums; pointer-events: none; }
+
 #toast { position: absolute; top: 0.8em; left: 50%; transform: translateX(-50%); margin: 0; padding: 0.4em 0.9em; font-size: 0.9em; white-space: nowrap; }
 
 #captions { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); max-width: 80%; text-align: center; pointer-events: none;

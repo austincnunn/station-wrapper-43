@@ -24,6 +24,7 @@
     <div id="captions" aria-live="off" x-show="ccLines.length" x-cloak>
       <template x-for="(line, i) in ccLines" :key="i"><div><span x-text="line"></span></div></template>
     </div>
+    <div id="stats" x-show="stats" x-cloak x-text="statsText"></div>
     <div id="toast" class="notification is-danger" role="status" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
   </div>
 
@@ -49,6 +50,10 @@
             <template x-for="q in qualities" :key="q.kbps"><option :value="q.kbps" x-text="q.name" :selected="q.kbps === kbps"></option></template>
           </select>
         </div>
+      </div>
+      <div class="control">
+        <button type="button" class="button" :class="stats && 'is-primary is-outlined'" :aria-pressed="stats ? 'true' : 'false'"
+                title="Show the picture size and rate now playing" @click="toggleStats()">Stats</button>
       </div>
       <div class="control" x-show="cc.tracks.length" x-cloak>
         <button type="button" class="button" :class="cc.track >= 0 && 'is-primary is-outlined'" aria-label="Captions" title="Captions (C)" @click="ccNext()"

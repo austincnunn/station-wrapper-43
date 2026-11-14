@@ -45,6 +45,15 @@ class PagesTest(unittest.TestCase):
         for part in ("sourcesTab", "embyPanel", "scheduleTab", "filesTab", "viewersTab", "statusTab"):
             self.assertIn(f'x-data="{part}"', html)
 
+    def test_the_player_can_say_what_is_playing(self):
+        """A lower quality can look the same in a small player: the Stats button shows the decoded size and the rate."""
+        html, js = read("watch.html"), read("app.js")
+        self.assertIn('<div id="stats" x-show="stats" x-cloak x-text="statsText"></div>', html)      # text, never a function
+        self.assertRegex(html, r'<button[^>]*@click="toggleStats\(\)"[^>]*>Stats</button>')
+        self.assertIn(":aria-pressed=\"stats ? 'true' : 'false'\"", html)
+        for needle in ("mpegts.Events.STATISTICS_INFO", "v.videoWidth", 'recall(STATS_KEY) === "on"'):
+            self.assertIn(needle, js)
+
     def test_nothing_above_the_settings_tabs_changes_height(self):
         """A title and a per-tab subtitle above the tab bar made it jump from tab to tab: each tab says what it is itself."""
         html = read("settings.html")

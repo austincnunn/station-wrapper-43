@@ -6,6 +6,7 @@
   const LAST_CHANNEL_KEY = "fs42.lastChannel";
   const VOLUME_KEY = "fs42.volume";
   const QUALITY_KEY = "fs42.quality";
+  const STATS_KEY = "fs42.stats";               // "on" while the Stats readout is showing
   const CC_PREF_KEY = "fs42.captions";          // "off" or a language code ("" for a track with none)
   const CC_NUDGE_KEY = "fs42.captionsNudge";    // seconds: how far behind the clock the picture runs for this viewer
   const GUIDE_REFRESH_MS = 5 * 60 * 1000;
@@ -51,6 +52,7 @@
 
   // Kept out of Alpine: the player, the guide's thousands of programmes and the caption cues are working data, not what is shown.
   let player = null;
+  let speedKB = 0;        // how fast the stream is arriving, as the player last reported it (KiB a second)
   let programmes = {};   // number -> [{start, stop, title}] sorted by start
   let cues = [];
   let retryTimer = null, bannerTimer = null, toastTimer = null;
@@ -72,6 +74,8 @@
       toast: "",
       volume: 100, silent: true, volumeIcon: "\u{1F507}",
       kbps: 0, qualities: [{ kbps: 0, name: "Full" }], qualityTitle: "Picture quality: pick a lower one on a slow connection",
+      topKbps: 4000,             // the tuner's own rate: what Full is
+      stats: recall(STATS_KEY) === "on", statsText: "",
       cc: { tracks: [], track: -1, nudge: 2 },
       ccLines: [],
 
@@ -103,6 +107,7 @@
         setInterval(() => this.watchdog(), 2000);
         setInterval(() => this.ccTick(), 200);
         setInterval(() => this.ccPollOnce(), 5000);
+        setInterval(() => this.statsTick(), 1000);
       },
 
       async logout() {
@@ -223,6 +228,8 @@
           }
         );
         player.attachMediaElement(this.$refs.video);
+        speedKB = 0;
+        if (mpegts.Events.STATISTICS_INFO) player.on(mpegts.Events.STATISTICS_INFO, (s) => { speedKB = s.speed || 0; });
         player.on(mpegts.Events.ERROR, () => again("Stream error — retrying…"));
         // the server closing the stream (a viewer too slow to keep up is dropped) is not an error to the player: it just
         // stops, and the picture freezes. Treat the end of a live stream as a reason to reconnect.
@@ -276,6 +283,7 @@
       async loadQuality() {
         let top = 4000;
         try { top = (await (await fetch("/system.json")).json()).video_kbps || top; } catch (e) { /* the default list */ }
+        this.topKbps = top;
         if (this.kbps >= top) this.kbps = 0;
         const names = { 1000: "Low", 2000: "Medium", 3000: "Extra Medium", 4000: "High" };     // High: only under a 5000k tuner
         const rates = [1000, 2000, 3000, 4000, 5000].filter((r) => r < top);
@@ -287,6 +295,21 @@
         this.kbps = kbps;
         keep(QUALITY_KEY, String(kbps));
         if (this.current != null) this.tune(this.current);
+      },
+
+      // ---- what is playing (the Stats button): the picture's size as it was decoded, how fast the stream is arriving, and
+      // the quality asked for. A lower quality can look the same in a small player, so this is how to tell that it took.
+      toggleStats() {
+        this.stats = !this.stats;
+        keep(STATS_KEY, this.stats ? "on" : "off");
+        this.statsTick();
+      },
+      statsTick() {
+        if (!this.stats) return;
+        const v = this.$refs.video, q = this.qualities.find((x) => x.kbps === this.kbps);
+        const size = v.videoWidth ? `${v.videoWidth}×${v.videoHeight}` : "no picture yet";
+        const rate = speedKB ? `${(speedKB * 8.192 / 1000).toFixed(1)} Mbps arriving` : "";     // the player counts in KiB a second
+        this.statsText = [size, rate, `${q ? q.name : "Full"}: ${this.kbps || this.topKbps}k video`].filter(Boolean).join(" · ");
       },
 
       // ---- volume: a slider, a mute button, and the arrow keys. The picture starts muted (browsers refuse sound
