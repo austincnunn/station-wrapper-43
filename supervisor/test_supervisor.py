@@ -485,5 +485,70 @@ class RoleTest(unittest.TestCase):
         self.assertIn(str(sv.REFUSED), svc[0].argv[-1])
 
 
+class LeftJournalTest(unittest.TestCase):
+    """A write cut off part way leaves a journal that stops every read-only reader until something undoes it."""
+
+    def setUp(self):
+        import json
+        import sqlite3
+        d = tempfile.mkdtemp()
+        self.db, self.conf = os.path.join(d, "fs42_fluid.db"), os.path.join(d, "config.json")
+        with open(self.conf, "w") as f:
+            json.dump({"db_path": self.db}, f)
+        con = sqlite3.connect(self.db)
+        con.execute("CREATE TABLE liquid_blocks (station TEXT, title TEXT)")
+        con.executemany("INSERT INTO liquid_blocks VALUES (?, ?)", [("Laugh Track", f"show {i}" * 20) for i in range(2000)])
+        con.commit()
+        con.close()
+
+    def read_only(self):
+        import sqlite3
+        with sqlite3.connect(f"file:{self.db}?mode=ro", uri=True) as con:
+            return con.execute("SELECT COUNT(*) FROM liquid_blocks").fetchone()[0]
+
+    def test_a_write_cut_off_is_undone_before_a_start(self):
+        import sqlite3
+        import subprocess
+        # a writer killed in the middle: its changes spilled into the database file, its journal left behind
+        subprocess.run([PY, "-c", f"""
+import os, sqlite3
+con = sqlite3.connect({self.db!r}, isolation_level=None)
+con.execute("PRAGMA cache_size=1")
+con.execute("BEGIN")
+con.execute("DELETE FROM liquid_blocks")
+con.executemany("INSERT INTO liquid_blocks VALUES (?, ?)", [("Half", "x" * 500)] * 3000)
+os._exit(9)
+"""], check=False)
+        self.assertTrue(os.path.exists(self.db + "-journal"))
+        with self.assertRaises(sqlite3.OperationalError):              # what the tuner hit
+            self.read_only()
+        note = sv.roll_back_left_journal(self.conf)
+        self.assertIn("undid an unfinished write", note)
+        self.assertFalse(os.path.exists(self.db + "-journal"))
+        self.assertEqual(self.read_only(), 2000)                       # what was committed, nothing of the cut-off write
+
+    def test_nothing_to_do_and_a_write_going_on_are_left_alone(self):
+        import sqlite3
+        self.assertIsNone(sv.roll_back_left_journal(self.conf))          # no journal
+        self.assertIsNone(sv.roll_back_left_journal(os.path.join(tempfile.mkdtemp(), "none.json")))
+        live = sqlite3.connect(self.db, isolation_level=None)
+        live.execute("PRAGMA cache_size=1")
+        live.execute("BEGIN")
+        live.executemany("INSERT INTO liquid_blocks VALUES (?, ?)", [("New", "y" * 500)] * 3000)
+        self.assertTrue(os.path.exists(self.db + "-journal"))
+        self.assertIsNone(sv.roll_back_left_journal(self.conf))          # someone is writing: not ours
+        live.execute("COMMIT")
+        live.close()
+        self.assertEqual(self.read_only(), 5000)                       # that write went through untouched
+
+    def test_it_runs_before_each_start(self):
+        calls = []
+        sup = sv.Supervisor([svc("a", "pass")], out=io.StringIO(), before_start=lambda: calls.append(1) or "noted")
+        sup._start(sup.services[0])
+        sup.services[0].proc.wait()
+        self.assertEqual(calls, [1])
+        self.assertIn("[supervisor] noted", sup.out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

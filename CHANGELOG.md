@@ -111,6 +111,11 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   `docker volume rm` clears them). The compose file pulls `ghcr.io/austincnunn/station-wrapper-43:latest`.
 
 ### Fixed
+- **A write to the schedule cut off by a stop could take every channel down.** The container stopping (or a service
+  being killed) in the middle of a write to the schedule database leaves its undo journal behind, and until something
+  that may write opens the database, the tuner's every read failed with "attempt to write a readonly database": no
+  channels, guide or dashboard. The server now undoes such a write before it starts or restarts a service, and says so
+  in the log. A write still going on is left alone.
 - **A lower-rate copy of a channel took 5 seconds longer to start.** Its ffmpeg looked at 5 seconds of the channel's
   stream before making anything; it looks at half a second now, and keeps the audio that a file from Emby can start a
   second after the picture. A player PC on a CRT (1500 kbps) changes channel in about 1.5 s instead of 5.5 (3 s instead

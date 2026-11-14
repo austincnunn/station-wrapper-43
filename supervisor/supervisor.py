@@ -23,10 +23,18 @@ Settings saved on the dashboard's Settings page (envsettings.py) are laid over t
 with them, and when one changes, only the services that read it are restarted (or started, or stopped, for an on/off
 setting). On a player (client mode) the same holds for the settings the server sent it.
 
+A write to the schedule database cut off part way (the container stopped, a service was killed) leaves its undo journal
+behind, and until something that may write opens the database, every read-only reader (the tuner) fails with "attempt to
+write a readonly database". So on a server, before it starts or restarts a service, it opens the database once with
+write access when a journal is there: SQLite then undoes the unfinished write. A journal of a write still going on is
+left alone (SQLite only undoes one no process holds a lock for).
+
 It is not PID 1: tini is, so processes that outlive their parent get reaped.
 """
+import json
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -111,8 +119,9 @@ def notes_from_env(env=None, exists=os.path.exists):
 class Supervisor:
     def __init__(self, services, out=None, backoff_base=1.0, backoff_max=30.0, stable_after=60.0,
                  grace=10.0, poll=0.2, watch_stations=None, watch_every=3.0, busy=None, settle=0.0,
-                 env=None, watch_settings=None, make_services=None):
+                 env=None, watch_settings=None, make_services=None, before_start=None):
         self.services = services
+        self.before_start = before_start          # () -> a line to log, or None: runs before each start of a service
         # watch_settings() -> the environment the services should have now (envsettings overlay); make_services(env) ->
         # the services that environment runs. A change restarts only the services REGISTRY names for it.
         self.env = dict(os.environ if env is None else env)
@@ -147,6 +156,10 @@ class Supervisor:
 
     # ---- one service
     def _start(self, svc):
+        if self.before_start:
+            note = self.before_start()
+            if note:
+                self.say("supervisor", note)
         env = {**self.env, **svc.env}
         try:
             svc.proc = subprocess.Popen(svc.argv, cwd=svc.cwd, env=env, stdout=subprocess.PIPE,
@@ -322,6 +335,31 @@ class Supervisor:
         return self.exit_code if self.exit_code is not None else 0
 
 
+def roll_back_left_journal(config):
+    """Undo a write to the schedule database (the tuner config's db_path) that was cut off part way. Returns a line to
+    log when it did (or could not), else None."""
+    try:
+        with open(config) as f:
+            db = json.load(f).get("db_path")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(db, str) or not os.path.exists(db + "-journal"):
+        return None
+    try:
+        con = sqlite3.connect(db, timeout=2)
+        try:
+            con.execute("SELECT count(*) FROM sqlite_master").fetchone()   # reading with write access undoes it
+        finally:
+            con.close()
+    except sqlite3.Error as e:
+        if "locked" in str(e) or "busy" in str(e):
+            return None                           # a write going on now holds it: its journal is not ours to touch
+        return f"could not open {db} to undo an unfinished write: {e}"
+    if os.path.exists(db + "-journal"):
+        return None                               # a write going on now: its journal is not ours to touch
+    return f"undid an unfinished write left in {db}-journal (cut off by a stop): the schedule reads again"
+
+
 def settings_env(base=None):
     """The environment with the Settings page's values on top (for this machine's role)."""
     base = dict(os.environ if base is None else base)
@@ -340,9 +378,12 @@ def main():
     svcs = services_from_env(env)
     print(f"[supervisor] running: {', '.join(s.name for s in svcs)}", flush=True)
     confs = os.environ.get("FS42_CONFS", "/app/confs")
+    server = (env.get("FS42_ROLE") or "server").strip().lower() == "server"
+    tuner_conf = env.get("FS42_TUNER_CONF", "/config/tuner/config.json")
     sup = Supervisor(svcs, watch_stations=lambda: discover_stations(confs), busy=builds_running,
                      settle=float(os.environ.get("SUPERVISOR_SETTLE_SECONDS", "8")),
-                     env=env, watch_settings=lambda: settings_env(base), make_services=services_from_env)
+                     env=env, watch_settings=lambda: settings_env(base), make_services=services_from_env,
+                     before_start=(lambda: roll_back_left_journal(tuner_conf)) if server else None)
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: sup.stop())
     signal.signal(signal.SIGUSR1, lambda *_: sup.request_restart("tuner"))
