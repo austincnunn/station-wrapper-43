@@ -12,7 +12,7 @@
 <body>
 <div id="shell" data-page="watch"></div>
 <main class="section" x-data="watchPage">
-<div class="container is-max-desktop" id="stage" x-ref="stage" :class="full && 'is-full'">
+<div class="container is-max-widescreen" id="stage" x-ref="stage" :class="{ 'is-full': full, 'is-idle': idle }">
   <div id="screen">
     <video id="video" x-ref="video" autoplay muted playsinline x-show="!unsupported" @volumechange="showVolume()"></video>
     <p class="has-text-danger p-5" x-show="unsupported" x-cloak>This browser does not support MSE-based MPEG-TS playback. Try a recent desktop Chrome, Firefox or Edge.</p>
@@ -30,7 +30,7 @@
     <div id="toast" class="notification is-danger" role="status" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
   </div>
 
-  <div class="box controls">
+  <div class="box controls" x-ref="controls">
     <div class="field is-grouped is-grouped-multiline">
       <div class="control">
         <div class="field has-addons">

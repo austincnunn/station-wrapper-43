@@ -77,10 +77,22 @@ class PagesTest(unittest.TestCase):
         stage = html[html.index('id="stage"'):html.index('aria-label="Channel guide"')]
         for inside in ('id="screen"', 'class="box controls"', '@click="toggleFull()"'):
             self.assertIn(inside, stage)                             # what fills the screen holds the picture AND the controls
-        self.assertIn(""":class="full && 'is-full'\"""", html)
+        self.assertIn(""":class="{ 'is-full': full, 'is-idle': idle }\"""", html)
         self.assertIn("#stage.is-full { position: fixed; inset: 0;", css)       # the window is filled by a style, whatever the browser says
         self.assertIn("requestFullscreen", js)
         self.assertNotIn("enableWorker: true", js)                   # tried: it left the picture a fifth of a second from stalling
+        # full, the controls lie over the picture's foot (the same grid cell), so it never changes size as they come and go
+        self.assertRegex(css, r"#stage\.is-full #screen \{ grid-area: 1 / 1;")
+        self.assertRegex(css, r"#stage\.is-full \.box\.controls \{ grid-area: 1 / 1; align-self: end;")
+
+    def test_the_controls_fade_when_nothing_moves_and_keep_their_room(self):
+        html, js, css = read("watch.html"), read("app.js"), read("player.css")
+        self.assertIn('<div class="box controls" x-ref="controls">', html)
+        self.assertIn("#stage.is-idle .box.controls { opacity: 0; pointer-events: none; }", css)     # faded, not removed: nothing jumps
+        self.assertIn("#stage.is-idle #screen { cursor: none; }", css)
+        self.assertRegex(js, r'for \(const ev of \["mousemove", "mousedown", "touchstart", "focusin"\]\)')
+        self.assertIn('c.matches(":hover")', js)                     # never from under the pointer
+        self.assertNotIn(".box.controls { flex: none", css.replace("#stage.is-full .box.controls", ""))   # a stray rule once took the box's margin
 
     def test_nothing_above_the_settings_tabs_changes_height(self):
         """A title and a per-tab subtitle above the tab bar made it jump from tab to tab: each tab says what it is itself."""

@@ -1,5 +1,5 @@
 /* the Watch page (watch.html, app.js): the picture, what is drawn over it, and the guide under the controls */
-#screen { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: var(--bulma-radius-large) var(--bulma-radius-large) 0 0; overflow: hidden; }
+#screen { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: calc(100vh - 12rem); background: #000; border-radius: var(--bulma-radius-large) var(--bulma-radius-large) 0 0; overflow: hidden; }
 #video { width: 100%; height: 100%; display: block; background: #000; }
 
 /* The channel bar on a channel change: the FS42 TV apps' bar, the guide channel's "Cable box" look (colours and layout
@@ -28,22 +28,27 @@
   color: #fff; font-size: clamp(11px, 1.6vw, 21px); line-height: 1.25; white-space: pre-line; text-shadow: 0 0 4px #000, 0 0 4px #000, 1px 1px 2px #000; }
 #captions span { background: rgba(0, 0, 0, 0.55); padding: 0.05em 0.35em; border-radius: 0.2em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 
-/* Full screen (the Full screen button, or F): the whole player fills the window (and the screen, where the browser grants
-   it), the picture taking what the controls leave */
-#stage.is-full { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; width: auto; max-width: none; height: auto;
-  margin: 0; padding: 0; overflow: auto; background: var(--bulma-body-background-color, #0f1115); }
-#stage.is-full #screen { flex: 1; min-height: 0; aspect-ratio: auto; border-radius: 0; }
-#stage.is-full .box.controls { flex: none; margin: 0; border-radius: 0; }
-#stage.is-full > section { flex: none; max-height: 40vh; overflow: auto; padding: 0.5rem; }
+/* Full screen (the Full screen button, or F): the picture fills the window (and the screen, where the browser grants it),
+   and the controls lie over its foot, in the same grid cell, so the picture never changes size when they come and go */
+#stage.is-full { position: fixed; inset: 0; z-index: 30; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  width: auto; max-width: none; height: auto; margin: 0; padding: 0; overflow: hidden; background: var(--bulma-body-background-color, #0f1115); }
+#stage.is-full #screen { grid-area: 1 / 1; aspect-ratio: auto; max-height: none; border-radius: 0; }
+#stage.is-full .box.controls { grid-area: 1 / 1; align-self: end; z-index: 2; margin: 0; border: 0; border-radius: 0; background: rgba(15, 17, 21, 0.82); }
+#stage.is-full > section { grid-area: 2 / 1; max-height: 40vh; overflow: auto; padding: 0.5rem; }
+#stage.is-full #banner { bottom: 5.2rem; transition: opacity 0.4s ease, bottom 0.3s ease; }     /* clear of the controls ... */
+#stage.is-full.is-idle #banner { bottom: 2.8cqw; }                                              /* ... and back down when they are away */
 
-.box.controls { flex: none; margin: 0; border-radius: 0; }
-#stage:fullscreen > section { flex: none; max-height: 40vh; overflow: auto; padding: 0.5rem; }
+/* Nothing has moved for a few seconds (app.js, HIDE_MS): the controls fade, and the pointer over the picture with them. Their
+   room under the picture is kept, so nothing on the page jumps. Moving the mouse, a touch or the Tab key brings them back. */
+.box.controls { transition: opacity 0.3s ease; }
+#stage.is-idle .box.controls { opacity: 0; pointer-events: none; }
+#stage.is-idle #screen { cursor: none; }
 
 .box.controls { border-radius: 0 0 var(--bulma-radius-large) var(--bulma-radius-large); border-top: 0; padding: 0.75rem; }
 .controls .chan-display { min-width: 4rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bulma-text-strong); }
 .controls .volume { display: flex; align-items: center; }
-#volume { width: 7em; accent-color: var(--bulma-primary); cursor: pointer; }
-.controls .chan-input { width: 7rem; }
+#volume { width: 6em; accent-color: var(--bulma-primary); cursor: pointer; }
+.controls .chan-input { width: 6rem; }
 
 .guide-row { display: grid; grid-template-columns: 6em 1fr; gap: 0.2em 1em; padding: 0.6rem 0.8rem; margin-bottom: 0.4rem !important; color: var(--bulma-text); }
 .guide-row:hover, .guide-row.is-current { border-color: var(--bulma-primary); }

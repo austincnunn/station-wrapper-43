@@ -11,6 +11,7 @@
   const CC_NUDGE_KEY = "fs42.captionsNudge";    // seconds: how far behind the clock the picture runs for this viewer
   const GUIDE_REFRESH_MS = 5 * 60 * 1000;
   const BANNER_REFRESH_MS = 15 * 1000;
+  const HIDE_MS = 4000;                         // the controls fade this long after the pointer last moved
   const BANNER_SHOW_MS = 8000;                  // as long as the TV apps and a player PC show theirs
   const RETRY_MS = 3000;
   // The picture stopping without any error (a gap in the stream the player cannot get past) used to need a page
@@ -55,7 +56,7 @@
   let speedKB = 0;        // how fast the stream is arriving, as the player last reported it (KiB a second)
   let programmes = {};   // number -> [{start, stop, title}] sorted by start
   let cues = [];
-  let retryTimer = null, bannerTimer = null, toastTimer = null;
+  let retryTimer = null, bannerTimer = null, toastTimer = null, idleTimer = null;
   const ccState = { eid: null, skew: 0, pos: 0, at: 0, token: 0, inBreak: false, segEnd: 0, polling: false, chosen: false };
   const stall = { last: -1, since: Date.now(), tries: 0 };
 
@@ -77,6 +78,7 @@
       topKbps: 4000,             // the tuner's own rate: what Full is
       stats: recall(STATS_KEY) === "on", statsText: "",
       full: false,               // the player (picture and controls) is filling the window, and the screen where the browser lets it
+      idle: false,               // nothing has moved for a while: the controls are faded out
       cc: { tracks: [], track: -1, nudge: 2 },
       ccLines: [],
 
@@ -89,6 +91,8 @@
         this.showVolume();
         this.loadQuality();
         document.addEventListener("keydown", (e) => this.key(e));
+        for (const ev of ["mousemove", "mousedown", "touchstart", "focusin"]) document.addEventListener(ev, () => this.wake(), { passive: true });
+        this.wake();
         document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) this.full = false; });    // Esc left the full screen
 
         if (!window.mpegts || !mpegts.isSupported()) { this.unsupported = true; return; }
@@ -304,6 +308,21 @@
         this.kbps = kbps;
         keep(QUALITY_KEY, String(kbps));
         if (this.current != null) this.tune(this.current);
+      },
+
+      // ---- the controls fade when nothing has moved for HIDE_MS, and come back with the mouse, a touch or the Tab key.
+      // The channel and volume keys do not bring them back: the channel bar already says what changed.
+      wake() {
+        if (this.idle) this.idle = false;
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => this.rest(), HIDE_MS);
+      },
+      rest() {
+        const c = this.$refs.controls, a = document.activeElement;
+        // not from under the pointer, nor while a number is being typed or the quality list is open, nor with the guide open
+        const busy = c.matches(":hover") || (a && c.contains(a) && /^(INPUT|SELECT)$/.test(a.tagName)) || this.guideOpen || this.unsupported;
+        if (busy) this.wake();
+        else this.idle = true;
       },
 
       // ---- full screen: the picture AND the controls under it, so the channel can still be changed there. The player

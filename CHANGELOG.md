@@ -18,6 +18,10 @@ Work in progress is kept under *Unreleased* and moves to a version heading when 
   until when in lavender. **Full screen** (or F) fills the window with the picture and the controls under it, and the
   whole screen where the browser allows; Esc leaves it. The up and down arrows change channel (left and right, the
   volume) wherever you last clicked, and no longer scroll the page. Channel # and Go sit beside the channel arrows.
+- **The player is wider, and its controls get out of the way.** The Watch page's player is as wide as the page allows
+  (1152 px), with the controls on one row. After four seconds without the mouse they fade, and the pointer over the
+  picture with them; moving the mouse brings them back. Full screen now fills the whole window with the picture, the
+  controls lying over its foot.
 - **Who is watching in the web viewer** is listed under Players on the Status tab, and on the Players tab.
 - The web player keeps half a minute of played video in the browser, not three minutes.
 - **The player can say what is playing.** A **Stats** button on the Watch page (and in the web viewer) shows the picture's
