@@ -3,6 +3,7 @@ dashboard's side of it (accounts and the switch) against the real server. Run: p
 import http.client
 import json
 import os
+import select
 import shutil
 import socket
 import subprocess
@@ -74,6 +75,17 @@ class FakeServer(BaseHTTPRequestHandler):
             finally:
                 FakeServer.streams -= 1
                 self.close_connection = True
+            return
+        if p == "/auto/v104":                         # a channel that takes its time: headers, and no picture yet
+            FakeServer.streams += 1
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp2t")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.flush()
+            select.select([self.connection], [], [], 15)          # until the viewer's side lets go of us
+            FakeServer.streams -= 1
+            self.close_connection = True
             return
         self._send(b"no", "text/plain", 404)
 
@@ -260,6 +272,24 @@ class ViewerTest(unittest.TestCase):
         r4.close()
         c4.close()
         self.assertTrue(self.settled(0))
+
+    def test_a_viewer_who_leaves_before_the_first_picture_is_let_go_at_once(self):
+        self.assertTrue(self.settled(0))
+        mum = self.login("mum", MUM)
+        c, r = self.stream(mum, "/auto/v104")
+        self.assertEqual(r.status, 200)
+        self.assertTrue(self.settled(1))
+        self.assertEqual(self.users.status()["watching"], [{"user": "mum", "channel": "104"}])
+        began = time.time()
+        r.close()
+        c.close()                                                              # flipped to another channel
+        self.assertTrue(self.settled(0))                                       # not held until the server sends or times out
+        for _ in range(60):
+            if not self.users.status()["watching"]:
+                break
+            time.sleep(0.05)
+        self.assertEqual(self.users.status()["watching"], [])
+        self.assertLess(time.time() - began, 4)
 
     def test_an_open_stream_ends_when_its_viewer_may_no_longer_watch(self):
         self.users.save("tmp", LONG, ["102"])

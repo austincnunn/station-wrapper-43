@@ -21,6 +21,8 @@ import ipaddress
 import json
 import os
 import re
+import select
+import socket
 import threading
 import time
 import urllib.error
@@ -54,6 +56,7 @@ OFF_PAGE = b"<!doctype html><title>Switched off</title><p>The web viewer is swit
 STREAMS, STREAMS_LOCK = {}, threading.Lock()         # viewer -> streams open now
 WATCHING = []                                        # (viewer, channel) for each of them, for the dashboard's Status tab
 STARTED = time.time()
+REPORT_LOCK = threading.Lock()
 CACHE, CACHE_LOCK = {}, threading.Lock()             # path -> (fetched at, body)
 
 
@@ -237,7 +240,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Connection", "close")
                 self.end_headers()
                 token, check = self._token(), time.time() + RECHECK_SECONDS
+                watch = [up, self.connection]
                 while True:
+                    # Wait on both ends: a channel can take seconds to send its first picture, and a viewer who has
+                    # already flipped past it must not hold a stream (and one of their few) until it does.
+                    ready = select.select(watch, [], [], 20)[0]
+                    if self.connection in ready:
+                        if not self.connection.recv(1, socket.MSG_PEEK):
+                            break                         # the viewer hung up
+                        watch = [up]                      # they sent something more: not ours to read, stop looking
+                    if up not in ready:
+                        if not ready:
+                            break                         # the server sent nothing for 20 seconds
+                        continue
                     chunk = up.read1(65536)
                     if not chunk:
                         break
@@ -320,12 +335,13 @@ def drop_root():
 def report():
     """Tell the dashboard we are running and who is watching what (viewers.py `alive`): every half minute, and at once
     when a stream starts or ends. Never worth failing a viewer's request over."""
-    with STREAMS_LOCK:
-        watching = [{"user": n, "channel": c} for n, c in WATCHING]
-    try:
-        USERS.beat({"started": int(STARTED), "watching": watching})
-    except OSError as e:
-        print(f"! could not write to {DIR}: {e.strerror}", flush=True)
+    with REPORT_LOCK:                   # one at a time, so two streams ending together cannot write an older list last
+        with STREAMS_LOCK:
+            watching = [{"user": n, "channel": c} for n, c in WATCHING]
+        try:
+            USERS.beat({"started": int(STARTED), "watching": watching})
+        except OSError as e:
+            print(f"! could not write to {DIR}: {e.strerror}", flush=True)
 
 
 def heartbeat():
